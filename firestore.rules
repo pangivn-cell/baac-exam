@@ -1,0 +1,55 @@
+rules_version = '2';
+// ระบบซ้อมสอบ: คลังกลาง (kb) ทุกคนอ่านได้ / ส่งเข้าคลัง (subs) ต้องล็อกอิน / ผู้ตรวจอนุมัติ
+// ตั้งแอดมินคนแรกโดยแก้ users/{uid}.role เป็น "admin" ในหน้า Firestore ของ Firebase console
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function role() { return exists(me()) ? get(me()).data.role : 'user'; }
+    function isAdmin() { return signedIn() && role() == 'admin'; }
+    function isReviewer() { return signedIn() && role() in ['admin', 'reviewer']; }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isReviewer());
+      allow create: if signedIn() && request.auth.uid == uid && request.resource.data.role == 'user';
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
+    }
+
+    // คลังกลางที่อนุมัติแล้ว: ใครก็อ่านได้ (ไม่ต้องล็อกอิน) เขียนได้เฉพาะผู้ตรวจ
+    match /kb/{id} {
+      allow read: if true;
+      allow write: if isReviewer();
+    }
+    match /kbfigs/{id} {
+      allow read: if true;
+      allow write: if isReviewer();
+    }
+
+    // ของที่ส่งเข้ามา รอผู้ตรวจอนุมัติ
+    match /subs/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || isReviewer());
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isReviewer()
+        || (signedIn() && resource.data.ownerUid == request.auth.uid && resource.data.status == 'pending'
+            && request.resource.data.status == 'pending' && request.resource.data.ownerUid == request.auth.uid);
+      allow delete: if isReviewer()
+        || (signedIn() && resource.data.ownerUid == request.auth.uid && resource.data.status == 'pending');
+    }
+    match /subfigs/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if isReviewer() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+    }
+
+    // รายงานเฉลยผิด
+    match /reports/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isReviewer());
+      allow update, delete: if isReviewer();
+    }
+  }
+}

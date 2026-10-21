@@ -330,6 +330,7 @@ nav.subjects{gap:14px}
 .tags{display:flex;flex-wrap:wrap;gap:4px}
 .tag{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
 .kprev{font-size:13px;color:var(--ink-2)}
+.khist{border:1px solid var(--line);border-radius:12px;padding:12px 14px}.khist>summary{cursor:pointer;font-weight:700}.khl{display:flex;flex-direction:column;gap:12px;margin-top:12px}
 .kprev pre{white-space:pre-wrap;font:13px/1.6 var(--f-body);margin:6px 0 0;max-height:220px;overflow:auto;background:var(--paper);padding:8px 10px;border-radius:8px}
 .kerr{color:var(--bad)} .kwarn{color:var(--unk)}
 .kstage{margin:0;font-size:14px;color:var(--ink-2);display:flex;align-items:center;gap:8px}
@@ -2476,15 +2477,7 @@ function renderKB(){
   if(VIEW!=='kb')return;
   head('คลังความรู้','อัปโหลดไฟล์ได้ 2 ประเภท: เนื้อหา (AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่) และข้อสอบ/ตัวอย่างโจทย์ (ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่าง) · เก็บไว้ในเครื่องนี้');
   const el=document.getElementById('sheet'),ai=activeAI(),nCards=activeCards().length,nBank=bankItems().length;
-  el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
-      <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB (ไฟล์ใหญ่ใช้เวลาอ่านนานขึ้น) · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p></div>
-    ${!ai?'<p class="catnote warn">อัปโหลดได้เลย แต่การอ่าน PDF ด้วย AI ย่อยความรู้ และสร้างข้อสอบ ต้องตั้งค่า AI ก่อน (แถบซ้าย)</p>':!canEmbed()?'<p class="catnote warn">AI ที่ใช้อยู่อ่านภาพ PDF และทำดัชนีความหมายไม่ได้ ใช้ Gemini หรือ OpenAI key จะได้ครบทุกความสามารถ</p>':''}
-    ${KB_ERR?'<p class="catnote warn">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บเอกสารถาวร เอกสารจะหายเมื่อปิดหน้า</p>':''}
-    <p class="catnote" id="kbstore"></p>
-    ${cloudBoxHTML()}
-    ${UPQ.map((j,i)=>`<div class="kdoc"><p class="kn">${esc(j.name)}</p>${j.err?`<p class="kerr">${esc(j.err)}</p><div><button class="ghost" data-dismiss="${i}">ปิด</button></div>`:`<p class="src" data-job="${i}">${esc(j.msg)}</p>`}</div>`).join('')}
-    ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${DOCS.filter(d=>!d.central).length} ไฟล์ · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
-    ${DOCS.filter(d=>!d.central).slice().reverse().map(d=>{const tp=docTopics(d),busy=PROC_ID===d.id||PROCQ.includes(d.id),nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',unit=ex?'ข้อ':'ใบ',lab=ex?'ข้อสอบ':'บัตรความรู้',summ=(d.summ||[]).filter(Boolean);
+  const docBox=d=>{const tp=docTopics(d),busy=PROC_ID===d.id||PROCQ.includes(d.id),nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',unit=ex?'ข้อ':'ใบ',lab=ex?'ข้อสอบ':'บัตรความรู้',summ=(d.summ||[]).filter(Boolean);
       return `<div class="kdoc" data-id="${d.id}">
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap">${ex?'ข้อสอบ':'เนื้อหา'} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||''}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''} · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}</p>
@@ -2502,7 +2495,22 @@ function renderKB(){
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
         <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
       ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
-      ${d.subId?`<p class="src"><span class="substat ${d.subStatus==='approved'?'ok':d.subStatus==='rejected'?'bad':''}">${d.subStatus==='approved'?'อยู่ในคลังกลางแล้ว':d.subStatus==='rejected'?'ไม่ผ่านการตรวจ':'รอผู้ตรวจอนุมัติ'}</span>${d.subNote?` ${esc(d.subNote)}`:''}</p>`:''}</div>`}).join('')}
+      ${d.subId?`<p class="src"><span class="substat ${d.subStatus==='approved'?'ok':d.subStatus==='rejected'?'bad':''}">${d.subStatus==='approved'?'อยู่ในคลังกลางแล้ว':d.subStatus==='rejected'?'ไม่ผ่านการตรวจ':'รอผู้ตรวจอนุมัติ'}</span>${d.subNote?` ${esc(d.subNote)}`:''}</p>`:''}</div>`};
+  /* เสร็จแล้ว = ย่อยครบ ไม่มีข้อผิดพลาด และอยู่ในคลังกลางแล้ว (หรือเลือกเก็บส่วนตัว) → ย้ายไปประวัติการอัปโหลด */
+  const isBusy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
+  const isDone=d=>d.stage==='ready'&&!isBusy(d)&&!d.err&&!d.prog&&CARDS.some(c=>c.docId===d.id)&&(d.subStatus==='approved'||d.noShare);
+  const mine=DOCS.filter(d=>!d.central).slice().reverse(),doing=mine.filter(d=>!isDone(d)),done=mine.filter(isDone);
+  el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
+      <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB (ไฟล์ใหญ่ใช้เวลาอ่านนานขึ้น) · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p></div>
+    ${!ai?'<p class="catnote warn">อัปโหลดได้เลย แต่การอ่าน PDF ด้วย AI ย่อยความรู้ และสร้างข้อสอบ ต้องตั้งค่า AI ก่อน (แถบซ้าย)</p>':!canEmbed()?'<p class="catnote warn">AI ที่ใช้อยู่อ่านภาพ PDF และทำดัชนีความหมายไม่ได้ ใช้ Gemini หรือ OpenAI key จะได้ครบทุกความสามารถ</p>':''}
+    ${KB_ERR?'<p class="catnote warn">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บเอกสารถาวร เอกสารจะหายเมื่อปิดหน้า</p>':''}
+    <p class="catnote" id="kbstore"></p>
+    ${cloudBoxHTML()}
+    ${UPQ.map((j,i)=>`<div class="kdoc"><p class="kn">${esc(j.name)}</p>${j.err?`<p class="kerr">${esc(j.err)}</p><div><button class="ghost" data-dismiss="${i}">ปิด</button></div>`:`<p class="src" data-job="${i}">${esc(j.msg)}</p>`}</div>`).join('')}
+    ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${mine.length} ไฟล์ (กำลังทำ/มีปัญหา ${doing.length} · เสร็จแล้ว ${done.length}) · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
+    ${doing.map(docBox).join('')}
+    ${!doing.length&&done.length?'<p class="src" style="text-align:center;margin:0">ไม่มีไฟล์ที่กำลังประมวลผลหรือมีปัญหา · ไฟล์ที่เสร็จแล้วอยู่ในประวัติการอัปโหลดด้านล่าง</p>':''}
+    ${done.length?det('hist',`📁 ประวัติการอัปโหลด · เสร็จแล้ว ${done.length} ไฟล์ (กดเพื่อดู)`,`<div class="khl">${KB_OPEN.has('hist')?done.map(docBox).join(''):''}</div>`,'khist'):''}
     ${centralListHTML()}`;
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
   const drop=document.getElementById('drop');
@@ -2511,7 +2519,8 @@ function renderKB(){
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');handleFiles(e.dataTransfer.files)};
   el.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>{UPQ.splice(+b.dataset.dismiss,1);renderKB()});
   el.querySelectorAll('details[data-k]').forEach(x=>x.addEventListener('toggle',()=>{
-    if(x.open)KB_OPEN.add(x.dataset.k);else KB_OPEN.delete(x.dataset.k);
+    const was=KB_OPEN.has(x.dataset.k);if(x.open)KB_OPEN.add(x.dataset.k);else KB_OPEN.delete(x.dataset.k);
+    if(x.dataset.k==='hist'){if(was!==x.open)renderKB();return}
     const box=x.querySelector('.kcards');if(x.open&&box&&!box.innerHTML){const d=DOCS.find(z=>'c'+z.id===x.dataset.k);if(d){box.innerHTML=cardsHTML(d);wireCards(box)}}
     const fb=x.querySelector('.kfigs');if(x.open&&fb&&!fb.innerHTML){const d=DOCS.find(z=>'f'+z.id===x.dataset.k);if(d)fb.innerHTML=figsHTML(d)}}));
   el.querySelectorAll('.kcards').forEach(wireCards);

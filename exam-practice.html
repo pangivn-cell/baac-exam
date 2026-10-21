@@ -413,7 +413,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21f';
+const BUILD='2026-10-21g';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -2514,6 +2514,7 @@ function renderKB(){
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap">${ex?'ข้อสอบ':'เนื้อหา'} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||''}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''} · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}</p>
       ${d.err?`<p class="kerr">${esc(d.err)}</p>`:''}
+      ${d.stage==='ready'&&!busy&&!nc?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
       ${tp.length?`<div class="tags">${tp.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
       ${d.warn?`<p class="kwarn">${esc(d.warn)}</p>`:''}
       ${confHTML(d)}
@@ -2529,9 +2530,10 @@ function renderKB(){
       ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
       ${d.shareErr?`<p class="kerr">${esc(d.shareErr)}</p><div><button class="ghost" data-sub>ลองส่งเข้าคลังกลางอีกครั้ง</button></div>`:''}
       ${d.subId?`<p class="src"><span class="substat ${d.subStatus==='approved'?'ok':d.subStatus==='rejected'?'bad':''}">${d.subStatus==='approved'?'อยู่ในคลังกลางแล้ว':d.subStatus==='rejected'?'ไม่ผ่านการตรวจ':'รอผู้ตรวจอนุมัติ'}</span>${d.subNote?` ${esc(d.subNote)}`:''}</p>`:''}</div>`};
-  /* เสร็จแล้ว = ย่อยครบ ไม่มีข้อผิดพลาด และอยู่ในคลังกลางแล้ว (หรือเลือกเก็บส่วนตัว) → ย้ายไปประวัติการอัปโหลด */
+  /* เสร็จแล้ว = ประมวลผลจบ ไม่มีข้อผิดพลาด ส่งเข้าคลังกลางไม่ติดปัญหา → ย้ายไปประวัติการอัปโหลด
+     หน้าหลักเหลือเฉพาะไฟล์ที่กำลังประมวลผล ยังไม่เสร็จ ผิดพลาด ส่งไม่สำเร็จ หรือผู้ตรวจไม่ผ่าน */
   const isBusy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
-  const isDone=d=>d.stage==='ready'&&!isBusy(d)&&!d.err&&!d.prog&&CARDS.some(c=>c.docId===d.id)&&(d.subStatus==='approved'||d.noShare);
+  const isDone=d=>d.stage==='ready'&&!isBusy(d)&&!d.err&&!d.prog&&!d.shareErr&&d.subStatus!=='rejected';
   const mine=DOCS.filter(d=>!d.central).slice().reverse(),doing=mine.filter(d=>!isDone(d)),done=mine.filter(isDone);
   el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
       <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB (ไฟล์ใหญ่ใช้เวลาอ่านนานขึ้น) · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p></div>
@@ -2543,7 +2545,7 @@ function renderKB(){
     ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${mine.length} ไฟล์ (กำลังทำ/มีปัญหา ${doing.length} · เสร็จแล้ว ${done.length}) · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
     ${doing.map(docBox).join('')}
     ${!doing.length&&done.length?'<p class="src" style="text-align:center;margin:0">ไม่มีไฟล์ที่กำลังประมวลผลหรือมีปัญหา · ไฟล์ที่เสร็จแล้วอยู่ในประวัติการอัปโหลดด้านล่าง</p>':''}
-    ${done.length?det('hist',`📁 ประวัติการอัปโหลด · เสร็จแล้ว ${done.length} ไฟล์ (กดเพื่อดู)`,`<div class="khl">${KB_OPEN.has('hist')?done.map(docBox).join(''):''}</div>`,'khist'):''}
+    ${done.length?det('hist',`📁 ประวัติการอัปโหลด · เสร็จแล้ว ${done.length} ไฟล์${(k=>k?` · ในนี้ ${k} ไฟล์ไม่พบเนื้อหา`:'')(done.filter(d=>!CARDS.some(c=>c.docId===d.id)).length)} (กดเพื่อดู)`,`<div class="khl">${KB_OPEN.has('hist')?done.map(docBox).join(''):''}</div>`,'khist'):''}
     ${centralListHTML()}`;
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
   const drop=document.getElementById('drop');

@@ -253,6 +253,7 @@ function addHist(e){HIST.push({id:Date.now().toString(36)+Math.random().toString
 var VIEW='practice',M=null,G=null,HF='all';
 function setView(v){
   if(M&&M.status==='run'&&v!=='mock')return;
+  if(v==='kb'&&VIEW!=='kb'&&typeof KB_TAB!=='undefined')KB_TAB='main';
   VIEW=v;
   document.querySelectorAll('#views button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
   document.getElementById('pside').classList.toggle('off',v!=='practice');

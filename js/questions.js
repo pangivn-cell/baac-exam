@@ -83,9 +83,14 @@ const INFO_FIG=/แผนผัง|แผนภาพ|แผนภูมิ|ต�
 const DECOR_FIG=/^(ภาพ|รูป)?\s*(ไอคอน|การ์ตูน|ภาพประกอบ|ประกอบ|เครื่องหมาย|ลูกศร|วงเล็บ|ตัวอักษร|ภาพกราฟิกเงา|กราฟิกเงา|ภาพถ่ายกิจกรรม|ภาพถ่ายงาน)|^รูป[^\s]{1,30}$|^รูป\S+(และ\S+)?$/;
 const figDesc=id=>{const f=FIGS.get(id);return f?String(f.desc||'').trim():''};
 const junkFig=id=>{const d=figDesc(id);return!!d&&JUNK_FIG.test(d)&&!INFO_FIG.test(d)};
-const decorFig=id=>{const d=figDesc(id);return!!d&&DECOR_FIG.test(d)&&!INFO_FIG.test(d)};
+const decorFig=id=>{const d=figDesc(id);return!!d&&(/^(ภาพ|รูป)\s*ประกอบ/.test(d)||DECOR_FIG.test(d)&&!INFO_FIG.test(d))};
 /* okFig = ใช้ทำโจทย์จากบัตรความรู้ได้ · okQFig = รูปของข้อสอบที่ดึงมาจากไฟล์ข้อสอบ (รูปง่ายๆ ก็อาจเป็นโจทย์ได้) */
-const okFig=id=>FIGS.has(id)&&!junkFig(id)&&!decorFig(id);
+/* รูปที่มีแต่ข้อความ (กรอบ/กล่อง/แถบข้อความ ปุ่ม ภาพหน้าจอโจทย์) อ่านเป็นข้อความได้อยู่แล้ว ไม่ต้องแสดงเป็นรูป */
+const TEXT_FIG=/^(ภาพ|รูป)?\s*(กรอบ|กล่อง|แถบ|ป้าย|ปุ่ม|หัวข้อ|ข้อความ)|^(โจทย์|คำถาม)\s*ข้อ|^แบบทดสอบ|^ข้อสอบ|^ตัวเลือก/;
+const textFig=id=>{const d=figDesc(id);return TEXT_FIG.test(d)&&!STRUCT_FIG.test(d)};
+/* บัตรความรู้ใช้รูปได้เฉพาะรูปที่มีโครงสร้างที่ต้องดูจึงตอบได้ (แผนผัง ตาราง กราฟ สูตร รูปมิติสัมพันธ์) */
+const STRUCT_FIG=/แผนผัง|แผนภาพ|แผนภูมิ|ตาราง|กราฟ(?!ิก)|กราฟแท่ง|สูตร|สมการ|อินโฟกราฟิก|ผังแสดง|ผังขั้นตอน|เส้นเวลา|แผนที่|มิติ|พับ|รูปคลี่|ลูกบาศก์|ลูกเต๋า|รูปทรง|รูปเรขาคณิต|ทิศ/;
+const okFig=id=>FIGS.has(id)&&!junkFig(id)&&!decorFig(id)&&!textFig(id)&&STRUCT_FIG.test(figDesc(id));
 const okQFig=id=>FIGS.has(id)&&!junkFig(id);
 /* แสดงรูปเฉพาะเมื่อโจทย์อ้างถึงรูปจริง หรือตัวเลือกเป็นรูป
    รูปที่เป็นภาพหน้าจอของโจทย์+ตัวเลือก (ถอดเป็นข้อความแล้ว) ไม่แสดง เพราะมักมีเฉลยติดมาในรูป */
@@ -103,9 +108,10 @@ function withCard(q,doc){
     if(figs.length){q.fig=figs.includes(q.fig)?q.fig:figs[0];q.ansAI=c.ansSrc==='AI'}else q.fig='';}
   else{q.card='';q.fig='';withCite(q,doc)}
   if(q.fig&&!figNeeded(q)){q.fig='';q.ansAI=false}
+  if(!q.fig&&q.stem&&!q.svg&&!q.viz)q.stem=String(q.stem).replace(/^\s*(จาก|ตาม|ดู|ดัง)\s*(รูป|ภาพ)(ที่กำหนด|ข้างต้น|ด้านบน|ข้างบน|นี้|ประกอบ)?\s*[,:]?\s*/,'');
   return q;
 }
-const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(okFig));
+const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>FIGS.has(id)&&!junkFig(id)&&!textFig(id)));
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
 const bankItems=()=>CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);
 function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.includes(c.topic)):b.filter(c=>c.topic===s.name)}
@@ -289,6 +295,7 @@ ${VIZ_RULE}
 - ตัวลวงมาจากความเข้าใจผิดที่พบบ่อย หรือจากบัตรอื่นที่คล้ายกัน และต้องผิดชัดเจนเมื่ออ่านบัตร
 - ถ้าบัตรเดียวกันถูกใช้หลายข้อ ต้องถามคนละมุม
 - ถ้าบัตรเป็นสูตร วิธีคิด หรือเทคนิคทำโจทย์ (เช่น คณิตศาสตร์ อนุกรม เงื่อนไข) ให้สร้างโจทย์ใหม่ที่ต้องใช้วิธีนั้น ใช้ตัวเลขหรือเนื้อหาใหม่ได้ และคำนวณตรวจคำตอบซ้ำก่อนส่ง${sent.length?`
+- เขียน "จากรูป" หรืออ้างถึงรูปได้เฉพาะเมื่อต้องดูรูปจึงตอบได้ (แผนผัง ตาราง กราฟ รูปทรง) ถ้ารูปมีแต่ข้อความ ให้เขียนเนื้อหาที่ต้องใช้ไว้ในโจทย์เป็นข้อความ แล้วให้ fig เป็น ""
 - ข้อที่ใช้บัตรที่มีรูป ผู้สอบจะเห็นรูปนั้นในโจทย์ ใส่ fig เป็นรหัสรูปที่ต้องแสดง โจทย์ต้องอ้างถึงรูป (เช่น "จากรูป...") และต้องตอบได้จากรูปจริงที่แนบ ห้ามบรรยายคำตอบไว้ในโจทย์ ห้ามถามสิ่งที่ไม่ปรากฏในรูป
 - ถ้าตัวเลือกเป็นรูปที่อยู่ในภาพ ให้ choices เป็นป้ายตามที่ปรากฏในภาพ เช่น "ก" "ข" "ค" "ง" หรือ "1" "2" "3" "4" และ answer ต้องตรงกับเฉลยในบัตร ถ้าบัตรไม่มีเฉลยให้วิเคราะห์จากรูปทีละขั้นก่อนตอบ`:''}
 - ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก ห้ามมีข้อที่กำกวม

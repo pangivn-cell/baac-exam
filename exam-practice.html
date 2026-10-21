@@ -414,7 +414,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21h';
+const BUILD='2026-10-21i';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -1967,10 +1967,36 @@ function saveQLog(){
   try{localStorage.setItem(QLOG_KEY,JSON.stringify(QLOG))}catch(e){}
 }
 function logQs(items,picks){
-  items.forEach((q,j)=>{const pk=picks[j];if(pk==null||pk<0||!q||!q.stem)return;const k=qKey(q),now=Date.now();
+  const ch=[];
+  items.forEach((q,j)=>{const pk=picks[j];if(pk==null||pk<0||!q||!q.stem)return;const k=qKey(q),now=Date.now();ch.push(k);
     if(pk===q.answer)QLOG[k]={s:'r',t:now,sub:q.sub||'',st:String(q.stem).slice(0,140)};
     else{const {retry,...keep}=q;QLOG[k]={s:'w',t:now,sub:q.sub||'',st:String(q.stem).slice(0,140),n:((QLOG[k]&&QLOG[k].n)||0)+1,q:keep}}});
-  saveQLog();
+  saveQLog();pushQLog(ch);
+}
+/* ---------- ซิงก์บันทึกโจทย์กับบัญชี (users/{uid}/qlog/r และ /w) ทุกเครื่องที่ล็อกอินบัญชีเดียวกันเห็นชุดเดียวกัน ----------
+   r = ข้อที่ตอบถูกแล้ว (เก็บแค่รหัส เวลา วิชา) · w = ข้อที่ยังตอบผิด (เก็บทั้งข้อ เพื่อนำกลับมาให้ตอบใหม่) */
+const qRemoteR=e=>`${e.t}|${e.sub||''}`;
+/* ตัวโจทย์เก็บเป็นข้อความ JSON เพราะ Firestore เก็บอาร์เรย์ซ้อนอาร์เรย์ (steps, viz) ไม่ได้ */
+function qRemoteW(e){const {srcText,...q}=e.q||{};return{t:e.t,sub:e.sub||'',st:e.st||'',n:e.n||1,q:e.q?JSON.stringify(q):''}}
+async function pushQLog(keys){
+  if(!ME||!keys.length)return;
+  try{const f=await fb(),r={},w={};
+    for(const k of keys){const e=QLOG[k];if(!e)continue;if(e.s==='r'){r[k]=qRemoteR(e);w[k]=f.fs.deleteField()}else w[k]=qRemoteW(e)}
+    if(Object.keys(r).length)await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','r'),{m:r},{merge:true});
+    await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','w'),{m:w},{merge:true});
+  }catch(e){console.warn('qlog sync',e&&e.code||e)}
+}
+/* ตอนล็อกอิน: รวมของในบัญชีกับของในเครื่อง ข้อเดียวกันใช้ผลที่ตอบล่าสุด แล้วส่งชุดที่รวมแล้วกลับขึ้นไป */
+async function pullQLog(){
+  if(!ME)return;
+  try{const f=await fb(),uid=ME.uid,[rs,ws]=await Promise.all([f.fs.getDoc(fsDoc('users',uid,'qlog','r')),f.fs.getDoc(fsDoc('users',uid,'qlog','w'))]);
+    const rm=rs.exists()?rs.data().m||{}:{},wm=ws.exists()?ws.data().m||{}:{};
+    for(const [k,v] of Object.entries(rm)){const [t,sub]=String(v).split('|'),l=QLOG[k];if(!l||l.t<+t)QLOG[k]={s:'r',t:+t,sub:sub||'',st:l&&l.st||''}}
+    for(const [k,e] of Object.entries(wm)){const l=QLOG[k];if(e&&(!l||l.t<e.t)){let q=null;try{q=e.q?(typeof e.q==='string'?JSON.parse(e.q):e.q):null}catch(x){}QLOG[k]={s:'w',t:e.t,sub:e.sub||'',st:e.st||'',n:e.n||1,...(q?{q}:{})}}}
+    saveQLog();
+    const r={},w={};for(const [k,e] of Object.entries(QLOG)){if(e.s==='r')r[k]=qRemoteR(e);else w[k]=qRemoteW(e)}
+    await f.fs.setDoc(fsDoc('users',uid,'qlog','r'),{m:r});await f.fs.setDoc(fsDoc('users',uid,'qlog','w'),{m:w});
+  }catch(e){console.warn('qlog sync',e&&e.code||e)}
 }
 /* ข้อที่เคยตอบผิดของวิชานี้ เก่าสุดก่อน */
 function retryItems(s,k){
@@ -2740,7 +2766,7 @@ async function cloudInit(){
         if(s.exists())ME.role=s.data().role||'user';
         else await f.fs.setDoc(fsDoc('users',u.uid),{name:ME.name,email:ME.email,role:'user',createdAt:f.fs.serverTimestamp()});
       }catch(e){}
-      renderAcct();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();
+      renderAcct();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();
     });
     f.au.onAuthStateChanged(f.auth,()=>setTimeout(onboard,600));
     await syncCentral();

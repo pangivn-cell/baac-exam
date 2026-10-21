@@ -90,7 +90,7 @@ async function applyPack(id,p){
   CARDS=CARDS.filter(c=>c.docId!==docId);try{await kbDelMany('cards',ids)}catch(e){}
   if(p.deleted){if(old){DOCS.splice(DOCS.indexOf(old),1);try{await kbDelMany('docs',[docId])}catch(e){}}return}
   const d={id:docId,central:true,cloudId:id,name:p.title+(p.parts>1?` (ส่วนที่ ${p.part})`:''),type:'pack',size:0,at:p.approvedAtMs||Date.now(),unit:p.unit||'หน้า',
-    pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],owner:p.ownerName||'',figPages:[],bad:[],warn:'',err:''};
+    pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],owner:p.ownerName||'',srcFile:p.srcFile||'',figPages:[],bad:[],warn:'',err:''};
   if(old)DOCS.splice(DOCS.indexOf(old),1);DOCS.push(d);await saveDoc(d);
   const cs=(p.cards||[]).map(c=>({...c,docId,st:st[c.id]||{},at:c.at||Date.now()}));
   CARDS.push(...cs);await saveCards(cs);

@@ -58,6 +58,12 @@ service cloud.firestore {
         && request.resource.data.pts >= resource.data.pts && request.resource.data.pts <= resource.data.pts + 1000;
     }
 
+    // ตั้งค่าระบบ เช่น โฟลเดอร์ Google Drive ของไฟล์ต้นฉบับ (config/srcdirs): ผู้ที่ล็อกอินอ่านได้ ผู้ตรวจแก้ได้
+    match /config/{id} {
+      allow read: if signedIn();
+      allow write: if isReviewer();
+    }
+
     // รายงานเฉลยผิด
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';

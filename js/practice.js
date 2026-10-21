@@ -55,6 +55,7 @@ function explainHTML(q,pick){
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
+  if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
   if(typeof cloudCardOf==='function'&&cloudCardOf(q))h+=`<div><button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button></div>`;
   return h+`</div>`;
 }

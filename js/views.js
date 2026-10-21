@@ -249,7 +249,7 @@ function srcHTML(c,i){
   const body=c.type==='q'?`<p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p></details>`
     :`<p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>`;
   return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))} · อัปโหลดโดย ${esc(upBy(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}
-    ${activeAI()?`<div><button class="ghost" data-exp="${i}">✨ ให้ AI อธิบายเรื่องนี้ให้ละเอียด</button></div>`:''}</div>`;
+    ${d?srcBtn({card:c.id}):''}${activeAI()?`<div><button class="ghost" data-exp="${i}">✨ ให้ AI อธิบายเรื่องนี้ให้ละเอียด</button></div>`:''}</div>`;
 }
 function renderStudy(){
   if(VIEW!=='study')return;

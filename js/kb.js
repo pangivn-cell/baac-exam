@@ -518,7 +518,9 @@ function renderKB(){
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+      ${srcAdminHTML()}
       ${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}`;
+    if(ME&&!SRC.ready&&!SRC.loading)loadSrcIndex().then(()=>{if(VIEW==='kb'&&KB_TAB==='central')renderKB()});
     document.getElementById('kbback').onclick=()=>{KB_TAB='main';renderKB();window.scrollTo({top:0})};
   }else if(KB_TAB==='hist'){
     head('ประวัติการอัปโหลด','ไฟล์ที่ประมวลผลเสร็จแล้ว · ดู แก้ ตั้งค่า หรือลบได้ที่นี่');
@@ -603,11 +605,12 @@ function centralListHTML(){
       ${docTopics(d).length?`<div class="tags">${docTopics(d).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${ex?'ข้อสอบ':'บัตรความรู้'} (${nc})${isReviewerMe()?' · ผู้ตรวจแก้ได้':''}`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
-      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button></div></div>`}).join('');
+      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button></div>${packSrcHTML(d)}</div>`}).join('');
 }
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>syncCentral();
   const g=document.getElementById('gorev');if(g)g.onclick=()=>setView('review');
+  wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);
   const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
   const h=document.getElementById('gohist');if(h)h.onclick=()=>{KB_TAB='hist';renderKB();window.scrollTo({top:0})};
   el.querySelectorAll('.kdoc[data-cid]').forEach(box=>{const d=DOCS.find(x=>x.id===box.dataset.cid);if(!d)return;

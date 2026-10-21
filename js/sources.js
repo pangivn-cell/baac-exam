@@ -1,0 +1,165 @@
+/* sources.js — เปิดไฟล์ต้นฉบับจากบรรทัดอ้างอิง (ไฟล์ในเครื่อง หรือ Google Drive ที่แอดมินแชร์โฟลเดอร์ไว้) */
+/* ---------- แหล่งไฟล์ต้นฉบับ ----------
+   แอดมินเพิ่มโฟลเดอร์ Google Drive ได้หลายโฟลเดอร์ (แชร์แบบ "ทุกคนที่มีลิงก์ดูได้") เก็บไว้ที่ Firestore config/srcdirs
+   ระบบอ่านรายชื่อไฟล์ในโฟลเดอร์ (รวมโฟลเดอร์ย่อย) ด้วย Drive API แล้วจับคู่กับชุดในคลังกลางจากชื่อไฟล์
+   ชุดไหนชื่อไม่ตรง ผู้ตรวจตั้งลิงก์ไฟล์เองได้ (kb/{id}.srcFile) */
+const SRC_IDX_KEY='exam-src-idx',DRIVE_API='https://www.googleapis.com/drive/v3/files';
+const SRC={dirs:[],files:new Map(),at:0,err:'',loading:null,ready:false};
+const PDF_CACHE=new Map();
+/* ชื่อไฟล์ → รหัสสำหรับจับคู่ (ไม่สนตัวพิมพ์ เว้นวรรค นามสกุล เลขนำหน้าแบบ 6361925..._9. และ (1) ท้ายชื่อ) */
+function srcKeys(name){
+  const b=String(name||'').toLowerCase().replace(/ \(ส่วนที่ \d+\)$/,'').replace(/\.[a-z0-9]{2,5}$/,'');
+  const clean=x=>x.replace(/\s*\(\d+\)\s*$/,'').replace(/[\s_\-.]+/g,'');
+  const noPre=b.replace(/^[0-9a-f]{10,}_\d+\./,'').replace(/^\d{6,}_\d+\./,'');
+  return [...new Set([clean(b),clean(noPre)])].filter(k=>k.length>=3);
+}
+const driveIdOf=s=>{s=String(s||'').trim();const m=s.match(/\/folders\/([\w-]{10,})/)||s.match(/\/d\/([\w-]{10,})/)||s.match(/[?&]id=([\w-]{10,})/);return m?m[1]:/^[\w-]{10,}$/.test(s)?s:''};
+const driveView=id=>`https://drive.google.com/file/d/${id}/view`;
+async function driveList(folderId){
+  const out=[];
+  const walk=async(id,depth)=>{let tok='';do{
+    const u=new URL(DRIVE_API);
+    for(const [k,v] of Object.entries({q:`'${id}' in parents and trashed=false`,fields:'nextPageToken,files(id,name,mimeType,size)',pageSize:'1000',key:FB_CFG.apiKey,supportsAllDrives:'true',includeItemsFromAllDrives:'true'}))u.searchParams.set(k,v);
+    if(tok)u.searchParams.set('pageToken',tok);
+    const r=await fetch(u),j=await r.json().catch(()=>({}));
+    if(!r.ok)throw{code:j.error&&j.error.status||String(r.status),message:j.error&&j.error.message||''};
+    for(const f of j.files||[]){if(f.mimeType==='application/vnd.google-apps.folder'){if(depth<5)await walk(f.id,depth+1)}else out.push(f)}
+    tok=j.nextPageToken||'';
+  }while(tok)};
+  await walk(folderId,0);return out;
+}
+function srcErrText(e){
+  const c=String(e&&e.code||''),m=String(e&&e.message||'');
+  if(/has not been used|disabled|SERVICE_DISABLED/i.test(m))return 'ยังไม่ได้เปิด Google Drive API ในโปรเจกต์ Firebase';
+  if(c==='NOT_FOUND'||c==='404')return 'ไม่พบโฟลเดอร์ หรือโฟลเดอร์ยังไม่ได้แชร์แบบ "ทุกคนที่มีลิงก์"';
+  if(c==='PERMISSION_DENIED'||c==='403')return 'ไม่มีสิทธิ์อ่าน ตั้งแชร์โฟลเดอร์เป็น "ทุกคนที่มีลิงก์ดูได้"';
+  return m||c||'อ่าน Google Drive ไม่สำเร็จ';
+}
+/* โหลดรายชื่อโฟลเดอร์จากฐานข้อมูล แล้วอ่านรายชื่อไฟล์ (ใช้ของที่จำไว้ได้ 12 ชั่วโมง) */
+function loadSrcIndex(force){
+  if(SRC.loading)return SRC.loading;
+  return SRC.loading=(async()=>{
+    try{
+      if(!ME){SRC.err='เข้าสู่ระบบเพื่อเปิดไฟล์ต้นฉบับจากคลังกลาง';return}
+      const f=await fb(),s=await f.fs.getDoc(fsDoc('config','srcdirs'));
+      SRC.dirs=s.exists()?(s.data().dirs||[]):[];
+      const dk=SRC.dirs.map(d=>d.id).sort().join(',');
+      let cache=null;try{cache=JSON.parse(localStorage.getItem(SRC_IDX_KEY)||'null')}catch(e){}
+      if(!force&&cache&&cache.dk===dk&&Date.now()-cache.at<12*3600e3){SRC.files=new Map(cache.files);SRC.at=cache.at;SRC.err=cache.err||'';SRC.ready=true;return}
+      const files=new Map(),errs=[];
+      for(const d of SRC.dirs){
+        try{d.n=0;for(const x of await driveList(d.id)){d.n++;for(const k of srcKeys(x.name))if(!files.has(k))files.set(k,{id:x.id,name:x.name,mime:x.mimeType,size:+x.size||0})}d.err=''}
+        catch(e){d.err=srcErrText(e);errs.push(`${d.name||d.id}: ${d.err}`)}
+      }
+      SRC.files=files;SRC.at=Date.now();SRC.err=errs.join(' · ');SRC.ready=true;
+      try{localStorage.setItem(SRC_IDX_KEY,JSON.stringify({dk,at:SRC.at,err:SRC.err,files:[...files]}))}catch(e){}
+    }catch(e){SRC.err=srcErrText(e)}
+    finally{SRC.loading=null}
+  })();
+}
+/* ไฟล์ต้นฉบับของเอกสาร/ชุด: ลิงก์ที่ผู้ตรวจตั้งไว้ก่อน แล้วค่อยจับคู่จากชื่อไฟล์ */
+function srcFor(d){
+  if(!d)return null;
+  const base=d.central?DOCS.filter(x=>x.central&&String(x.cloudId).replace(/_\d+$/,'')===String(d.cloudId).replace(/_\d+$/,'')):[d];
+  const set=base.map(x=>x.srcFile).find(Boolean);if(set)return{id:set,name:d.name,mime:/\.pdf/i.test(d.name)?'application/pdf':''};
+  for(const k of srcKeys(d.name)){const f=SRC.files.get(k);if(f)return f}
+  return null;
+}
+async function driveBytes(id){
+  if(PDF_CACHE.has(id))return PDF_CACHE.get(id);
+  const r=await fetch(`${DRIVE_API}/${id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}`);
+  if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw{code:j.error&&j.error.status||String(r.status),message:j.error&&j.error.message||''}}
+  const buf=await r.arrayBuffer();if(PDF_CACHE.size>4)PDF_CACHE.delete(PDF_CACHE.keys().next().value);PDF_CACHE.set(id,buf);return buf;
+}
+/* หน้าต่างดูต้นฉบับ: วาดหน้า PDF ที่อ้างอิง เลื่อนหน้าได้ พร้อมข้อความต้นฉบับที่เก็บไว้ */
+async function openSource(cardId){
+  const c=CARDS.find(x=>x.id===cardId),d=c&&docOf(c);
+  if(!c||!d){toast('ไม่พบที่มาของข้อนี้','bad');return}
+  let page=Math.max(1,+c.page||1),pdf=null,link='',why='';
+  const text=c.src||((d.pages||[]).find(p=>p.n===page)||{}).text||'';
+  modal(`<p class="mt">📂 ต้นฉบับ: ${esc(d.name)} · ${esc(d.unit||'หน้า')} ${page}</p>
+    <div id="srcv" class="srcv"><p class="src"><span class="spin sm" aria-hidden="true"></span> กำลังเปิดไฟล์ต้นฉบับ...</p></div>
+    <div id="srcnav" class="btnrow" hidden><button class="ghost" id="srcprev">← หน้าก่อน</button><span class="src" id="srcpg"></span><button class="ghost" id="srcnext">หน้าถัดไป →</button><a class="ghost" id="srclink" target="_blank" rel="noopener" hidden>เปิดใน Google Drive</a></div>
+    ${text?`<details class="kprev"><summary>ข้อความต้นฉบับที่ระบบเก็บไว้ (${esc(d.unit||'หน้า')} ${page})</summary><pre class="srctext">${esc(text.slice(0,3000))}</pre></details>`:''}`,[{t:'ปิด'}]);
+  const box=document.getElementById('srcv');
+  try{
+    let buf=null;
+    if(!d.central){const f=await kbGet('files',d.id);if(f&&f.buf)buf=f.buf}
+    if(!buf){
+      if(!ME)throw{why:'เข้าสู่ระบบก่อน จึงจะเปิดไฟล์ต้นฉบับจาก Google Drive ได้'};
+      if(!SRC.ready)await loadSrcIndex();
+      const s=srcFor(d);
+      if(!s)throw{why:SRC.dirs.length?`ยังไม่พบไฟล์ชื่อนี้ในโฟลเดอร์ Google Drive ที่ตั้งไว้${isReviewerMe()?' (ตั้งลิงก์ไฟล์เองได้ที่หน้า ข้อมูลในคลังกลาง)':''}`:'แอดมินยังไม่ได้ตั้งโฟลเดอร์ไฟล์ต้นฉบับ (Google Drive)'};
+      link=driveView(s.id);
+      if(!/pdf/i.test(s.mime||'')&&!/\.pdf$/i.test(s.name||''))throw{why:'ไฟล์นี้ไม่ใช่ PDF เปิดดูใน Google Drive แทน'};
+      buf=await driveBytes(s.id);
+    }
+    pdf=await openPDF(buf);
+  }catch(e){why=e&&e.why||srcErrText(e)}
+  const lk=document.getElementById('srclink');if(lk&&link){lk.href=link;lk.hidden=false}
+  if(!pdf){if(box)box.innerHTML=`<p class="kwarn">${esc(why)}</p>${link?`<p><a href="${link}" target="_blank" rel="noopener">เปิดไฟล์ใน Google Drive</a></p>`:''}`;const nv=document.getElementById('srcnav');if(nv&&link){nv.hidden=false;['srcprev','srcnext','srcpg'].forEach(x=>document.getElementById(x).hidden=true)}return}
+  const draw=async()=>{
+    const b=document.getElementById('srcv');if(!b)return;
+    page=Math.min(Math.max(1,page),pdf.numPages);
+    const pg=await pdf.getPage(page),w=Math.min(860,(b.clientWidth||600)),vp0=pg.getViewport({scale:1}),dpr=window.devicePixelRatio||1;
+    const vp=pg.getViewport({scale:w/vp0.width*dpr}),cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;cv.style.width='100%';
+    await pg.render({canvasContext:cv.getContext('2d'),viewport:vp,intent:'print'}).promise;
+    b.innerHTML='';b.append(cv);
+    document.getElementById('srcpg').textContent=`${d.unit||'หน้า'} ${page} / ${pdf.numPages}${page===(+c.page||1)?' (หน้าที่อ้างอิง)':''}`;
+  };
+  document.getElementById('srcnav').hidden=false;
+  document.getElementById('srcprev').onclick=()=>{page--;draw()};
+  document.getElementById('srcnext').onclick=()=>{page++;draw()};
+  await draw();
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-src]');if(b){e.preventDefault();openSource(b.dataset.src)}});
+const srcBtn=q=>{const c=q&&q.card&&CARDS.find(x=>x.id===q.card);const d=c&&docOf(c);return c&&d?`<button class="ghost srcbtn" type="button" data-src="${esc(c.id)}">📂 เปิดต้นฉบับ${c.page?` ${esc(d.unit||'หน้า')} ${esc(String(c.page))}`:''}</button>`:''};
+
+/* ---------- ส่วนของผู้ตรวจ/แอดมิน ในหน้า ข้อมูลในคลังกลาง ---------- */
+async function saveSrcDirs(dirs){
+  const f=await fb();await f.fs.setDoc(fsDoc('config','srcdirs'),{dirs:dirs.map(({id,name})=>({id,name})),updatedAt:f.fs.serverTimestamp(),by:ME.name});
+}
+function srcAdminHTML(){
+  if(!isReviewerMe())return '';
+  const packs=DOCS.filter(d=>d.central),found=packs.filter(srcFor).length;
+  return `<div class="cloudbox"><p><b>📂 ไฟล์ต้นฉบับ (Google Drive)</b> · จับคู่ได้ ${found} จาก ${packs.length} ชุด</p>
+    <p class="src">แชร์โฟลเดอร์เป็น "ทุกคนที่มีลิงก์ดูได้" แล้ววางลิงก์โฟลเดอร์ที่นี่ เพิ่มได้หลายโฟลเดอร์ ระบบจับคู่ไฟล์กับชุดจากชื่อไฟล์ ผู้ที่ล็อกอินกด "เปิดต้นฉบับ" ในเฉลยแล้วเห็นหน้าที่อ้างอิงได้ทันที</p>
+    ${SRC.dirs.map((d,i)=>`<div class="hrow"><div class="t"><b>${esc(d.name||'โฟลเดอร์')}</b><span class="src">${d.err?`<span class="kerr">${esc(d.err)}</span>`:`${d.n!=null?`${d.n} ไฟล์ · `:''}`}<a href="https://drive.google.com/drive/folders/${esc(d.id)}" target="_blank" rel="noopener">เปิดโฟลเดอร์</a></span></div><button class="ghost" data-srcdel="${i}">เอาออก</button></div>`).join('')}
+    ${SRC.err&&!SRC.dirs.some(d=>d.err)?`<p class="kerr">${esc(SRC.err)}</p>`:''}
+    <div class="btnrow" style="justify-content:flex-start"><input id="srcurl" class="cetx" style="flex:1;min-width:220px" placeholder="ลิงก์โฟลเดอร์ Google Drive"><input id="srcname" class="cetx" style="width:160px" placeholder="ชื่อเรียก (ไม่ใส่ก็ได้)"><button class="primary" id="srcadd">เพิ่มโฟลเดอร์</button><button class="ghost" id="srcscan">สแกนไฟล์ใหม่</button></div></div>`;
+}
+function wireSrcAdmin(el,rerender){
+  const add=el.querySelector('#srcadd');if(!add)return;
+  add.onclick=async()=>{
+    const id=driveIdOf(el.querySelector('#srcurl').value),name=el.querySelector('#srcname').value.trim();
+    if(!id){toast('วางลิงก์โฟลเดอร์ Google Drive ก่อน','bad');return}
+    if(SRC.dirs.some(d=>d.id===id)){toast('มีโฟลเดอร์นี้แล้ว');return}
+    add.disabled=true;
+    try{await saveSrcDirs([...SRC.dirs,{id,name}]);await loadSrcIndex(true);toast('เพิ่มโฟลเดอร์แล้ว')}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+    rerender();
+  };
+  el.querySelector('#srcscan').onclick=async()=>{toast('กำลังสแกนไฟล์ใน Google Drive...');await loadSrcIndex(true);rerender()};
+  el.querySelectorAll('[data-srcdel]').forEach(b=>b.onclick=async()=>{
+    const d=SRC.dirs[+b.dataset.srcdel];if(!d||await modal(`<p class="mt">เอาโฟลเดอร์ ${esc(d.name||d.id)} ออก?</p><p class="src">ไฟล์ใน Google Drive ไม่ถูกลบ แค่ระบบจะไม่ใช้โฟลเดอร์นี้หาไฟล์ต้นฉบับ</p>`,[{t:'ยกเลิก'},{t:'เอาออก',cls:'primary'}])!==1)return;
+    try{await saveSrcDirs(SRC.dirs.filter(x=>x!==d));await loadSrcIndex(true)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+    rerender();
+  });
+}
+/* สถานะต้นฉบับบนการ์ดของแต่ละชุด + ปุ่มตั้งลิงก์เอง (ผู้ตรวจ) */
+function packSrcHTML(d){
+  if(!ME)return '';
+  const s=srcFor(d);
+  return `<p class="src">📂 ต้นฉบับ: ${s?`<a href="${driveView(s.id)}" target="_blank" rel="noopener">${esc(s.name||'เปิดใน Google Drive')}</a>`:'ยังไม่พบใน Google Drive'}${isReviewerMe()?` · <button class="linkbtn" type="button" data-srcset="${esc(d.id)}">${s?'เปลี่ยน':'ตั้ง'}ลิงก์ไฟล์</button>`:''}</p>`;
+}
+function wirePackSrc(el,rerender){
+  el.querySelectorAll('[data-srcset]').forEach(b=>b.onclick=async()=>{
+    const d=DOCS.find(x=>x.id===b.dataset.srcset);if(!d)return;
+    if(await modal(`<p class="mt">ลิงก์ไฟล์ต้นฉบับของ ${esc(d.name)}</p><input id="srcfile" class="cetx" style="width:100%" placeholder="https://drive.google.com/file/d/.../view"><p class="src">ไฟล์ต้องแชร์แบบ "ทุกคนที่มีลิงก์ดูได้" · เว้นว่างเพื่อกลับไปจับคู่จากชื่อไฟล์</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+    const raw=(document.getElementById('srcfile')||{}).value||'',id=raw.trim()?driveIdOf(raw):'';
+    if(raw.trim()&&!id){toast('ลิงก์ไม่ถูกต้อง','bad');return}
+    const parts=DOCS.filter(x=>x.central&&String(x.cloudId).replace(/_\d+$/,'')===String(d.cloudId).replace(/_\d+$/,''));
+    try{const f=await fb();for(const x of parts){await f.fs.updateDoc(fsDoc('kb',x.cloudId),{srcFile:id,updatedAt:f.fs.serverTimestamp()});x.srcFile=id;await saveDoc(x)}toast('บันทึกลิงก์ต้นฉบับแล้ว')}
+    catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+    rerender();
+  });
+}

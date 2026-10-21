@@ -246,6 +246,7 @@ nav.subjects{gap:14px}
 .kq{margin:2px 0;padding-left:22px}
 .kq li.ok{color:var(--ok);font-weight:600}
 .origtag{margin:0;align-self:flex-start;font-size:12px;padding:1px 10px;border-radius:999px;background:var(--ok-soft);color:var(--ok)}
+.retrytag{background:var(--accent-soft);color:var(--accent)}
 .acct{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:14px}
 .acct .an{font-weight:600;overflow-wrap:anywhere}
 .cloudbox{border:1px solid var(--accent);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:6px;background:var(--accent-soft)}
@@ -413,7 +414,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21g';
+const BUILD='2026-10-21h';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -1332,7 +1333,7 @@ function questionHTML(q){
   if(q.kind==='ineq2'){const L=q.lines;let g=`<div class="given"><span class="k">ถ้า</span>`;L.forEach((l,i)=>{g+=`${i?'<span></span>':''}<span class="eq">${esc(l)}${i<L.length-1?' &nbsp;<span class="k">และ</span>':''}</span>`});g+=`<span class="note">ทุกตัวอักษรมีค่ามากกว่าศูนย์</span></div>`;
     return g+(q.fmt==='tfu'?`<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`:`<div class="ask"><div class="lab">คำถาม</div><div class="st2">${esc(q.text)}</div></div>`)}
   if(q.kind==='ineq')return `${givenHTML(q.ctx)}<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`;
-  return `${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${esc(q.stem)}</div>`;
+  return `${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${esc(q.stem)}</div>`;
 }
 function choicesHTML(q,pick,locked){
   const mc=!isTFU(q),pics=mc&&q.chSvg;
@@ -1463,7 +1464,7 @@ function finish(){
   P.levels[R.subject]=after;
   const wrong=R.items.filter((q,j)=>R.picks[j]!==q.answer).map(q=>qLabel(q).replace(/\s+/g,' ').slice(0,90));
   P.weak[R.subject]=[...(P.weak[R.subject]||[]),...wrong].slice(-5);if(!wrong.length)P.weak[R.subject]=[];
-  save();Object.assign(R,{status:'done',score,pct,after});recordCards(R.items,R.picks);awardPoints(roundPoints(R.items,R.picks,before));
+  save();Object.assign(R,{status:'done',score,pct,after});recordCards(R.items,R.picks);logQs(R.items,R.picks);awardPoints(roundPoints(R.items,R.picks,before));
   const sn=(SUBJ.find(s=>s.id===R.subject)||subj()).name,t0=R.t0||Date.now();
   addHist({at:t0,kind:'practice',title:`ฝึก · ${sn}`,n,score,pct,used:(Date.now()-t0)/1000,groups:[{name:sn,ok:score,n}],viol:0,auto:''});
   render();
@@ -1650,7 +1651,7 @@ function submitMock(reason){
   const end=Math.min(Date.now(),M.endAt),n=M.items.length,score=M.items.filter((q,j)=>M.picks[j]===q.answer).length;
   const groups=groupStats(M.items,M.picks,q=>q.subName);
   Object.assign(M,{status:'done',endedAt:end,used:(end-M.startAt)/1000,score,pct:n?score/n:0,auto:reason||'',groups,away:false});
-  recordCards(M.items,M.picks);awardPoints(roundPoints(M.items,M.picks,3));
+  recordCards(M.items,M.picks);logQs(M.items,M.picks);awardPoints(roundPoints(M.items,M.picks,3));
   addHist({at:M.startAt,kind:'mock',title:`สอบจริง · ${M.catName}`,n,score,pct:M.pct,used:M.used,limit:M.mins*60,groups,viol:M.viol.length,auto:M.auto});
   saveM();
   if(VIEW!=='mock')setView('mock');else renderMock();
@@ -1914,7 +1915,7 @@ function withCard(q,doc){
 const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(okFig));
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
 const bankItems=()=>CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);
-function bankFor(s){const b=bankItems();return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.includes(c.topic)):b.filter(c=>c.topic===s.name)}
+function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.includes(c.topic)):b.filter(c=>c.topic===s.name)}
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
@@ -1934,7 +1935,7 @@ function styleEx(pool,k=3){
 ${ex.map((c,i)=>`ตัวอย่าง ${i+1}: ${c.q.stem}${(c.figs||[]).length?' (มีรูปประกอบ)':''}\nตัวเลือก: ${c.q.choices.map((t,j)=>`${TH[j]}. ${t}`).join(' | ')}\nตอบ: ${TH[c.q.answer]}`).join('\n')}
 `;
 }
-function addEx(pr,pool){const ex=styleEx(pool);if(!ex)return pr;const ins=t=>t.includes('กติกา:')?t.replace('กติกา:',ex+'\nกติกา:'):t+'\n\n'+ex;return typeof pr==='string'?ins(pr):{...pr,text:ins(pr.text)}}
+function addEx(pr,pool){const ex=styleEx(pool)+(GEN_AVOID.length?`\nโจทย์ที่ผู้ทำเคยทำไปแล้ว ห้ามสร้างซ้ำหรือถามประเด็นเดิมด้วยสำนวนใกล้เคียง:\n- ${GEN_AVOID.join('\n- ')}\n`:'');if(!ex)return pr;const ins=t=>t.includes('กติกา:')?t.replace('กติกา:',ex+'\nกติกา:'):t+'\n\n'+ex;return typeof pr==='string'?ins(pr):{...pr,text:ins(pr.text)}}
 /* prompt factory: one card per question slot, weakest/unseen cards first, no repeats within a round */
 function cardPF(pool,topicsFn,level,weak,maxUse=Infinity){
   const used=new Map();
@@ -1949,8 +1950,58 @@ function cardMixCount(s,n){
   return s.ai?Math.min(n,k*2):Math.min(Math.max(1,Math.round(n*.4)),k*2);
 }
 const rotTopics=()=>{const order=shuffle(SPEC_TOPICS.slice());return(k,b)=>Array.from({length:k},(_,i)=>order[(b+i)%order.length])};
+/* ---------- บันทึกโจทย์ที่เคยทำ (เก็บในเครื่องนี้) ----------
+   ตอบถูกแล้ว = ไม่แสดงข้อนั้นอีก · ตอบผิด = เก็บทั้งข้อไว้ แล้วนำกลับมาให้ตอบใหม่จนกว่าจะตอบถูก */
+const QLOG_KEY='exam-qlog';let QLOG={};
+try{QLOG=JSON.parse(localStorage.getItem(QLOG_KEY)||'{}')||{}}catch(e){QLOG={}}
+function qKey(q){
+  const t=String(q&&q.stem||'').toLowerCase().replace(/[\s"'“”‘’.,:;!?()\[\]\-_/]+/g,'').slice(0,240);
+  let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return 'k'+(h>>>0).toString(36)+t.length;
+}
+const qMastered=q=>{if(QLOG_OFF)return false;const e=QLOG[qKey(q)];return!!e&&e.s==='r'};
+function saveQLog(){
+  let ks=Object.keys(QLOG);
+  if(ks.length>6000){ks.sort((a,b)=>QLOG[a].t-QLOG[b].t);for(const k of ks.slice(0,ks.length-6000))delete QLOG[k]}
+  const w=Object.keys(QLOG).filter(k=>QLOG[k].s==='w').sort((a,b)=>QLOG[a].t-QLOG[b].t);
+  for(const k of w.slice(0,Math.max(0,w.length-400)))delete QLOG[k].q;
+  try{localStorage.setItem(QLOG_KEY,JSON.stringify(QLOG))}catch(e){}
+}
+function logQs(items,picks){
+  items.forEach((q,j)=>{const pk=picks[j];if(pk==null||pk<0||!q||!q.stem)return;const k=qKey(q),now=Date.now();
+    if(pk===q.answer)QLOG[k]={s:'r',t:now,sub:q.sub||'',st:String(q.stem).slice(0,140)};
+    else{const {retry,...keep}=q;QLOG[k]={s:'w',t:now,sub:q.sub||'',st:String(q.stem).slice(0,140),n:((QLOG[k]&&QLOG[k].n)||0)+1,q:keep}}});
+  saveQLog();
+}
+/* ข้อที่เคยตอบผิดของวิชานี้ เก่าสุดก่อน */
+function retryItems(s,k){
+  if(k<=0)return[];
+  return Object.values(QLOG).filter(e=>e.s==='w'&&e.q&&(e.sub===s.id||(s.id==='specall'&&SPEC_TOPICS.includes(e.q.topic||e.q.subName))))
+    .sort((a,b)=>a.t-b.t).slice(0,k).map(e=>({...JSON.parse(JSON.stringify(e.q)),retry:true,sub:e.q.sub||s.id,subName:e.q.subName||s.name}));
+}
+/* ตัดข้อที่ตอบถูกแล้ว และข้อซ้ำกันในชุดเดียวกัน */
+function dedupeQs(list,seen){
+  const out=[];for(const q of list){if(!q)continue;const k=qKey(q);if(seen.has(k)||qMastered(q))continue;seen.add(k);out.push(q)}return out;
+}
+/* โจทย์ที่ทำไปแล้วล่าสุดของวิชานี้ ส่งให้ AI เพื่อไม่ให้สร้างซ้ำ */
+let GEN_AVOID=[],QLOG_OFF=false;
+const avoidFor=s=>Object.values(QLOG).filter(e=>e.sub===s.id&&e.st).sort((a,b)=>b.t-a.t).slice(0,25).map(e=>e.st);
+
 /* one place that turns a subject into questions: local generator, AI from cards, AI general, or a mix */
 async function makeItems(s,level,n,o={}){
+  const seen=new Set(),retry=dedupeQs(retryItems(s,Math.ceil(n*.4)),seen);
+  if(retry.length>=n)return shuffle(retry.slice(0,n));
+  GEN_AVOID=avoidFor(s);
+  let items=dedupeQs(await makeItems0(s,level,n-retry.length,o),seen);
+  /* ข้อที่ถูกตัดออกเพราะซ้ำ: สร้างเพิ่มอีกรอบ (ไม่เกิน 2 รอบ) */
+  for(let r=0;r<2&&items.length<n-retry.length;r++){
+    let more=[];try{more=await makeItems0(s,level,n-retry.length-items.length,o)}catch(e){if(e&&e.code==='cancelled')throw e;break}
+    const add=dedupeQs(more,seen);if(!add.length)break;items.push(...add);
+  }
+  /* ถ้าข้อในคลังทำถูกหมดแล้วและสร้างใหม่ไม่ได้ ให้ใช้ข้อเก่าที่ทำนานที่สุดแทน ดีกว่าได้ชุดว่าง */
+  if(!items.length&&!retry.length){let old=[];QLOG_OFF=true;try{old=await makeItems0(s,level,n,o)}finally{QLOG_OFF=false}if(old.length){toast('ข้อสอบวิชานี้ในคลังตอบถูกครบแล้ว ใส่ AI key เพื่อสร้างโจทย์ใหม่');return old}}
+  return shuffle([...retry,...items.slice(0,n-retry.length)]);
+}
+async function makeItems0(s,level,n,o={}){
   /* real questions from the bank first (up to half; all of them for picture subjects), the rest newly generated in the same style */
   const pool=bankFor(s);
   if(!activeAI())return offlineItems(s,level,n);

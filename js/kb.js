@@ -69,7 +69,8 @@ function withCite(q,doc){const r=lookupRef(q.ref,doc);if(r){q.cite=r.cite;if(r.t
 
 /* ---------- embeddings: meaning-based search ---------- */
 const canEmbed=()=>{const p=activeAI();return p==='gemini'||p==='openai'};
-const canVision=canEmbed;
+/* อ่านรูปได้: ทุกตัวที่ใช้ key (Claude API และ Meta อ่านรูปได้ แต่ไม่มีดัชนีความหมาย) */
+const canVision=()=>KEY_PROVS.includes(activeAI());
 const dot=(a,b)=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s};
 function unit(v){let s=0;for(const x of v)s+=x*x;s=Math.sqrt(s)||1;return Float32Array.from(v,x=>x/s)}
 async function embedOnce(p,batch,task){
@@ -110,7 +111,7 @@ async function searchCards(q,k=4){
   return act.map(c=>({c,s:countHits((c.title+' '+c.fact).toLowerCase(),words)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,k).map(x=>x.c);
 }
 async function aiVisionJSON(text,images,{signal}={}){
-  const p=activeAI();if(p!=='gemini'&&p!=='openai')throw{code:'no_vision'};
+  const p=activeAI();if(!KEY_PROVS.includes(p))throw{code:'no_vision'};
   return looseJSON(await keyCall(p,[{role:'user',content:{text,images}}],true,signal));
 }
 
@@ -573,7 +574,7 @@ function renderKB(){
   }else{
   el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
       <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB (ไฟล์ใหญ่ใช้เวลาอ่านนานขึ้น) · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p></div>
-    ${!ai?'<p class="catnote warn">อัปโหลดได้เลย แต่การอ่าน PDF ด้วย AI ย่อยความรู้ และสร้างข้อสอบ ต้องตั้งค่า AI ก่อน (แถบซ้าย)</p>':!canEmbed()?'<p class="catnote warn">AI ที่ใช้อยู่อ่านภาพ PDF และทำดัชนีความหมายไม่ได้ ใช้ Gemini หรือ OpenAI key จะได้ครบทุกความสามารถ</p>':''}
+    ${!ai?'<p class="catnote warn">อัปโหลดได้เลย แต่การอ่าน PDF ด้วย AI ย่อยความรู้ และสร้างข้อสอบ ต้องตั้งค่า AI ก่อน (แถบซ้าย)</p>':!canVision()?'<p class="catnote warn">AI ที่ใช้อยู่อ่านภาพ PDF และทำดัชนีความหมายไม่ได้ ใช้ Gemini, OpenAI, Claude API หรือ Meta key</p>':!canEmbed()?'<p class="catnote">AI ที่ใช้อยู่ทำดัชนีค้นหาตามความหมายไม่ได้ (มีเฉพาะ Gemini/OpenAI) ระบบค้นด้วยคำแทน ใช้งานอื่นได้ครบ</p>':''}
     ${KB_ERR?'<p class="catnote warn">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บเอกสารถาวร เอกสารจะหายเมื่อปิดหน้า</p>':''}
     <p class="catnote" id="kbstore"></p>
     ${cloudBoxHTML()}

@@ -248,10 +248,12 @@ async function processDoc(doc){
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
+    doc.tries=0;doc.nextTry=0;doc.errCode='';
     setTimeout(()=>autoShare(doc),50);
     toast(`${doc.name} พร้อมแล้ว · ${doc.kind==='exam'?`ข้อสอบ ${CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length} ข้อ`:`บัตรความรู้ ${CARDS.filter(c=>c.docId===doc.id).length} ใบ`}`);
   }catch(e){
     const code=e&&e.code;
+    doc.errCode=code||'';
     doc.err=code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)';
     await saveDoc(doc);
   }finally{doc.prog='';renderKB();renderSide()}
@@ -422,6 +424,24 @@ function docOptHTML(g,show,kind,noShare){
     <fieldset class="ufs"><legend>การใช้งาน</legend>${radio('us','db',show?'show':'db','ใช้เป็นฐานข้อมูลอย่างเดียว','AI ย่อยความรู้แล้วนำไปออกข้อสอบในวิชาของกลุ่มนี้ตามหัวข้อที่ตรงกัน')}${radio('us','show',show?'show':'db','แสดงเป็นรายวิชาด้วย','มีวิชาชื่อเดียวกับไฟล์ในกลุ่มนี้ ไว้ฝึกจากเอกสารนี้โดยเฉพาะ')}</fieldset>`;
 }
 const readDocOpt=()=>({noShare:!!(document.getElementById('unoshare')||{}).checked,kind:(document.querySelector('#dlg input[name="uk"]:checked')||{}).value||'kb',group:(document.querySelector('#dlg input[name="ug"]:checked')||{}).value||'spec',show:((document.querySelector('#dlg input[name="us"]:checked')||{}).value)==='show'});
+/* ลายนิ้วมือไฟล์ SHA-256 */
+async function fileSha(buf){try{const h=await crypto.subtle.digest('SHA-256',buf instanceof ArrayBuffer?buf:buf.buffer||buf);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('')}catch(e){return ''}}
+/* ชุดในคลังกลางที่เป็นไฟล์เดียวกัน: ลายนิ้วมือตรง หรือ (ชุดเก่าที่ยังไม่มีลายนิ้วมือ) ชื่อไฟล์ตรงกัน */
+function centralDupOf(sha,name){
+  const packs=DOCS.filter(d=>d.central);
+  return (sha&&packs.find(d=>d.sha===sha))||packs.find(d=>!d.sha&&srcKeys(d.name).some(k=>srcKeys(name).includes(k)))||null;
+}
+/* ไฟล์นี้มีในคลังกลางแล้ว: ไม่ต้องให้ AI ย่อยซ้ำ แค่ส่งต้นฉบับขึ้น Drive แล้วผูกกับชุดนั้น (ผู้ตรวจ/แอดมิน) */
+async function attachToCentral(pack,name,buf,job){
+  const has=srcFor(pack);
+  if(has){toast(`${name} มีในคลังกลางแล้ว (${pack.name}) และมีไฟล์ต้นฉบับแล้ว ข้ามให้`);return}
+  if(!buf||!isReviewerMe()){toast(`${name} มีในคลังกลางแล้ว (${pack.name}) ไม่ต้องประมวลผลซ้ำ`);return}
+  const j={name,msg:'มีในคลังกลางแล้ว · กำลังส่งไฟล์ต้นฉบับขึ้น Google Drive...'};UPQ.push(j);renderKB();
+  try{
+    const r=await withRetry(()=>uploadOriginal(name,buf,/\.pdf$/i.test(name)?'application/pdf':'',x=>{j.msg=`มีในคลังกลางแล้ว · ส่งต้นฉบับขึ้น Drive ${Math.round(x*100)}%`;const e=document.querySelector(`[data-job="${UPQ.indexOf(j)}"]`);if(e)e.textContent=j.msg}));
+    await setPackSrc(pack,r.id);UPQ.splice(UPQ.indexOf(j),1);toast(`ผูกต้นฉบับ ${name} กับชุด ${pack.name} แล้ว`);
+  }catch(e){j.err=`มีในคลังกลางแล้ว แต่ส่งต้นฉบับขึ้น Drive ไม่สำเร็จ: ${e&&e.why||e&&e.message||e}`}
+}
 async function handleFiles(files,opt){
   files=[...files];if(!files.length)return;
   if(VIEW!=='kb')setView('kb');
@@ -434,8 +454,14 @@ async function handleFiles(files,opt){
     try{
       const r=await readFile(f,(i,n)=>{job.msg=`อ่านแล้ว ${i} จาก ${n} หน้า`;const e=document.querySelector(`[data-job="${UPQ.indexOf(job)}"]`);if(e)e.textContent=job.msg});
       const old=DOCS.find(d=>d.name===f.name&&!d.central);
+      /* ไฟล์ซ้ำ: เทียบลายนิ้วมือไฟล์ (เนื้อไฟล์เหมือนกันแม้ชื่อต่าง) กับไฟล์ในเครื่องและชุดในคลังกลาง */
+      const sha=await fileSha(r.buf||new TextEncoder().encode(r.pages.map(p=>p.text).join('\n')));
+      const dupLocal=DOCS.find(d=>!d.central&&d.sha===sha&&d!==old);
+      if(dupLocal){UPQ.splice(UPQ.indexOf(job),1);toast(`${f.name} ซ้ำกับไฟล์ที่มีอยู่แล้ว (${dupLocal.name}) ข้ามให้`);renderKB();continue}
+      const dupCentral=centralDupOf(sha,f.name);
+      if(dupCentral){UPQ.splice(UPQ.indexOf(job),1);await attachToCentral(dupCentral,f.name,r.buf,job);renderKB();continue}
       if(old){const ids=CARDS.filter(c=>c.docId===old.id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==old.id);try{await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(old.id).map(f=>f.id));DOCS.splice(DOCS.indexOf(old),1)}
-      const doc={id:old?old.id:newId(),name:f.name,type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',noShare:!!opt.noShare,
+      const doc={id:old?old.id:newId(),name:f.name,sha,type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',noShare:!!opt.noShare,
         figPages:r.figPages||[],stage:(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest',ocrDone:[],digDone:0,summ:[],err:'',
         warn:r.figSkipped?`มีรูป ${r.figSkipped} รูปที่ระบบแสดงไม่ได้ (เช่น EMF/WMF หรือรูปที่ลิงก์ไว้นอกไฟล์) ถ้าเป็นรูปโจทย์ แนะนำบันทึกเอกสารเป็น PDF แล้วอัปโหลดใหม่`:''};
       if(r.figs&&r.figs.length)await saveFigs(r.figs.map(f=>({...f,docId:doc.id})));
@@ -491,7 +517,7 @@ function renderKB(){
       return `<div class="kdoc" data-id="${d.id}">
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap">${ex?'ข้อสอบ':'เนื้อหา'} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||''}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''} · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}</p>
-      ${d.err?`<p class="kerr">${esc(d.err)}</p>`:''}
+      ${d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
       ${d.stage==='ready'&&!busy&&!nc&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
       ${tp.length?`<div class="tags">${tp.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
@@ -656,3 +682,47 @@ onAppReady(async()=>{
   if(VIEW==='kb')renderKB();
   cloudInit();
 });
+
+/* ---------- ลองใหม่อัตโนมัติ ----------
+   งานที่ค้างหรือผิดพลาดชั่วคราว (เน็ตหลุด AI คนใช้เยอะ โควตาเต็ม Drive ติดต่อไม่ได้) ระบบลองใหม่เองเป็นระยะจนสำเร็จ
+   - ประมวลผลค้าง (ปิดหน้าไประหว่างทำ) → เริ่มต่อทันที
+   - ประมวลผลผิดพลาด → ลองใหม่ 2, 5, 15, 30, 60 นาที (โควตาเต็มรอ 60 นาที)
+   - ส่งเข้าคลังกลาง / ส่งต้นฉบับขึ้น Drive ไม่สำเร็จ → ลองใหม่ตามรอบเดียวกัน
+   ข้อผิดพลาดที่ลองใหม่ไม่ช่วย (ไม่มีข้อความ ไม่มีไฟล์ ไม่มี AI) จะไม่ลองซ้ำ */
+const RETRY_MIN=[2,5,15,30,60];
+const noRetry=c=>['no_text','no_file','no_ai','bad_key','bad_model','cancelled'].includes(c);
+function retryLater(d,code){d.tries=(d.tries||0)+1;d.nextTry=Date.now()+(code==='rate_limited'?60:RETRY_MIN[Math.min(d.tries-1,RETRY_MIN.length-1)])*60000}
+async function withRetry(fn,times=4){let e0;for(let i=0;i<times;i++){try{return await fn()}catch(e){e0=e;if(e&&e.full)break;await new Promise(r=>setTimeout(r,[3000,8000,20000,40000][i]||40000))}}throw e0}
+let retryBusy=false;
+async function autoRetry(){
+  if(retryBusy||document.hidden)return;retryBusy=true;
+  try{
+    const now=Date.now(),mine=DOCS.filter(d=>!d.central),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
+    for(const d of mine){
+      if(busy(d)||d.stage==='ready'||!activeAI())continue;
+      if(!d.err){queueDoc(d.id);continue}                                    /* ค้างกลางทาง */
+      if(noRetry(d.errCode))continue;
+      if(!d.nextTry){retryLater(d,d.errCode);await saveDoc(d);continue}
+      if(now>=d.nextTry){d.nextTry=0;await saveDoc(d);queueDoc(d.id)}
+    }
+    if(!ME)return;
+    for(const d of mine){
+      if(d.stage!=='ready'||busy(d))continue;
+      if(d.shareErr&&!/สิทธิ์อนุมัติ/.test(d.shareErr)){
+        if(!d.nextTry){retryLater(d);await saveDoc(d);continue}
+        if(now>=d.nextTry){d.nextTry=0;d.shareErr='';await saveDoc(d);await submitDoc(d,{auto:true});if(d.shareErr){retryLater(d);await saveDoc(d)}else{d.tries=0;await saveDoc(d)}}
+      }else if(d.srcErr&&d.subId&&d.subStatus==='pending'&&!d.srcFile){         /* ต้นฉบับยังไม่ขึ้น Drive */
+        if(!d.nextTry){retryLater(d);await saveDoc(d);continue}
+        if(now>=d.nextTry){
+          try{const fo=await kbGet('files',d.id);if(!fo||!fo.buf){d.srcErr='';await saveDoc(d);continue}
+            const r=await withRetry(()=>uploadOriginal(d.name,fo.buf,d.type==='pdf'?'application/pdf':''));
+            const f=await fb();for(const pid of d.subParts||[d.subId])await f.fs.updateDoc(fsDoc('subs',pid),{srcFile:r.id,updatedAt:f.fs.serverTimestamp()});
+            Object.assign(d,{srcFile:r.id,srcErr:'',tries:0,nextTry:0});await saveDoc(d);
+          }catch(e){d.srcErr=e&&e.why||'ส่งไฟล์ต้นฉบับขึ้น Drive ไม่สำเร็จ';retryLater(d);await saveDoc(d)}
+        }
+      }
+    }
+  }catch(e){console.warn('autoRetry',e)}
+  finally{retryBusy=false;if(VIEW==='kb')renderKB()}
+}
+onAppReady(()=>{setInterval(autoRetry,60000);setTimeout(autoRetry,15000);window.addEventListener('online',()=>setTimeout(autoRetry,3000))});

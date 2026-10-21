@@ -219,14 +219,15 @@ async function uploadOriginal(name,buf,mime,onProg){
   for(const d of ups){
     const q=await upQuota(d);if(!q)continue;
     if(q.free>=0&&q.free<size+UP_MARGIN)continue;              /* เต็มหรือเกือบเต็ม ใช้โฟลเดอร์ถัดไป */
-    const s=await upCall(d.up,{a:'start',idToken:tok,name,mime:mime||'application/pdf',size});
+    const s=await withRetry(()=>upCall(d.up,{a:'start',idToken:tok,name,mime:mime||'application/pdf',size}).then(j=>{if(!j.ok&&!j.full&&!j.done)throw{why:j.error};return j}),3).catch(e=>({ok:false,error:e&&e.why||String(e)}));
     if(s.full)continue;
     if(!s.ok)throw{why:s.error||'เริ่มส่งไฟล์ไม่สำเร็จ'};
     if(s.done)return{id:s.id,dir:d.id};
     for(let off=0;off<size;){
       onProg&&onProg(off/size);
       const part=blob.slice(off,Math.min(size,off+UP_CHUNK));
-      const r=await upCall(d.up,{a:'chunk',idToken:tok,session:s.session,offset:off,total:size,mime:mime||'application/pdf',data:await b64(part)});
+      const data=await b64(part);
+      const r=await withRetry(()=>upCall(d.up,{a:'chunk',idToken:tok,session:s.session,offset:off,total:size,mime:mime||'application/pdf',data}).then(j=>{if(!j.ok)throw{why:j.error};return j}),4).catch(e=>({ok:false,error:e&&e.why||String(e)}));
       if(!r.ok)throw{why:r.error||'ส่งไฟล์ไม่สำเร็จ'};
       if(r.done){onProg&&onProg(1);return{id:r.id,dir:d.id}}
       off=r.next;

@@ -413,7 +413,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21c';
+const BUILD='2026-10-21d';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -1881,22 +1881,34 @@ function recordCards(items,picks){
     s.n=(s.n||0)+1;s.ls=Date.now();if(picks[j]===q.answer)s.r=(s.r||0)+1;else{s.w=(s.w||0)+1;s.lw=Date.now()}ch.push(c)});
   saveCards(ch);
 }
+/* รูปที่ไม่ช่วยตอบโจทย์ เช่น ลายเซ็น โลโก้ ตราประทับ รูปถ่ายบุคคล QR ห้ามเอาไปทำโจทย์ */
+const JUNK_FIG=/ลายเซ็น|ลายมือชื่อ|เซ็นชื่อ|signature|โลโก้|logo|ตราสัญลักษณ์|ตราประทับ|ตราธนาคาร|ตรา ธ\.?ก\.?ส|stamp|seal|รูปถ่ายบุคคล|ภาพถ่ายบุคคล|ภาพบุคคล|รูปบุคคล|รูปผู้บริหาร|ภาพผู้บริหาร|portrait|ลายน้ำ|watermark|qr ?code|คิวอาร์|บาร์โค้ด|barcode|ภาพตกแต่ง|รูปตกแต่ง|decorat/i;
+/* รูปที่มีสาระ (แผนผัง ตาราง กราฟ สูตร โจทย์) ไม่นับเป็นรูปขยะ แม้คำอธิบายจะพูดถึงตราประทับ */
+const INFO_FIG=/แผนผัง|แผนภาพ|แผนภูมิ|ตาราง|กราฟ(?!ิก)|กราฟแท่ง|สูตร|สมการ|อินโฟกราฟิก|ขั้นตอน|ผังแสดง|โจทย์|ตัวเลือก|มิติ|พับ|แผนที่|เส้นเวลา|ตัวอย่าง/;
+/* รูปตกแต่งในเอกสารความรู้ (ไอคอน การ์ตูน ภาพประกอบทั่วไป) ไม่มีข้อมูลให้ถาม */
+const DECOR_FIG=/^(ภาพ|รูป)?\s*(ไอคอน|การ์ตูน|ภาพประกอบ|ประกอบ|เครื่องหมาย|ลูกศร|วงเล็บ|ตัวอักษร|ภาพกราฟิกเงา|กราฟิกเงา|ภาพถ่ายกิจกรรม|ภาพถ่ายงาน)|^รูป[^\s]{1,30}$|^รูป\S+(และ\S+)?$/;
+const figDesc=id=>{const f=FIGS.get(id);return f?String(f.desc||'').trim():''};
+const junkFig=id=>{const d=figDesc(id);return!!d&&JUNK_FIG.test(d)&&!INFO_FIG.test(d)};
+const decorFig=id=>{const d=figDesc(id);return!!d&&DECOR_FIG.test(d)&&!INFO_FIG.test(d)};
+/* okFig = ใช้ทำโจทย์จากบัตรความรู้ได้ · okQFig = รูปของข้อสอบที่ดึงมาจากไฟล์ข้อสอบ (รูปง่ายๆ ก็อาจเป็นโจทย์ได้) */
+const okFig=id=>FIGS.has(id)&&!junkFig(id)&&!decorFig(id);
+const okQFig=id=>FIGS.has(id)&&!junkFig(id);
 function withCard(q,doc){
   const c=q.card&&CARDS.find(x=>x.id===q.card);
   if(c){q.cite=cardCite(c);q.by=upBy(c);q.srcText=cardSrc(c);if(!q.topic)q.topic=c.topic;
-    const figs=(c.figs||[]).filter(id=>FIGS.has(id));
+    const figs=(c.figs||[]).filter(c.type==='q'?okQFig:okFig);
     if(figs.length){q.fig=figs.includes(q.fig)?q.fig:figs[0];q.ansAI=c.ansSrc==='AI'}else q.fig='';}
   else{q.card='';q.fig='';withCite(q,doc)}
   return q;
 }
-const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>FIGS.has(id)));
+const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(okFig));
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
 const bankItems=()=>CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);
 function bankFor(s){const b=bankItems();return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.includes(c.topic)):b.filter(c=>c.topic===s.name)}
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
-    fig:(c.figs||[])[0]||'',viz:c.q.viz||null,orig:true,topic:c.topic,sub:s.id,subName:s.name},null);
+    fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,topic:c.topic,sub:s.id,subName:s.name},null);
   q.ansAI=c.ansSrc==='AI';return q;
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
@@ -1971,7 +1983,7 @@ async function makeNew(s,level,n,o,pool){
 }
 async function cardPrompt(slots,level,weak){
   const cs=[...new Map(slots.filter(s=>s.card).map(s=>[s.card.id,s.card])).values()];
-  const figIds=canVision()?[...new Set(cs.flatMap(c=>(c.figs||[]).filter(id=>FIGS.has(id))))].slice(0,10):[];
+  const figIds=canVision()?[...new Set(cs.flatMap(c=>(c.figs||[]).filter(okFig)))].slice(0,10):[];
   const images=[],sent=[];for(const id of figIds){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
   const text=cardPromptText(slots,level,weak,cs,sent);
   return images.length?{text,images}:text;
@@ -2277,6 +2289,7 @@ async function ocrDoc(doc){
    - box_2d คือ [ymin, xmin, ymax, xmax] สเกล 0–1000 ของภาพหน้านั้น ครอบให้ครบทั้งรูป รวมป้ายกำกับและตัวเลือก ก ข ค ง ที่เป็นส่วนของรูป
    - ถ้าโจทย์ข้อเดียวมีรูปโจทย์และรูปตัวเลือกอยู่ใกล้กัน ให้ครอบรวมเป็นกรอบเดียว
    - desc อธิบายรูปสั้นๆ ว่าเป็นรูปอะไร และถ้าเป็นโจทย์ ถามอะไร
+   - ห้ามตัดลายเซ็น ลายมือชื่อ โลโก้ ตราสัญลักษณ์ ตราประทับ รูปถ่ายบุคคล QR code ลายน้ำ และภาพตกแต่ง เพราะใช้ออกข้อสอบไม่ได้
    - หน้าที่ไม่มีรูปแบบนี้ให้ figures เป็น []
 ตอบเป็น JSON เท่านั้น: {"pages":[{"n":${nums[0]},"text":"ข้อความทั้งหน้า","figures":[{"box_2d":[100,80,600,920],"desc":"คำอธิบายรูป"}]}]}`,imgs.map(({mime,data})=>({mime,data})));
       got=r&&Array.isArray(r.pages)?r.pages:[]}
@@ -2286,7 +2299,7 @@ async function ocrDoc(doc){
       let t=bad.has(n)?tidy(String(g.text||'')):'';
       const newFigs=[];
       for(const [k,fg] of (Array.isArray(g.figures)?g.figures:[]).slice(0,8).entries()){
-        if(!Array.isArray(fg.box_2d)||fg.box_2d.length!==4)continue;
+        if(!Array.isArray(fg.box_2d)||fg.box_2d.length!==4||JUNK_FIG.test(String(fg.desc||'')))continue;
         const c=await cropFig(imgs[j].canvas,fg.box_2d);
         const rec={id:'F'+newId(),docId:doc.id,page:n,mime:c.mime,blob:c.blob,w:c.w,h:c.h,desc:String(fg.desc||'').slice(0,300),at:Date.now()+k};
         newFigs.push(rec);
@@ -2334,7 +2347,7 @@ async function digestDoc(doc){
     setProg(doc,`AI กำลังย่อยความรู้ ช่วงที่ ${i+1} จาก ${W.length}`);
     const pages=W[i].map(p=>p.n);
     /* figures referenced in this window go along as images, 8 per call; later calls only make figure cards */
-    const figIds=canVision()?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(id=>FIGS.has(id)):[];
+    const figIds=canVision()?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okFig):[];
     const batches=[];for(let b=0;b<figIds.length;b+=8)batches.push(figIds.slice(b,b+8));if(!batches.length)batches.push([]);
     for(const [bi,ids] of batches.entries()){
       const images=[],sent=[];for(const id of ids){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
@@ -2380,7 +2393,7 @@ async function extractDoc(doc){
   for(let i=doc.digDone||0;i<W.length;i++){
     setProg(doc,`AI กำลังดึงข้อสอบออกจากไฟล์ ช่วงที่ ${i+1} จาก ${W.length}`);
     const pages=W[i].map(p=>p.n);
-    const figIds=canVision()?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(id=>FIGS.has(id)).slice(0,12):[];
+    const figIds=canVision()?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okQFig).slice(0,12):[];
     const images=[],sent=[];for(const id of figIds){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
     const prompt=extractPrompt(doc,W[i],sent,keyText);
     let r=null;
@@ -3337,7 +3350,7 @@ async function askAI(text,first){
   STU.turns.push({role:'user',content:first?'ตอบคำถามข้างบน':text});STU.busy=true;STU.ctl=new AbortController();
   try{
     let firstTurn=askRules();
-    if(canVision()){const ids=STU.src.flatMap(c=>c.figs||[]).filter(id=>FIGS.has(id)||CFIG.has(id)).slice(0,3),imgs=[];for(const id of ids){const im=await figForAI(id);if(im)imgs.push(im)}
+    if(canVision()){const ids=STU.src.flatMap(c=>c.figs||[]).filter(id=>(FIGS.has(id)||CFIG.has(id))&&!junkFig(id)).slice(0,3),imgs=[];for(const id of ids){const im=await figForAI(id);if(im)imgs.push(im)}
       if(imgs.length)firstTurn={text:firstTurn+'\n\nภาพที่แนบคือรูปประกอบจากคลังความรู้ที่เกี่ยวข้อง',images:imgs}}
     const t=await aiText([{role:'user',content:firstTurn},...STU.turns.slice(-8)],{signal:STU.ctl.signal,onText:({text})=>{target.innerHTML=mdLite(text)}});
     target.innerHTML=mdLite(t);STU.turns.push({role:'assistant',content:t});if(first)STU.answer=t;
@@ -3345,7 +3358,7 @@ async function askAI(text,first){
   finally{STU.busy=false;STU.ctl=null}
 }
 function srcHTML(c,i){
-  const d=docOf(c),figs=(c.figs||[]).filter(id=>FIGS.has(id)||CFIG.has(id));
+  const d=docOf(c),figs=(c.figs||[]).filter(id=>(FIGS.has(id)||CFIG.has(id))&&!junkFig(id));
   const body=c.type==='q'?`<p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p></details>`
     :`<p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>`;
   return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))} · อัปโหลดโดย ${esc(upBy(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}

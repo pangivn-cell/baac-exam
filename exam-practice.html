@@ -413,7 +413,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21e';
+const BUILD='2026-10-21f';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -2527,6 +2527,7 @@ function renderKB(){
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
         <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
       ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
+      ${d.shareErr?`<p class="kerr">${esc(d.shareErr)}</p><div><button class="ghost" data-sub>ลองส่งเข้าคลังกลางอีกครั้ง</button></div>`:''}
       ${d.subId?`<p class="src"><span class="substat ${d.subStatus==='approved'?'ok':d.subStatus==='rejected'?'bad':''}">${d.subStatus==='approved'?'อยู่ในคลังกลางแล้ว':d.subStatus==='rejected'?'ไม่ผ่านการตรวจ':'รอผู้ตรวจอนุมัติ'}</span>${d.subNote?` ${esc(d.subNote)}`:''}</p>`:''}</div>`};
   /* เสร็จแล้ว = ย่อยครบ ไม่มีข้อผิดพลาด และอยู่ในคลังกลางแล้ว (หรือเลือกเก็บส่วนตัว) → ย้ายไปประวัติการอัปโหลด */
   const isBusy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
@@ -2801,12 +2802,16 @@ async function submitDoc(d,opt={}){
   if(!opt.auto&&await modal(`<p class="mt">ส่งเข้าคลังกลาง?</p><p>${esc(d.name)} · ${d.kind==='exam'?'ข้อสอบ':'บัตรความรู้'} ${cards.length} ${d.kind==='exam'?'ข้อ':'ใบ'}</p>
     <p class="src">ส่งเฉพาะสิ่งที่ AI ย่อยแล้วและรูปที่ตัดไว้ ไม่ส่งไฟล์ต้นฉบับ ${isReviewerMe()?'คุณเป็นผู้ตรวจ ระบบจะอนุมัติให้ทันที':'ผู้ตรวจจะตรวจก่อนเข้าคลังกลาง แล้วทุกคนจะได้ใช้'}</p>
     <p class="src">ห้ามส่งเอกสารลับหรือข้อมูลส่วนบุคคลของผู้อื่น</p>`,[{t:'ยกเลิก'},{t:'ส่งเข้าคลังกลาง',cls:'primary'}])!==1)return;
-  const f=await fb(),id=d.subId||newId();
+  /* ส่งซ้ำได้เฉพาะชุดที่ยังรอตรวจ ชุดที่ไม่ผ่าน/ส่งค้างจะใช้รหัสใหม่ (กฎฐานข้อมูลห้ามแก้ชุดที่ตรวจแล้ว) */
+  const f=await fb(),id=d.subId&&d.subStatus==='pending'?d.subId:newId();let step='รูป';
   setProg(d,'กำลังส่งเข้าคลังกลาง...');
   try{
     const figIds=[...new Set(cards.flatMap(c=>c.figs))].filter(x=>FIGS.has(x)),sent=[];
     for(const [i,fid] of figIds.entries()){setProg(d,`กำลังส่งรูป ${i+1} จาก ${figIds.length}`);const e=await figForCloud(fid);
-      if(e){await f.fs.setDoc(fsDoc('subfigs',fid),{...e,packId:id,ownerUid:ME.uid,createdAt:f.fs.serverTimestamp()});sent.push(fid)}}
+      if(e){const rec={...e,packId:id,ownerUid:ME.uid,createdAt:f.fs.serverTimestamp()};
+        try{await f.fs.setDoc(fsDoc('subfigs',fid),rec)}catch(er){if(er&&er.code!=='permission-denied')throw er;await f.fs.deleteDoc(fsDoc('subfigs',fid));await f.fs.setDoc(fsDoc('subfigs',fid),rec)}
+        sent.push(fid)}}
+    step='ข้อมูล';
     cards.forEach(c=>{c.figs=c.figs.filter(x=>sent.includes(x))});
     /* keep each document under the 1 MB Firestore limit */
     const parts=[];let cur=[],size=0;for(const c of cards){const s=JSON.stringify(c).length*1.1;if(cur.length&&size+s>800000){parts.push(cur);cur=[];size=0}cur.push(c);size+=s}if(cur.length)parts.push(cur);
@@ -2817,10 +2822,13 @@ async function submitDoc(d,opt={}){
         cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
         createdAt:f.fs.serverTimestamp(),updatedAt:f.fs.serverTimestamp()});
     }
-    Object.assign(d,{subId:id,subParts:ids,subStatus:'pending',shareWait:false});await saveDoc(d);
+    Object.assign(d,{subId:id,subParts:ids,subStatus:'pending',shareWait:false,shareErr:''});await saveDoc(d);step='อนุมัติ';
     if(isReviewerMe()){for(const pid of ids)await approveSub(pid);d.subStatus='approved';await saveDoc(d);await syncCentral()}
     toast(isReviewerMe()?'อนุมัติเข้าคลังกลางแล้ว':'ส่งแล้ว รอผู้ตรวจอนุมัติ');
-  }catch(e){toast('ส่งไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e).slice(0,80),'bad')}
+  }catch(e){const code=String(e&&e.code||e&&e.message||e).slice(0,80);
+    const why=code==='permission-denied'?(step==='อนุมัติ'?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ ชุดนี้จะรอผู้ตรวจ':'ฐานข้อมูลไม่อนุญาต (ลองออกจากระบบแล้วเข้าใหม่)'):code;
+    d.shareErr=`ส่ง${step}เข้าคลังกลางไม่สำเร็จ: ${why}`;try{await saveDoc(d)}catch(x){}
+    if(!opt.auto)toast(d.shareErr,'bad');else console.warn(d.name,d.shareErr)}
   finally{d.prog='';renderKB()}
 }
 let subsChecked=0;
@@ -3402,11 +3410,11 @@ function renderStudy(){
 
 /* ---------- ส่งเข้าคลังกลางอัตโนมัติเมื่อประมวลผลเสร็จ ---------- */
 function autoShare(d){
-  if(!d||d.central||d.noShare||d.subStatus==='pending'||d.subStatus==='approved')return;
+  if(!d||d.central||d.noShare||d.shareErr||d.subStatus==='rejected'||d.subStatus==='pending'||d.subStatus==='approved')return;
   if(!CARDS.some(c=>c.docId===d.id))return;
   if(ME)submitDoc(d,{auto:true});else{d.shareWait=true;saveDoc(d)}
 }
-function flushShares(){if(!ME)return;for(const d of DOCS)if(!d.central&&d.stage==='ready'&&!d.noShare&&!d.subId)autoShare(d)}
+function flushShares(){if(!ME)return;for(const d of DOCS)if(!d.central&&d.stage==='ready'&&!d.noShare&&!d.shareErr&&!d.subId)autoShare(d)}
 
 /* ---------- เมนูบนมือถือ: ปุ่ม ☰ เปิดแถบเมนูจากด้านซ้าย เลือกแล้วปิดเอง ---------- */
 const isPhone=()=>matchMedia('(max-width:760px)').matches;

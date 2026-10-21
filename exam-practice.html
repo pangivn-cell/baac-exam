@@ -412,6 +412,14 @@ nav.subjects{gap:14px}
 <input type="file" id="kbfile" hidden multiple accept=".pdf,.docx,.txt,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html">
 
 <script>
+/* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
+const BUILD='2026-10-21c';
+if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
+  const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
+  let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
+  try{sessionStorage.setItem('exam-build-reload',m[1])}catch(e){}
+  location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+location.hash);
+}).catch(()=>{});
 const SUBJ=[
  {id:'ineq',name:'เงื่อนไขสัญลักษณ์',desc:'อสมการ 2 บรรทัด ตัดสินข้อสรุปว่า จริง ไม่จริง หรือสรุปไม่ได้',ai:false},
  {id:'series',name:'อนุกรม',desc:'อนุกรมตัวเลข หาจำนวนถัดไปหรือจำนวนที่หายไป',ai:false},

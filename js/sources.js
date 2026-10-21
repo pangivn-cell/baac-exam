@@ -48,7 +48,7 @@ function loadSrcIndex(force){
       if(!force&&cache&&cache.dk===dk&&Date.now()-cache.at<12*3600e3){SRC.files=new Map(cache.files);SRC.at=cache.at;SRC.err=cache.err||'';SRC.ready=true;return}
       const files=new Map(),errs=[];
       for(const d of SRC.dirs){
-        try{d.n=0;for(const x of await driveList(d.id)){d.n++;for(const k of srcKeys(x.name))if(!files.has(k))files.set(k,{id:x.id,name:x.name,mime:x.mimeType,size:+x.size||0})}d.err=''}
+        try{d.n=0;for(const x of await (d.up?scriptList(d):driveList(d.id))){d.n++;for(const k of srcKeys(x.name))if(!files.has(k))files.set(k,{id:x.id,name:x.name,mime:x.mimeType,size:+x.size||0,up:d.up||''})}d.err=''}
         catch(e){d.err=srcErrText(e);errs.push(`${d.name||d.id}: ${d.err}`)}
       }
       SRC.files=files;SRC.at=Date.now();SRC.err=errs.join(' · ');SRC.ready=true;
@@ -64,6 +64,29 @@ function srcFor(d){
   const set=base.map(x=>x.srcFile).find(Boolean);if(set)return{id:set,name:d.name,mime:/\.pdf/i.test(d.name)?'application/pdf':''};
   for(const k of srcKeys(d.name)){const f=SRC.files.get(k);if(f)return f}
   return null;
+}
+/* อ่านผ่านตัวรับไฟล์ (Apps Script) — โฟลเดอร์ไม่ต้องแชร์สาธารณะ */
+async function idTok(){const f=await fb();return f.auth.currentUser.getIdToken()}
+async function scriptList(d){
+  const j=await upCall(`${d.up}${d.up.includes('?')?'&':'?'}a=list&t=${encodeURIComponent(await idTok())}`);
+  if(!j.ok)throw{message:j.error||'อ่านรายชื่อไฟล์ไม่ได้'};return j.files||[];
+}
+async function scriptBytes(up,id){
+  const t=encodeURIComponent(await idTok()),parts=[];let off=0,size=1;
+  while(off<size){
+    const j=await upCall(`${up}${up.includes('?')?'&':'?'}a=file&id=${encodeURIComponent(id)}&off=${off}&t=${t}`);
+    if(!j.ok)throw{message:j.error||'อ่านไฟล์ไม่ได้'};
+    const bin=atob(j.data),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+    parts.push(u8);size=j.size;off+=u8.length;if(!u8.length)break;
+  }
+  return await new Blob(parts).arrayBuffer();
+}
+/* ไฟล์ต้นฉบับ: ผ่านตัวรับไฟล์ของโฟลเดอร์นั้นก่อน (ไม่รู้ว่าอยู่โฟลเดอร์ไหนก็ลองทุกตัว) แล้วค่อยลอง Drive API ตรงๆ */
+async function srcBytes(s){
+  if(PDF_CACHE.has(s.id))return PDF_CACHE.get(s.id);
+  const ups=s.up?[s.up]:SRC.dirs.filter(d=>d.up).map(d=>d.up);let err=null;
+  for(const up of ups){try{const b=await scriptBytes(up,s.id);if(PDF_CACHE.size>4)PDF_CACHE.delete(PDF_CACHE.keys().next().value);PDF_CACHE.set(s.id,b);return b}catch(e){err=e}}
+  try{return await driveBytes(s.id)}catch(e){throw err||e}
 }
 async function driveBytes(id){
   if(PDF_CACHE.has(id))return PDF_CACHE.get(id);
@@ -92,7 +115,7 @@ async function openSource(cardId){
       if(!s)throw{why:SRC.dirs.length?`ยังไม่พบไฟล์ชื่อนี้ในโฟลเดอร์ Google Drive ที่ตั้งไว้${isReviewerMe()?' (ตั้งลิงก์ไฟล์เองได้ที่หน้า ข้อมูลในคลังกลาง)':''}`:'แอดมินยังไม่ได้ตั้งโฟลเดอร์ไฟล์ต้นฉบับ (Google Drive)'};
       link=driveView(s.id);
       if(!/pdf/i.test(s.mime||'')&&!/\.pdf$/i.test(s.name||''))throw{why:'ไฟล์นี้ไม่ใช่ PDF เปิดดูใน Google Drive แทน'};
-      buf=await driveBytes(s.id);
+      buf=await srcBytes(s);
     }
     pdf=await openPDF(buf);
   }catch(e){why=e&&e.why||srcErrText(e)}
@@ -117,27 +140,41 @@ const srcBtn=q=>{const c=q&&q.card&&CARDS.find(x=>x.id===q.card);const d=c&&docO
 
 /* ---------- ส่วนของผู้ตรวจ/แอดมิน ในหน้า ข้อมูลในคลังกลาง ---------- */
 async function saveSrcDirs(dirs){
-  const f=await fb();await f.fs.setDoc(fsDoc('config','srcdirs'),{dirs:dirs.map(({id,name})=>({id,name})),updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  const f=await fb();await f.fs.setDoc(fsDoc('config','srcdirs'),{dirs:dirs.map(({id,name,up})=>({id,name,up:up||''})),updatedAt:f.fs.serverTimestamp(),by:ME.name});
 }
 function srcAdminHTML(){
   if(!isReviewerMe())return '';
   const packs=DOCS.filter(d=>d.central),found=packs.filter(srcFor).length;
   return `<div class="cloudbox"><p><b>📂 ไฟล์ต้นฉบับ (Google Drive)</b> · จับคู่ได้ ${found} จาก ${packs.length} ชุด</p>
-    <p class="src">แชร์โฟลเดอร์เป็น "ทุกคนที่มีลิงก์ดูได้" แล้ววางลิงก์โฟลเดอร์ที่นี่ เพิ่มได้หลายโฟลเดอร์ ระบบจับคู่ไฟล์กับชุดจากชื่อไฟล์ ผู้ที่ล็อกอินกด "เปิดต้นฉบับ" ในเฉลยแล้วเห็นหน้าที่อ้างอิงได้ทันที</p>
-    ${SRC.dirs.map((d,i)=>`<div class="hrow"><div class="t"><b>${esc(d.name||'โฟลเดอร์')}</b><span class="src">${d.err?`<span class="kerr">${esc(d.err)}</span>`:`${d.n!=null?`${d.n} ไฟล์ · `:''}`}<a href="https://drive.google.com/drive/folders/${esc(d.id)}" target="_blank" rel="noopener">เปิดโฟลเดอร์</a></span></div><button class="ghost" data-srcdel="${i}">เอาออก</button></div>`).join('')}
+    <p class="src">วางลิงก์โฟลเดอร์ + URL ตัวรับไฟล์ (Apps Script ที่ติดตั้งในบัญชีเจ้าของโฟลเดอร์ ดูวิธีใน apps-script/Code.gs) เพิ่มได้หลายโฟลเดอร์ ระบบจับคู่ไฟล์กับชุดจากชื่อไฟล์ ผู้ที่ล็อกอินกด "เปิดต้นฉบับ" ในเฉลยแล้วเห็นหน้าที่อ้างอิงได้ทันที</p>
+    ${SRC.dirs.map((d,i)=>`<div class="hrow"><div class="t"><b>${esc(d.name||'โฟลเดอร์')}</b><span class="src">${i===0?'หลัก':`สำรอง ${i}`} · ${d.err?`<span class="kerr">${esc(d.err)}</span>`:`${d.n!=null?`${d.n} ไฟล์ · `:''}`}${d.up?(d.quota?(d.quota.free<0?'พื้นที่ไม่จำกัด':`ใช้ไป ${gb(d.quota.used)} จาก ${gb(d.quota.limit)} · ว่าง ${gb(d.quota.free)}${d.quota.free<UP_MARGIN*2?' <b class="kerr">ใกล้เต็ม</b>':''}`):d.qerr?`<span class="kerr">ตัวรับไฟล์: ${esc(d.qerr)}</span>`:'กำลังตรวจพื้นที่...'):'ยังไม่มีตัวรับไฟล์ (อ่านอย่างเดียว)'} · <a href="https://drive.google.com/drive/folders/${esc(d.id)}" target="_blank" rel="noopener">เปิดโฟลเดอร์</a></span></div><button class="ghost" data-srcup="${i}">${d.up?'แก้':'ตั้ง'}ตัวรับไฟล์</button><button class="ghost" data-srcdel="${i}">เอาออก</button></div>`).join('')}
     ${SRC.err&&!SRC.dirs.some(d=>d.err)?`<p class="kerr">${esc(SRC.err)}</p>`:''}
-    <div class="btnrow" style="justify-content:flex-start"><input id="srcurl" class="cetx" style="flex:1;min-width:220px" placeholder="ลิงก์โฟลเดอร์ Google Drive"><input id="srcname" class="cetx" style="width:160px" placeholder="ชื่อเรียก (ไม่ใส่ก็ได้)"><button class="primary" id="srcadd">เพิ่มโฟลเดอร์</button><button class="ghost" id="srcscan">สแกนไฟล์ใหม่</button></div></div>`;
+    <div class="btnrow" style="justify-content:flex-start"><input id="srcurl" class="cetx" style="flex:1;min-width:220px" placeholder="ลิงก์โฟลเดอร์ Google Drive"><input id="srcupurl" class="cetx" style="flex:1;min-width:220px" placeholder="URL ตัวรับไฟล์ Apps Script (ไม่ใส่ก็ได้)"><input id="srcname" class="cetx" style="width:160px" placeholder="ชื่อเรียก (ไม่ใส่ก็ได้)"><button class="primary" id="srcadd">เพิ่มโฟลเดอร์</button></div>
+    <p class="src">ไฟล์ที่ทุกคนอัปโหลดจะถูกส่งต้นฉบับขึ้นโฟลเดอร์แรกที่มีพื้นที่ว่างพอ (เรียงตามลำดับ หลัก → สำรอง) อัตโนมัติตอนส่งเข้าคลังกลาง</p>
+    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="srcscan">สแกนไฟล์ใหม่</button>${SRC.dirs.some(d=>d.up)?'<button class="ghost" id="srcupall">📤 ส่งต้นฉบับที่ยังขาดขึ้น Drive (จากไฟล์ในเครื่องนี้)</button>':''}</div></div>`;
 }
 function wireSrcAdmin(el,rerender){
   const add=el.querySelector('#srcadd');if(!add)return;
   add.onclick=async()=>{
-    const id=driveIdOf(el.querySelector('#srcurl').value),name=el.querySelector('#srcname').value.trim();
+    const id=driveIdOf(el.querySelector('#srcurl').value),name=el.querySelector('#srcname').value.trim(),up=el.querySelector('#srcupurl').value.trim();
+    if(up&&!/^https:\/\/script\.google(usercontent)?\.com\//.test(up)){toast('URL ตัวรับไฟล์ต้องเป็นลิงก์ script.google.com','bad');return}
     if(!id){toast('วางลิงก์โฟลเดอร์ Google Drive ก่อน','bad');return}
     if(SRC.dirs.some(d=>d.id===id)){toast('มีโฟลเดอร์นี้แล้ว');return}
     add.disabled=true;
-    try{await saveSrcDirs([...SRC.dirs,{id,name}]);await loadSrcIndex(true);toast('เพิ่มโฟลเดอร์แล้ว')}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+    try{await saveSrcDirs([...SRC.dirs,{id,name,up}]);await loadSrcIndex(true);toast('เพิ่มโฟลเดอร์แล้ว')}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
     rerender();
   };
+  el.querySelectorAll('[data-srcup]').forEach(b=>b.onclick=async()=>{
+    const d=SRC.dirs[+b.dataset.srcup];if(!d)return;
+    if(await modal(`<p class="mt">ตัวรับไฟล์ของ ${esc(d.name||'โฟลเดอร์')}</p><input id="srcupv" class="cetx" style="width:100%" value="${esc(d.up||'')}" placeholder="https://script.google.com/macros/s/.../exec"><p class="src">URL ของเว็บแอป Apps Script ที่ติดตั้งในบัญชีเจ้าของโฟลเดอร์นี้ (ดูวิธีติดตั้งใน apps-script/Code.gs) · เว้นว่าง = อ่านอย่างเดียว</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+    const v=((document.getElementById('srcupv')||{}).value||'').trim();
+    if(v&&!/^https:\/\/script\.google(usercontent)?\.com\//.test(v)){toast('URL ต้องเป็นลิงก์ script.google.com','bad');return}
+    try{d.up=v;d.quota=null;await saveSrcDirs(SRC.dirs);if(v)await upQuota(d);toast('บันทึกแล้ว')}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+    rerender();
+  });
+  const ua=el.querySelector('#srcupall');if(ua)ua.onclick=async()=>{ua.disabled=true;await uploadMissing(ua);rerender()};
+  const pend=SRC.dirs.filter(d=>d.up&&!d.quota&&!d.qerr&&!d.qbusy);
+  if(pend.length){pend.forEach(d=>d.qbusy=true);Promise.all(pend.map(upQuota)).then(()=>{pend.forEach(d=>d.qbusy=false);if(VIEW==='kb'&&KB_TAB==='central')rerender()})}
   el.querySelector('#srcscan').onclick=async()=>{toast('กำลังสแกนไฟล์ใน Google Drive...');await loadSrcIndex(true);rerender()};
   el.querySelectorAll('[data-srcdel]').forEach(b=>b.onclick=async()=>{
     const d=SRC.dirs[+b.dataset.srcdel];if(!d||await modal(`<p class="mt">เอาโฟลเดอร์ ${esc(d.name||d.id)} ออก?</p><p class="src">ไฟล์ใน Google Drive ไม่ถูกลบ แค่ระบบจะไม่ใช้โฟลเดอร์นี้หาไฟล์ต้นฉบับ</p>`,[{t:'ยกเลิก'},{t:'เอาออก',cls:'primary'}])!==1)return;
@@ -162,4 +199,61 @@ function wirePackSrc(el,rerender){
     catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
     rerender();
   });
+}
+
+/* ---------- ส่งไฟล์ต้นฉบับขึ้น Google Drive ผ่านตัวรับไฟล์ (Apps Script ของแต่ละบัญชี) ----------
+   เลือกโฟลเดอร์ตามลำดับ: ตรวจพื้นที่ว่างก่อน ถ้าไม่พอหรือเต็มใช้โฟลเดอร์ถัดไป (ตัวสำรอง) */
+const UP_CHUNK=8*1024*1024,UP_MARGIN=50*1024*1024;
+async function upCall(url,body){
+  const r=await fetch(url,body?{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}:{});
+  const j=await r.json().catch(()=>({ok:false,error:'ตัวรับไฟล์ตอบกลับไม่ถูกต้อง'}));return j;
+}
+async function upQuota(d){try{const j=await upCall(d.up+(d.up.includes('?')?'&':'?')+'a=quota');d.quota=j.ok?j:null;d.qerr=j.ok?'':j.error||'';return d.quota}catch(e){d.quota=null;d.qerr='ติดต่อตัวรับไฟล์ไม่ได้';return null}}
+const b64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(blob)});
+const gb=n=>(n/1073741824).toFixed(n>=1073741824*10?0:1)+' GB';
+async function uploadOriginal(name,buf,mime,onProg){
+  if(!ME)throw{why:'ต้องเข้าสู่ระบบก่อน'};
+  if(!SRC.ready)await loadSrcIndex();
+  const ups=SRC.dirs.filter(d=>d.up);if(!ups.length)throw{why:'แอดมินยังไม่ได้ตั้งตัวรับไฟล์ (Apps Script)'};
+  const f=await fb(),tok=await f.auth.currentUser.getIdToken(),size=buf.byteLength,blob=new Blob([buf],{type:mime||'application/pdf'});
+  for(const d of ups){
+    const q=await upQuota(d);if(!q)continue;
+    if(q.free>=0&&q.free<size+UP_MARGIN)continue;              /* เต็มหรือเกือบเต็ม ใช้โฟลเดอร์ถัดไป */
+    const s=await upCall(d.up,{a:'start',idToken:tok,name,mime:mime||'application/pdf',size});
+    if(s.full)continue;
+    if(!s.ok)throw{why:s.error||'เริ่มส่งไฟล์ไม่สำเร็จ'};
+    if(s.done)return{id:s.id,dir:d.id};
+    for(let off=0;off<size;){
+      onProg&&onProg(off/size);
+      const part=blob.slice(off,Math.min(size,off+UP_CHUNK));
+      const r=await upCall(d.up,{a:'chunk',idToken:tok,session:s.session,offset:off,total:size,mime:mime||'application/pdf',data:await b64(part)});
+      if(!r.ok)throw{why:r.error||'ส่งไฟล์ไม่สำเร็จ'};
+      if(r.done){onProg&&onProg(1);return{id:r.id,dir:d.id}}
+      off=r.next;
+    }
+  }
+  throw{why:'พื้นที่ Google Drive ทุกโฟลเดอร์เต็มหรือติดต่อไม่ได้ ให้แอดมินเพิ่มโฟลเดอร์สำรอง'};
+}
+/* ไฟล์ต้นฉบับในเครื่องของชุดในคลังกลาง (ชุดที่เครื่องนี้เป็นคนส่ง หรือชื่อไฟล์ตรงกัน) */
+async function localOriginalFor(pack){
+  const base=String(pack.cloudId||'').replace(/_\d+$/,'');
+  const cand=DOCS.filter(x=>!x.central&&(x.subId===base||baseName(x.name)===baseName(pack.name)));
+  for(const x of cand){const f=await kbGet('files',x.id);if(f&&f.buf)return{doc:x,buf:f.buf}}
+  return null;
+}
+async function setPackSrc(pack,id){
+  const f=await fb(),parts=DOCS.filter(x=>x.central&&String(x.cloudId).replace(/_\d+$/,'')===String(pack.cloudId).replace(/_\d+$/,''));
+  for(const x of parts){await f.fs.updateDoc(fsDoc('kb',x.cloudId),{srcFile:id,updatedAt:f.fs.serverTimestamp()});x.srcFile=id;await saveDoc(x)}
+}
+/* แอดมิน: ส่งต้นฉบับของชุดที่ยังไม่มีไฟล์ใน Drive (เฉพาะชุดที่เครื่องนี้ยังมีไฟล์ต้นฉบับ) */
+async function uploadMissing(btn){
+  const packs=[...new Map(DOCS.filter(d=>d.central&&!srcFor(d)).map(d=>[String(d.cloudId).replace(/_\d+$/,''),d])).values()];
+  let ok=0,skip=0,fail='';
+  for(const [i,p] of packs.entries()){
+    const lo=await localOriginalFor(p);if(!lo){skip++;continue}
+    if(btn)btn.textContent=`กำลังส่ง ${i+1}/${packs.length}: ${p.name.slice(0,30)}`;
+    try{const r=await uploadOriginal(lo.doc.name,lo.buf,lo.doc.type==='pdf'?'application/pdf':'',x=>{if(btn)btn.textContent=`กำลังส่ง ${i+1}/${packs.length} · ${Math.round(x*100)}%`});await setPackSrc(p,r.id);ok++}
+    catch(e){fail=e&&e.why||String(e&&e.code||e);break}
+  }
+  toast(`ส่งต้นฉบับขึ้น Drive แล้ว ${ok} ชุด${skip?` · ไม่มีไฟล์ในเครื่องนี้ ${skip} ชุด`:''}${fail?` · หยุดเพราะ: ${fail}`:''}`,fail?'bad':'');
 }

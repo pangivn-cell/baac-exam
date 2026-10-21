@@ -155,13 +155,19 @@ async function submitDoc(d,opt={}){
         sent.push(fid)}}
     step='ข้อมูล';
     cards.forEach(c=>{c.figs=c.figs.filter(x=>sent.includes(x))});
+    /* ไฟล์ต้นฉบับ: ส่งขึ้น Google Drive ของแอดมิน (โฟลเดอร์แรกที่ยังมีที่ว่าง) ถ้าส่งไม่ได้ก็ส่งเข้าคลังต่อได้ */
+    let srcFile=d.srcFile||'';
+    if(!srcFile&&typeof uploadOriginal==='function'){try{const fo=await kbGet('files',d.id);if(fo&&fo.buf){step='ต้นฉบับ';
+      const r=await uploadOriginal(d.name,fo.buf,d.type==='pdf'?'application/pdf':'',x=>setProg(d,`กำลังส่งไฟล์ต้นฉบับขึ้น Google Drive ${Math.round(x*100)}%`));srcFile=d.srcFile=r.id;d.srcErr=''}}
+      catch(e){d.srcErr=e&&e.why||'ส่งไฟล์ต้นฉบับขึ้น Drive ไม่สำเร็จ'}}
+    step='ข้อมูล';
     /* keep each document under the 1 MB Firestore limit */
     const parts=[];let cur=[],size=0;for(const c of cards){const s=JSON.stringify(c).length*1.1;if(cur.length&&size+s>800000){parts.push(cur);cur=[];size=0}cur.push(c);size+=s}if(cur.length)parts.push(cur);
     const ids=[];
     for(const [i,cs] of parts.entries()){
       const pid=i?`${id}_${i+1}`:id;ids.push(pid);
       await f.fs.setDoc(fsDoc('subs',pid),{title:d.name,kind:d.kind||'kb',group:d.group||'spec',show:!!d.show,unit:d.unit,summ:(d.summ||[]).filter(Boolean).slice(0,20),
-        cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
+        cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,srcFile,ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
         createdAt:f.fs.serverTimestamp(),updatedAt:f.fs.serverTimestamp()});
     }
     Object.assign(d,{subId:id,subParts:ids,subStatus:'pending',shareWait:false,shareErr:''});await saveDoc(d);step='อนุมัติ';

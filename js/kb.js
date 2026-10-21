@@ -507,6 +507,7 @@ function renderKB(){
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
         <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
       ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
+      ${d.srcErr?`<p class="kwarn">ไฟล์ต้นฉบับ: ${esc(d.srcErr)}</p>`:''}
       ${d.shareErr?`<p class="kerr">${esc(d.shareErr)}</p><div><button class="ghost" data-sub>ลองส่งเข้าคลังกลางอีกครั้ง</button></div>`:''}
       ${d.subId?`<p class="src"><span class="substat ${d.subStatus==='approved'?'ok':d.subStatus==='rejected'?'bad':''}">${d.subStatus==='approved'?'อยู่ในคลังกลางแล้ว':d.subStatus==='rejected'?'ไม่ผ่านการตรวจ':'รอผู้ตรวจอนุมัติ'}</span>${d.subNote?` ${esc(d.subNote)}`:''}</p>`:''}</div>`};
   /* เสร็จแล้ว = ประมวลผลจบ ไม่มีข้อผิดพลาด ส่งเข้าคลังกลางไม่ติดปัญหา → ย้ายไปประวัติการอัปโหลด

@@ -315,6 +315,8 @@ nav.subjects{gap:14px}
 .abody .aref,.abody .cref{color:var(--ink-2);font-size:13px}.abody.msg.ai{max-width:100%;white-space:normal}
 .asrc summary{cursor:pointer;font-weight:600;padding:6px 0}
 @media (max-width:520px){.wfeat{grid-template-columns:1fr}.hero h2{font-size:1.2rem}.hcard{padding:12px}.hcard .hi{font-size:22px}.hcard span:not(.hi){font-size:12px}}
+.aitag{display:inline-block;font:700 10px/1 var(--f-body);letter-spacing:.04em;padding:3px 6px;border-radius:6px;background:linear-gradient(135deg,#7c4dff,#2f8bff);color:#fff;margin-left:6px;vertical-align:2px;flex:0 0 auto}
+.subj .aitag{margin-left:0}.hsn{display:flex;align-items:center;gap:0;min-width:0}
 .upbtn{font:500 14px var(--f-body);padding:8px 10px;border-radius:10px;border:1.5px dashed var(--accent);background:transparent;color:var(--accent);cursor:pointer;text-align:left}
 .upbtn:hover{background:var(--accent-soft)}
 .cite{margin:0;font-size:14px;padding:6px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0}
@@ -1406,7 +1408,7 @@ function wireAsk(id,q,pick){
 var SIDE_OPEN=null;
 function renderSide(){
   if(!SIDE_OPEN)SIDE_OPEN=Object.assign({gen:false,spec:false},P.sideOpen||{});
-  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`;
+  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span>${aiTag(s)}<span class="lv">ระดับ ${lvOf(s.id)}</span></button>`;
   const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
   const grp=(g,label,list,extra)=>`<div class="sgrp"><button class="ghead" data-g="${g}" aria-expanded="${!!SIDE_OPEN[g]}"><span class="gl">${label}</span><span class="gc">${list.length}</span><span class="caret" aria-hidden="true">▾</span></button>
     <div class="gbody" ${SIDE_OPEN[g]?'':'hidden'}>${extra||''}<div class="slist">${list.map(x=>btn(x,g==='spec')).join('')}</div>${g==='spec'?'<p class="src ddnone" hidden>ไม่พบหัวข้อที่ค้นหา</p>':''}</div></div>`;
@@ -1422,7 +1424,7 @@ function renderSide(){
   document.getElementById('mode-now').setAttribute('aria-pressed',P.mode==='now');
   document.getElementById('mode-end').setAttribute('aria-pressed',P.mode==='end');
   if(VIEW!=='practice')return;
-  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`${SPEC_LABEL} · ${s.name}`:s.name;document.getElementById('desc').textContent=`${subjDesc(s)} · ระดับ ${lvOf(s.id)}`;
+  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`${SPEC_LABEL} · ${s.name}`:s.name;document.getElementById('desc').textContent=`${s.ai&&!/AI/.test(subjDesc(s))?'ใช้ AI สร้างโจทย์ · ':''}${subjDesc(s)} · ระดับ ${lvOf(s.id)}`;
 }
 function render(){
   if(VIEW!=='practice')return;
@@ -3187,7 +3189,8 @@ function renderWelcome(){
   $('wgo').onclick=()=>{welcomeSkip=true;try{sessionStorage.setItem('exam-onboard-skip','1')}catch(e){}setView('home')};
 }
 let HOME_PICK=false;
-function subjBtns(list){return list.map(s=>`<button class="hsub" data-hs="${s.id}"><span>${esc(s.name)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`).join('')}
+function aiTag(s){return s&&s.ai?`<span class="aitag" title="วิชานี้ใช้ AI สร้างโจทย์ ต้องใส่ AI key" aria-label="ใช้ AI">AI</span>`:''}
+function subjBtns(list){return list.map(s=>`<button class="hsub" data-hs="${s.id}"><span class="hsn">${esc(s.name)}${aiTag(s)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`).join('')}
 function renderHome(){
   if(VIEW!=='home')return;
   const pts=P.pts||0,last=SUBJ.find(s=>s.id===P.subject);
@@ -3207,6 +3210,7 @@ function renderHome(){
       <div class="hopt"><label for="hcount">จำนวนข้อ</label><select id="hcount">${[5,10,20,50,100].map(v=>`<option value="${v}"${P.count===v?' selected':''}>${v} ข้อ</option>`).join('')}</select>
         <span class="fl">การเฉลย</span><div class="seg" role="group"><button data-hm="now" aria-pressed="${P.mode==='now'}">ทันที</button><button data-hm="end" aria-pressed="${P.mode==='end'}">ตอนท้าย</button></div></div>
       ${last?`<button class="primary" id="hlast">ทำต่อ: ${esc(last.name)} (ระดับ ${lvOf(last.id)})</button>`:''}
+      <p class="src">ป้าย <span class="aitag">AI</span> = วิชาที่ใช้ AI สร้างโจทย์ ต้องใส่ AI key ก่อน · วิชาที่ไม่มีป้าย ระบบสร้างโจทย์เองได้ทันที</p>
       <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="hsubs">${subjBtns(gen)}</div>
       <p class="lbl">${SPEC_LABEL}</p><input class="tx" type="search" id="hq" placeholder="ค้นหาหัวข้อ เช่น หนี้, PDPA" aria-label="ค้นหาหัวข้อ"><div class="hsubs" id="hspec">${subjBtns(spec)}</div>
     </div>`;

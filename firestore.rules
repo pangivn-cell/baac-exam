@@ -60,7 +60,7 @@ service cloud.firestore {
 
     // ตั้งค่าระบบ เช่น โฟลเดอร์ Google Drive ของไฟล์ต้นฉบับ (config/srcdirs): ผู้ที่ล็อกอินอ่านได้ ผู้ตรวจแก้ได้
     match /config/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() || id == 'subjects';
       allow write: if isReviewer();
     }
 

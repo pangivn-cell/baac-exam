@@ -25,9 +25,19 @@ const SPEC=[
  ['agecon','เศรษฐกิจการเกษตร','เศรษฐกิจเกษตรไทย ราคาสินค้าเกษตร สหกรณ์ และตลาดสินค้าเกษตร',['เกษตรกร','สหกรณ์','สินค้าเกษตร','เศรษฐกิจการเกษตร','ผลผลิต']],
  ['baac','ความรู้ ธ.ก.ส.','บทบาท พันธกิจ โครงสร้าง และผลิตภัณฑ์ของ ธ.ก.ส.',['ธ.ก.ส.','ธกส','BAAC','ธนาคารเพื่อการเกษตรและสหกรณ์']],
 ];
+/* รายวิชาที่แอดมินเพิ่ม/ซ่อน (Firestore config/subjects ทุกคนอ่านได้) จำไว้ในเครื่องเพื่อใช้ตั้งแต่ตอนเปิดหน้า
+   add: [{id,name,desc,group:'gen'|'spec',kw:[]}]  hide: [id]  ถ้าค่าในฐานข้อมูลเปลี่ยน cloud.js จะเปิดหน้าใหม่ให้ */
+const SUBJ_CFG_KEY='exam-subjects';
+let SUBJ_CFG={add:[],hide:[]};try{SUBJ_CFG={add:[],hide:[],...(JSON.parse(localStorage.getItem(SUBJ_CFG_KEY)||'null')||{})}}catch(e){}
+for(const a of SUBJ_CFG.add||[]){if(!a||!a.id||!a.name)continue;
+  if(a.group==='spec')SPEC.push([a.id,a.name,a.desc||a.name,a.kw&&a.kw.length?a.kw:[a.name]]);else SUBJ.push({id:a.id,name:a.name,desc:a.desc||'โจทย์สร้างโดย AI',ai:true,custom:true})}
 SUBJ.forEach(s=>s.group='gen');
 SUBJ.push({id:'specall',name:'รวมทุกวิชา',desc:'สุ่มโจทย์จากทุกหัวข้อความรู้เฉพาะตำแหน่ง',ai:true,group:'spec',kw:[]});
 SPEC.forEach(([id,name,scope,kw])=>SUBJ.push({id,name,desc:scope,ai:true,group:'spec',kw}));
+for(const a of SUBJ_CFG.add||[]){const s=SUBJ.find(x=>x.id===a.id);if(s)s.custom=true}
+/* ซ่อนรายวิชา: เอาออกจากเมนูและการสร้างโจทย์ ข้อมูลในคลังยังอยู่ (เปิดกลับได้) */
+const SUBJ_ALL=SUBJ.map(s=>({id:s.id,name:s.name,group:s.group,custom:!!s.custom}));
+for(const id of SUBJ_CFG.hide||[]){const i=SUBJ.findIndex(s=>s.id===id);if(i>=0)SUBJ.splice(i,1);const j=SPEC.findIndex(x=>x[0]===id);if(j>=0)SPEC.splice(j,1)}
 const GEN_TOPICS=SUBJ.filter(s=>s.group==='gen').map(s=>s.name);
 const isSpecSub=id=>id==='spec'||id==='specall'||SPEC.some(x=>x[0]===id)||String(id).startsWith('doc_');
 const LEVEL_TXT={1:'ง่ายมาก พื้นฐาน ขั้นตอนเดียว',2:'ง่าย 1–2 ขั้นตอน',3:'ปานกลาง ระดับข้อสอบ ก.พ. ทั่วไป',4:'ยาก หลายขั้นตอน มีตัวลวง',5:'ยากมาก ระดับแข่งขันสูง ตัวลวงแนบเนียน'};
@@ -42,6 +52,7 @@ let P={subject:'ineq',count:5,mode:'now',levels:{},weak:{}};
 /* งานที่ต้องรอให้ทุกไฟล์ใน js/ โหลดครบก่อน (ฟังก์ชันอยู่คนละไฟล์) */
 const onAppReady=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',()=>fn()):fn();
 try{const s=JSON.parse(localStorage.getItem('exam-drill-v1')||'null');if(s)P={...P,...s}}catch(e){}
+if(P.subject&&!String(P.subject).startsWith('doc_')&&!SUBJ.some(s=>s.id===P.subject))P.subject=SUBJ[0].id;
 const save=()=>{try{localStorage.setItem('exam-drill-v1',JSON.stringify(P))}catch(e){}};
 const lvOf=id=>P.levels[id]||1;
 

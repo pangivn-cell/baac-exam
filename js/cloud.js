@@ -318,3 +318,54 @@ function previewCard(c){
   if(c.type==='q'&&c.q)return `<div class="kc"><p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map((x,j)=>`<li${j===c.q.answer?' class="ok"':''}>${esc(x)}${j===c.q.answer?' ✓':''}</li>`).join('')}</ol>${(c.figs||[]).length?'<p class="src">มีรูปประกอบ</p>':''}</div>`;
   return `<div class="kc"><p><b>${esc(c.title)}</b> <span class="src">· ${esc(c.topic)} · ${esc(c.kind)}</span></p><p>${esc(c.fact)}</p>${(c.figs||[]).length?'<p class="src">มีรูปประกอบ</p>':''}</div>`;
 }
+
+/* ---------- รายวิชา: เพิ่ม / ซ่อน (แอดมิน/ผู้ตรวจ) ใช้กับทุกคน ---------- */
+async function syncSubjects(){
+  try{const f=await fb(),snap=await f.fs.getDoc(fsDoc('config','subjects'));
+    const cfg=snap.exists()?{add:snap.data().add||[],hide:snap.data().hide||[]}:{add:[],hide:[]};
+    const now=JSON.stringify(cfg),was=JSON.stringify({add:SUBJ_CFG.add||[],hide:SUBJ_CFG.hide||[]});
+    if(now===was)return;
+    try{localStorage.setItem(SUBJ_CFG_KEY,now)}catch(e){}
+    if(!(M&&M.status==='run')&&!(R&&R.status==='loading'))location.reload();
+  }catch(e){}
+}
+onAppReady(()=>setTimeout(syncSubjects,1500));
+function subjAdminHTML(){
+  if(!isReviewerMe())return '';
+  const hide=new Set(SUBJ_CFG.hide||[]),grp=g=>SUBJ_ALL.filter(s=>s.group===g&&s.id!=='specall');
+  const row=s=>`<label class="srow"><input type="checkbox" data-sshow="${esc(s.id)}" ${hide.has(s.id)?'':'checked'}> ${esc(s.name)}${s.custom?' <span class="tag">เพิ่มเอง</span>':''}${s.custom?` <button class="linkbtn" type="button" data-sdel="${esc(s.id)}">ลบ</button>`:''}</label>`;
+  return `<div class="cloudbox"><p><b>📚 จัดการรายวิชา</b> · ใช้กับทุกคน</p>
+    <p class="src">เอาเครื่องหมายถูกออก = ซ่อนวิชานั้นจากเมนูและการสร้างโจทย์ (ข้อมูลในคลังยังอยู่ เปิดกลับได้) · วิชาที่เพิ่มเองใช้ AI สร้างโจทย์ วิชาเฉพาะตำแหน่งจะใช้บัตรความรู้ในคลังที่ตรงหัวข้อด้วย</p>
+    <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="sgrid">${grp('gen').map(row).join('')}</div>
+    <p class="lbl">${esc(SPEC_LABEL)}</p><div class="sgrid">${grp('spec').map(row).join('')}</div>
+    <div class="btnrow" style="justify-content:flex-start"><input id="snew" class="cetx" style="flex:1;min-width:160px" placeholder="ชื่อวิชาใหม่"><select id="sgrp"><option value="spec">${esc(SPEC_LABEL)}</option><option value="gen">ความรู้ความสามารถทั่วไป</option></select></div>
+    <div class="btnrow" style="justify-content:flex-start"><input id="sdesc" class="cetx" style="flex:2;min-width:200px" placeholder="ขอบเขตเนื้อหา เช่น หลักเกณฑ์ ... (ช่วยให้ AI ออกโจทย์ตรง)"><input id="skw" class="cetx" style="flex:1;min-width:160px" placeholder="คำค้น คั่นด้วย , (ไม่ใส่ก็ได้)"><button class="primary" id="sadd">เพิ่มวิชา</button></div>
+    <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="ssave" disabled>บันทึกการแสดง/ซ่อน</button></div></div>`;
+}
+async function saveSubjCfg(cfg){
+  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify({add:cfg.add,hide:cfg.hide}))}catch(e){}
+  toast('บันทึกรายวิชาแล้ว กำลังเปิดหน้าใหม่');setTimeout(()=>location.reload(),700);
+}
+function wireSubjAdmin(el){
+  const add=el.querySelector('#sadd');if(!add)return;
+  const cur=()=>({add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice()});
+  const sv=el.querySelector('#ssave');
+  el.querySelectorAll('[data-sshow]').forEach(c=>c.onchange=()=>{sv.disabled=false});
+  sv.onclick=async()=>{const cfg=cur();cfg.hide=[...el.querySelectorAll('[data-sshow]')].filter(c=>!c.checked).map(c=>c.dataset.sshow);
+    if(cfg.hide.length>=SUBJ_ALL.length-1){toast('ต้องเหลืออย่างน้อย 1 วิชา','bad');return}
+    try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}};
+  add.onclick=async()=>{
+    const name=el.querySelector('#snew').value.trim(),group=el.querySelector('#sgrp').value,desc=el.querySelector('#sdesc').value.trim(),kw=el.querySelector('#skw').value.split(/[,，]/).map(x=>x.trim()).filter(Boolean);
+    if(!name){toast('ใส่ชื่อวิชาก่อน','bad');return}
+    if(SUBJ_ALL.some(s=>s.name.toLowerCase()===name.toLowerCase())){toast('มีวิชาชื่อนี้แล้ว','bad');return}
+    const cfg=cur();cfg.add.push({id:'u'+newId(),name,group,desc,kw:kw.length?kw:[name]});
+    try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+  };
+  el.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.sdel,s=SUBJ_ALL.find(x=>x.id===id);if(!s)return;
+    if(await modal(`<p class="mt">ลบวิชา ${esc(s.name)}?</p><p class="src">บัตรความรู้และข้อสอบในคลังที่เป็นหัวข้อนี้ยังอยู่ แต่จะไม่มีวิชานี้ในเมนู ถ้าแค่ไม่อยากให้เห็นชั่วคราว ให้เอาเครื่องหมายถูกออกแทน</p>`,[{t:'ยกเลิก'},{t:'ลบวิชา',cls:'primary'}])!==1)return;
+    const cfg=cur();cfg.add=cfg.add.filter(x=>x.id!==id);cfg.hide=cfg.hide.filter(x=>x!==id);
+    try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+  });
+}

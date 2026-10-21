@@ -545,6 +545,7 @@ function renderKB(){
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+      ${subjAdminHTML()}
       ${srcAdminHTML()}
       ${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}`;
     if(ME&&!SRC.ready&&!SRC.loading)loadSrcIndex().then(()=>{if(VIEW==='kb'&&KB_TAB==='central')renderKB()});
@@ -637,7 +638,7 @@ function centralListHTML(){
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>syncCentral();
   const g=document.getElementById('gorev');if(g)g.onclick=()=>setView('review');
-  wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);
+  wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);wireSubjAdmin(el);
   const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
   const h=document.getElementById('gohist');if(h)h.onclick=()=>{KB_TAB='hist';renderKB();window.scrollTo({top:0})};
   el.querySelectorAll('.kdoc[data-cid]').forEach(box=>{const d=DOCS.find(x=>x.id===box.dataset.cid);if(!d)return;

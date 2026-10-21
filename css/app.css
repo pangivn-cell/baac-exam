@@ -241,6 +241,7 @@ nav.subjects{gap:14px}
 .kq{margin:2px 0;padding-left:22px}
 .kq li.ok{color:var(--ok);font-weight:600}
 .origtag{margin:0;align-self:flex-start;font-size:12px;padding:1px 10px;border-radius:999px;background:var(--ok-soft);color:var(--ok)}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px}.srow{display:flex;align-items:center;gap:6px;font-size:14px}
 .srcbtn{margin-top:4px}.srcv{min-height:120px;max-height:65vh;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
 .srcv .src,.srcv .kwarn{margin:12px}.srctext{white-space:pre-wrap;font-size:13px;max-height:30vh;overflow:auto}
 .linkbtn{background:none;border:0;padding:0;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline}

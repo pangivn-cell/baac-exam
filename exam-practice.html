@@ -414,7 +414,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21j';
+const BUILD='2026-10-21k';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -2772,7 +2772,7 @@ async function cloudInit(){
     await syncCentral();
   }catch(e){renderAcct();if(VIEW==='kb')renderKB();setTimeout(onboard,600)}
 }
-function refreshCloudViews(){if(VIEW==='kb')renderKB();else if(VIEW==='review')renderReview()}
+function refreshCloudViews(){if(VIEW==='kb')renderKB();else if(VIEW==='review')renderReview();else if(VIEW==='home')renderHome();else if(VIEW==='rank')renderRank()}
 function renderAcct(){
   const el=document.getElementById('acct');if(!el)return;
   const rv=document.getElementById('vreview');if(rv)rv.hidden=!isReviewerMe();

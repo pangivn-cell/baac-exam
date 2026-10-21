@@ -281,6 +281,40 @@ nav.subjects{gap:14px}
 .kc .ok{color:var(--ok);font-weight:600}
 .obr{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
 .obr>span{font-weight:700;color:var(--ink-2)}.obr.ok{border-color:var(--ok)}.obr.ok>span{color:var(--ok)}.obr p{margin:0}
+.ghead{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:600 15px var(--f-body);padding:10px 10px;border-radius:10px;border:1px solid var(--line);background:var(--sheet);color:var(--ink);cursor:pointer}
+.ghead .gl{flex:1;min-width:0}.ghead .gc{font:600 12px var(--f-body);padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.ghead .caret{transition:transform .2s;color:var(--ink-2)}.ghead[aria-expanded="true"] .caret{transform:rotate(180deg)}.ghead[aria-expanded="true"]{border-color:var(--accent)}
+.ghead:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.gbody{display:flex;flex-direction:column;gap:6px;padding:6px 0 2px 6px}
+.pctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.pctl select{width:auto}.pctl .seg{grid-template-columns:auto auto}.pctl .seg button{padding:7px 10px}
+.wel{display:flex;flex-direction:column;gap:14px}
+.hero{border-radius:16px;padding:22px 20px;background:linear-gradient(135deg,var(--accent-soft),var(--sheet));border:1px solid var(--line)}
+.hero .hk{margin:0;font-size:13px;color:var(--accent);font-weight:600;letter-spacing:.02em}.hero h2{font:600 1.45rem/1.35 var(--f-display);margin:6px 0}.hero p{margin:0;color:var(--ink-2);font-size:14px}
+.wfeat{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.wfeat div{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;background:var(--paper)}.wfeat span{font-size:13px;color:var(--ink-2)}
+.wlead{margin:4px 0 0;font:600 1.05rem var(--f-display)}
+.wstep{display:flex;gap:12px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--paper)}.wstep.ok{border-color:var(--ok)}
+.wn{width:34px;height:34px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--sheet);font:700 16px var(--f-display)}.wstep.ok .wn{background:var(--ok)}
+.wb{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}.wb h3{margin:0;font:600 1.1rem var(--f-display);display:flex;gap:8px;flex-wrap:wrap;align-items:center}.wb ul,.wb ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px;font-size:14px}.wb p{margin:0}
+.why{font-size:13px;color:var(--accent);font-weight:600}
+.wkey{display:flex;gap:8px}.wkey .tx{flex:1}
+.wgo{display:flex;flex-direction:column;align-items:center;gap:6px}.primary.big{font-size:17px;padding:13px 26px;border-radius:12px}
+.hban{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;border:1px solid var(--unk);background:var(--unk-soft);border-radius:12px;padding:10px 12px;font-size:14px}.hban span{flex:1;min-width:200px;color:var(--ink-2)}
+.hgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.hcard{display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;cursor:pointer}
+.hcard:hover{border-color:var(--accent)}.hcard:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.hcard .hi{font-size:26px}.hcard b{font:600 1.05rem var(--f-display)}.hcard span:not(.hi){font-size:13px;color:var(--ink-2)}
+.hcard.main{grid-column:1/-1;background:var(--accent-soft);border-color:var(--accent)}.hcard.sm{flex-direction:row;align-items:center;gap:10px;padding:10px 14px}.hcard.sm .hi{font-size:20px}
+.hpick{display:flex;flex-direction:column;gap:8px;border:1px solid var(--accent);border-radius:14px;padding:12px}
+.hopt{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.hopt select{width:auto}.hopt .seg{grid-template-columns:auto auto}.hopt .seg button{padding:7px 10px}
+.hsubs{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}
+.hsub{display:flex;justify-content:space-between;gap:6px;align-items:center;text-align:left;font:500 14px var(--f-body);padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--sheet);color:var(--ink);cursor:pointer}.hsub:hover{border-color:var(--accent)}
+.ask1{display:flex;gap:8px}.ask1 .tx{flex:1;font-size:17px;padding:12px 16px;border-radius:999px}.ask1 .primary{border-radius:999px;padding:10px 20px}
+.aians{border:1px solid var(--accent);border-radius:16px;padding:14px 16px;background:var(--sheet);display:flex;flex-direction:column;gap:8px}
+.ahd{margin:0;font-weight:600;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.abody{line-height:1.7}.abody h4{margin:12px 0 4px;font:600 1.05rem var(--f-display)}.abody p{margin:4px 0}.abody ul,.abody ol{margin:4px 0;padding-left:22px}.abody li{margin:2px 0}
+.abody .aref,.abody .cref{color:var(--ink-2);font-size:13px}.abody.msg.ai{max-width:100%;white-space:normal}
+.asrc summary{cursor:pointer;font-weight:600;padding:6px 0}
+@media (max-width:520px){.wfeat{grid-template-columns:1fr}.hero h2{font-size:1.2rem}.hcard{padding:12px}.hcard .hi{font-size:22px}.hcard span:not(.hi){font-size:12px}}
 .upbtn{font:500 14px var(--f-body);padding:8px 10px;border-radius:10px;border:1.5px dashed var(--accent);background:transparent;color:var(--accent);cursor:pointer;text-align:left}
 .upbtn:hover{background:var(--accent-soft)}
 .cite{margin:0;font-size:14px;padding:6px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0}
@@ -343,30 +377,16 @@ nav.subjects{gap:14px}
     <p class="brand">ระบบซ้อมสอบ<small>โจทย์ใหม่ทุกชุด ความยากปรับตามผลของคุณ</small></p>
     <div class="acct" id="acct"></div>
     <nav class="views" id="views" aria-label="โหมด">
-      <button class="subj" data-v="practice">ฝึกทำข้อสอบ</button>
-      <button class="subj" data-v="mock">สอบจริง (Mock Exam)</button>
-      <button class="subj" data-v="hist">ประวัติสอบ</button>
-      <button class="subj" data-v="kb">คลังความรู้ (อัปโหลดเอกสาร)</button>
-      <button class="subj" data-v="study">📖 ศึกษา</button>
+      <button class="subj" data-v="home">🏠 หน้าแรก</button>
+      <button class="subj" data-v="mock">⏱ สอบจริง (Mock Exam)</button>
+      <button class="subj" data-v="study">💬 สอบถาม AI</button>
+      <button class="subj" data-v="kb">📤 อัปเดตความรู้ (คลังความรู้)</button>
       <button class="subj" data-v="rank">🏆 อันดับ</button>
+      <button class="subj" data-v="hist">🕘 ประวัติสอบ</button>
       <button class="subj" data-v="review" id="vreview" hidden>ตรวจอนุมัติ (ผู้ตรวจ)</button>
     </nav>
     <div id="pside">
     <nav class="subjects" id="subjects" aria-label="วิชา"></nav>
-    <div class="set">
-      <div class="field">
-        <label for="count">จำนวนข้อ</label>
-        <select id="count"><option value="5">5 ข้อ</option><option value="10">10 ข้อ</option><option value="20">20 ข้อ</option><option value="50">50 ข้อ</option><option value="100">100 ข้อ</option></select>
-      </div>
-      <div class="field">
-        <span class="fl" id="mode-l">การเฉลย</span>
-        <div class="seg" role="group" aria-labelledby="mode-l">
-          <button id="mode-now" aria-pressed="true">ทันที</button>
-          <button id="mode-end" aria-pressed="false">ตอนท้าย</button>
-        </div>
-      </div>
-      <button class="primary" id="newset">สร้างชุดใหม่</button>
-    </div>
     </div>
     <details class="aiset" id="aiset"><summary><span>ตั้งค่า AI</span><span class="pill" id="aipill">-</span></summary><div class="bd" id="aibody"></div></details>
   </aside>
@@ -375,7 +395,9 @@ nav.subjects{gap:14px}
       <div class="tbar" id="tbar" hidden></div>
       <div class="head">
         <div><h1 id="title">เงื่อนไขสัญลักษณ์</h1><p id="desc"></p></div>
-        <button class="ghost" id="resetlv">เริ่มระดับ 1 ใหม่</button>
+        <div class="pctl" id="pctl"><label class="fl" for="count">จำนวนข้อ</label><select id="count"><option value="5">5 ข้อ</option><option value="10">10 ข้อ</option><option value="20">20 ข้อ</option><option value="50">50 ข้อ</option><option value="100">100 ข้อ</option></select>
+          <div class="seg" role="group" aria-label="การเฉลย"><button id="mode-now" aria-pressed="true">เฉลยทันที</button><button id="mode-end" aria-pressed="false">เฉลยตอนท้าย</button></div>
+          <button class="ghost" id="resetlv">เริ่มระดับ 1 ใหม่</button></div>
       </div>
       <section class="sheet" id="sheet" aria-live="polite"></section>
     </div>
@@ -1381,36 +1403,26 @@ function wireAsk(id,q,pick){
   box.querySelectorAll('.qk').forEach(k=>k.onclick=()=>ask(k.dataset.q));
 }
 
-var SPEC_DD={open:false,q:''};
+var SIDE_OPEN=null;
 function renderSide(){
-  const btn=s=>`<button class="subj" data-s="${s.id}" aria-current="${s.id===P.subject}" title="${esc(s.name)}"><span class="sn">${esc(s.name)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`;
+  if(!SIDE_OPEN)SIDE_OPEN=Object.assign({gen:false,spec:false},P.sideOpen||{});
+  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`;
   const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
-  const cur=spec.find(s=>s.id===P.subject)||spec.find(s=>s.id===P.lastSpec)||spec[0];
-  const inSpec=spec.some(s=>s.id===P.subject);
-  document.getElementById('subjects').innerHTML=`<div class="sgrp"><p class="cap">ความรู้ความสามารถทั่วไป</p><div class="slist">${gen.map(btn).join('')}</div></div>
-    <div class="sgrp"><p class="cap">ความรู้เฉพาะตำแหน่ง</p>
-      <div class="dd">
-        <button class="subj ddbtn" id="ddbtn" aria-expanded="${SPEC_DD.open}" aria-controls="ddpanel" aria-current="${inSpec}"><span class="sn">${esc(cur.name)}</span><span class="lv">ระดับ ${lvOf(cur.id)}</span><span class="caret" aria-hidden="true">▾</span></button>
-        <div class="ddpanel" id="ddpanel" ${SPEC_DD.open?'':'hidden'}>
-          <input class="tx" type="search" id="ddq" placeholder="ค้นหารายวิชา เช่น หนี้, PDPA" autocomplete="off" value="${esc(SPEC_DD.q)}" aria-label="ค้นหารายวิชาความรู้เฉพาะตำแหน่ง">
-          <div class="ddlist">${spec.map(s=>btn(s).replace('class="subj"',`class="subj" data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`)).join('')}</div>
-          <p class="src ddnone" hidden>ไม่พบรายวิชาที่ค้นหา</p>
-        </div>
-      </div></div>`;
-  const filt=()=>{const q=SPEC_DD.q.trim().toLowerCase();let n=0;document.querySelectorAll('#ddpanel .ddlist .subj').forEach(b=>{const ok=!q||b.dataset.f.includes(q);b.hidden=!ok;if(ok)n++});document.querySelector('#ddpanel .ddnone').hidden=n>0};
-  filt();
-  const dd=document.getElementById('ddbtn'),dq=document.getElementById('ddq');
-  dd.onclick=()=>{SPEC_DD.open=!SPEC_DD.open;dd.setAttribute('aria-expanded',SPEC_DD.open);document.getElementById('ddpanel').hidden=!SPEC_DD.open;if(SPEC_DD.open)dq.focus()};
-  dq.oninput=()=>{SPEC_DD.q=dq.value;filt()};
-  dq.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const f=[...document.querySelectorAll('#ddpanel .ddlist .subj')].find(b=>!b.hidden);if(f)f.click()}else if(e.key==='Escape'){SPEC_DD.open=false;renderSide();document.getElementById('ddbtn').focus()}};
+  const grp=(g,label,list,extra)=>`<div class="sgrp"><button class="ghead" data-g="${g}" aria-expanded="${!!SIDE_OPEN[g]}"><span class="gl">${label}</span><span class="gc">${list.length}</span><span class="caret" aria-hidden="true">▾</span></button>
+    <div class="gbody" ${SIDE_OPEN[g]?'':'hidden'}>${extra||''}<div class="slist">${list.map(x=>btn(x,g==='spec')).join('')}</div>${g==='spec'?'<p class="src ddnone" hidden>ไม่พบหัวข้อที่ค้นหา</p>':''}</div></div>`;
+  document.getElementById('subjects').innerHTML=grp('gen','ความรู้ความสามารถทั่วไป',gen)+grp('spec',SPEC_LABEL,spec,`<input class="tx" type="search" id="ddq" placeholder="ค้นหาหัวข้อ เช่น หนี้, PDPA" autocomplete="off" aria-label="ค้นหาหัวข้อ${SPEC_LABEL}">`);
+  document.querySelectorAll('#subjects .ghead').forEach(h=>h.onclick=()=>{const g=h.dataset.g;SIDE_OPEN[g]=!SIDE_OPEN[g];P.sideOpen=SIDE_OPEN;save();renderSide();if(g==='spec'&&SIDE_OPEN.spec){const q=document.getElementById('ddq');if(q)q.focus()}});
+  const dq=document.getElementById('ddq');
+  if(dq){dq.oninput=()=>{const q=dq.value.trim().toLowerCase();let n=0;dq.parentElement.querySelectorAll('.subj[data-f]').forEach(b=>{const ok=!q||b.dataset.f.includes(q);b.hidden=!ok;if(ok)n++});dq.parentElement.querySelector('.ddnone').hidden=n>0};
+    dq.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const f=[...dq.parentElement.querySelectorAll('.subj[data-f]')].find(b=>!b.hidden);if(f)f.click()}}}
   document.querySelectorAll('#subjects .subj[data-s]').forEach(b=>b.onclick=()=>{
-    P.subject=b.dataset.s;if(spec.some(s=>s.id===P.subject)){P.lastSpec=P.subject;SPEC_DD={open:false,q:''}}
+    P.subject=b.dataset.s;if(spec.some(s=>s.id===P.subject))P.lastSpec=P.subject;
     save();if(VIEW!=='practice')setView('practice');renderSide();start(true)});
   document.getElementById('count').value=String(P.count);
   document.getElementById('mode-now').setAttribute('aria-pressed',P.mode==='now');
   document.getElementById('mode-end').setAttribute('aria-pressed',P.mode==='end');
   if(VIEW!=='practice')return;
-  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`ความรู้เฉพาะตำแหน่ง · ${s.name}`:s.name;document.getElementById('desc').textContent=`${subjDesc(s)} · ระดับ ${lvOf(s.id)}`;
+  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`${SPEC_LABEL} · ${s.name}`:s.name;document.getElementById('desc').textContent=`${subjDesc(s)} · ระดับ ${lvOf(s.id)}`;
 }
 function render(){
   if(VIEW!=='practice')return;
@@ -1526,15 +1538,15 @@ function setView(v){
   VIEW=v;
   document.querySelectorAll('#views button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
   document.getElementById('pside').classList.toggle('off',v!=='practice');
-  document.getElementById('resetlv').hidden=v!=='practice';
+  document.getElementById('pctl').hidden=v!=='practice';
   if(v!=='mock'){document.getElementById('tbar').hidden=true;document.querySelector('.app').classList.remove('exam')}
-  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='rank')renderRank();else renderHist();
+  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='rank')renderRank();else if(v==='home')renderHome();else if(v==='welcome')renderWelcome();else renderHist();
 }
 const head=(t,d)=>{document.getElementById('title').textContent=t;document.getElementById('desc').textContent=d||''};
 
 /* ---------- mock exam ---------- */
 const MKEY='exam-mock-v1',MSKEY='exam-mock-set';
-const CATS={gen:'ความรู้ความสามารถทั่วไป',spec:'ความรู้เฉพาะตำแหน่ง'};
+const CATS={gen:'ความรู้ความสามารถทั่วไป',spec:'ความรู้เฉพาะตำแหน่งงานสินเชื่อ'};
 const MOCK_N=[20,40,60,80,100],MOCK_MIN=[15,30,45,60,90,120];
 const MOCK_MIX=[['math',.22],['series',.12],['ineq',.15],['logic',.12],['dir',.06],['data',.08],['spatial',.07],['thai',.1],['eng',.08]];
 const SPEC_TOPICS=SPEC.map(x=>x[1]);
@@ -2279,6 +2291,7 @@ function digestPrompt(doc,win,figs,onlyFigs){
   return `คุณเป็นผู้เชี่ยวชาญเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) อ่านเนื้อหาจากเอกสาร "${doc.name}" ด้านล่างให้เข้าใจ แล้วสกัดเป็น "บัตรความรู้" สำหรับใช้ออกข้อสอบภายหลัง
 กติกา:
 - 1 บัตร = 1 ความรู้ที่สมบูรณ์ในตัว อ่านบัตรเดียวแล้วเข้าใจได้โดยไม่ต้องเห็นเอกสาร ระบุบริบทให้ครบ เช่น ชื่อกฎหมาย ผลิตภัณฑ์ หน่วยงาน
+- fact เขียน 2–5 ประโยคเป็นภาษาที่คนเพิ่งเริ่มเรียนอ่านเข้าใจ ขยายคำย่อ อธิบายศัพท์เฉพาะ เรียงเหตุผลให้ต่อเนื่อง ยกตัวอย่างสั้นๆ ถ้าช่วยให้เข้าใจ ห้ามเขียนเป็นวลีห้วนๆ หรือรหัสย่อที่ไม่อธิบาย
 - เก็บเฉพาะสาระที่ออกสอบได้: นิยาม หลักการ เงื่อนไข ข้อยกเว้น ขั้นตอน ตัวเลข ระยะเวลา อัตรา สิทธิและหน้าที่ บทลงโทษ ความแตกต่างของสิ่งที่คล้ายกัน
 - ข้ามสารบัญ คำนำ หัวกระดาษ ท้ายกระดาษ และข้อความซ้ำ ไม่ต้องทำบัตรเรื่องเล็กน้อยที่ไม่มีทางออกสอบ
 - ห้ามเติมความรู้ที่ไม่มีในเนื้อหา ตัวเลขต้องตรงตามเอกสาร ถ้าข้อความต้นฉบับพิมพ์ผิดหรือวรรณยุกต์เพี้ยนแต่ความหมายชัด ให้เขียนให้ถูก
@@ -2299,7 +2312,7 @@ function digestPrompt(doc,win,figs,onlyFigs){
 ${win.map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n\n')}
 
 ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"summary":"สรุป","cards":[{"title":"หัวเรื่องสั้น","topic":"หัวข้อ","kind":"ชนิด","fact":"ความรู้ 1–3 ประโยค","page":${win[0].n},"importance":2${figs&&figs.length?',"figs":[],"answerSource":""':''}}]}`;
+{"summary":"สรุป","cards":[{"title":"หัวเรื่องสั้น","topic":"หัวข้อ","kind":"ชนิด","fact":"ความรู้ 2–5 ประโยค อ่านเข้าใจง่าย","page":${win[0].n},"importance":2${figs&&figs.length?',"figs":[],"answerSource":""':''}}]}`;
 }
 async function digestDoc(doc){
   if(doc.kind==='exam')return extractDoc(doc);
@@ -3122,77 +3135,188 @@ async function renameMe(){
     renderAcct();toast('เปลี่ยนชื่อแล้ว')}catch(e){toast('เปลี่ยนชื่อไม่สำเร็จ','bad')}
 }
 
-/* ---------- เข้าครั้งแรก: ชวนล็อกอินและใส่ AI key ---------- */
-let onboardShown=false;
-async function onboard(){
-  if(onboardShown||inViewer)return;let skip=false;try{skip=sessionStorage.getItem('exam-onboard-skip')==='1'}catch(e){}if(skip)return;
-  const needLogin=!ME&&CLOUD.ok!==false,needKey=!activeAI();if(!needLogin&&!needKey)return;
-  onboardShown=true;
-  const row=(ok,t,s)=>`<div class="obr${ok?' ok':''}"><span>${ok?'✓':'○'}</span><div><b>${t}</b><p class="src">${s}</p></div></div>`;
-  const r=await modal(`<p class="mt">ยินดีต้อนรับสู่ระบบซ้อมสอบ</p><p class="src">ตั้งค่า 2 อย่างนี้ก่อน จะใช้ได้ครบทุกความสามารถ</p>
-    ${row(!!ME,'เข้าสู่ระบบ','เก็บคะแนน ขึ้นอันดับ จำระดับข้ามเครื่อง และเพิ่มเอกสารเข้าคลังกลาง')}
-    ${row(!needKey,'ใส่ AI key (Gemini ใช้ฟรี)','ให้ AI สร้างโจทย์ใหม่ อธิบายเฉลย อ่านเอกสาร และวิชาภาษาไทย อังกฤษ เฉพาะตำแหน่ง')}
-    <p class="src">ข้ามไปก่อนก็ได้ วิชาที่ระบบสร้างโจทย์เองและข้อสอบในคลังกลางใช้ได้ทันที</p>`,
-    [{t:'ไว้ทีหลัง'},...(needKey?[{t:'ใส่ AI key'}]:[]),...(needLogin?[{t:'เข้าสู่ระบบ',cls:'primary'}]:[])]);
-  const lbl=[ 'later',...(needKey?['key']:[]),...(needLogin?['login']:[])][r];
-  if(lbl==='login'){onboardShown=false;await loginDialog();setTimeout(onboard,800)}
-  else if(lbl==='key'){const d=document.getElementById('aiset');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});const h=d.querySelector('.howto');if(h)h.open=true}
-  else try{sessionStorage.setItem('exam-onboard-skip','1')}catch(e){}
+/* ---------- หน้าต้อนรับ (ก่อนล็อกอิน) · หน้าแรก (เมนูหลัก) ---------- */
+var SPEC_LABEL='ความรู้เฉพาะตำแหน่งงานสินเชื่อ';
+let welcomeSkip=false;try{welcomeSkip=sessionStorage.getItem('exam-onboard-skip')==='1'}catch(e){}
+function onboard(){
+  if(inViewer)return;
+  if(!ME&&!welcomeSkip&&CLOUD.ok!==false&&(VIEW==='home'||VIEW==='welcome'))setView('welcome');
+  else if(ME&&VIEW==='welcome')setView('home');
+}
+function renderWelcome(){
+  if(VIEW!=='welcome')return;
+  head('ยินดีต้อนรับ','');
+  const el=document.getElementById('sheet'),key=!!activeAI();
+  el.innerHTML=`<div class="wel">
+    <div class="hero"><p class="hk">เตรียมสอบเข้าทำงาน ธ.ก.ส.</p><h2>ซ้อมสอบให้พร้อม ด้วยโจทย์ใหม่ทุกชุด<br>และคลังความรู้ที่ทุกคนช่วยกันสร้าง</h2>
+      <p>ความรู้ความสามารถทั่วไป 9 วิชา · ${SPEC_LABEL} 12 หัวข้อ · สอบจริงจับเวลา · ถาม AI ได้ทุกเรื่อง</p></div>
+    <div class="wfeat">
+      <div><b>📝 ทดสอบรายวิชา</b><span>ความยากปรับตามผล ยิ่งทำถูกยิ่งยาก ระดับไม่มีเพดาน</span></div>
+      <div><b>⏱ สอบจริง</b><span>จับเวลา ส่งอัตโนมัติ มีระบบกันโกงเหมือนห้องสอบ</span></div>
+      <div><b>💬 สอบถาม AI</b><span>ถามได้แบบ Google แต่ตรวจจากคลังความรู้ก่อนเสมอ</span></div>
+      <div><b>📤 คลังความรู้กลาง</b><span>อัปโหลดเอกสาร AI ย่อยเป็นข้อสอบให้ทุกคนใช้</span></div>
+    </div>
+    <p class="wlead">ก่อนเริ่ม ตั้งค่า 2 อย่าง ใช้เวลาไม่ถึง 3 นาที</p>
+    <div class="wstep ${ME?'ok':''}"><div class="wn">${ME?'✓':'1'}</div><div class="wb">
+      <h3>เข้าสู่ระบบ ${ME?`<span class="tag">เรียบร้อย · ${esc(ME.name)}</span>`:''}</h3>
+      <p class="why">ทำไมต้องเข้าสู่ระบบ</p>
+      <ul><li><b>เก็บคะแนนและระดับไว้กับบัญชี</b> เปลี่ยนเครื่องหรือมือถือก็ไม่หาย</li>
+        <li><b>ขึ้นอันดับ</b> แข่งกับเพื่อนรายสัปดาห์ รายเดือน</li>
+        <li><b>ช่วยเพิ่มข้อมูลเข้าคลังกลาง</b> และรายงานเฉลยที่ผิด ให้ทุกคนได้ข้อมูลที่ถูกต้อง</li></ul>
+      <p class="src">ใช้บัญชี Google ได้เลย ระบบเก็บแค่ชื่อและอีเมล ไม่เห็นรหัสผ่านของคุณ</p>
+      ${ME?'':'<div class="btnrow" style="justify-content:flex-start"><button class="loginbig" id="wg">เข้าสู่ระบบด้วย Google</button><button class="ghost" id="wm">ใช้อีเมลแทน</button></div>'}
+    </div></div>
+    <div class="wstep ${key?'ok':''}"><div class="wn">${key?'✓':'2'}</div><div class="wb">
+      <h3>ใส่ AI key ${key?`<span class="tag">เรียบร้อย · ${AINAME[activeAI()]}</span>`:''}</h3>
+      <p class="why">ทำไมต้องใส่ key</p>
+      <ul><li><b>ให้ AI สร้างโจทย์ใหม่ไม่ซ้ำ</b> ทั้งภาษาไทย อังกฤษ และ${SPEC_LABEL}ทุกหัวข้อ</li>
+        <li><b>ถาม AI ได้ทุกเรื่อง</b> อธิบายเฉลยทีละขั้น ถามแย้งได้</li>
+        <li><b>ให้ AI อ่านเอกสารที่อัปโหลด</b> แล้วแปลงเป็นบัตรความรู้และข้อสอบ</li></ul>
+      <p class="src">Gemini ของ Google ใช้ฟรี (มีโควตาต่อวัน) · key เก็บไว้ในเครื่องของคุณเท่านั้น ไม่ส่งให้ระบบหรือคนอื่น · ถ้ามีค่าใช้จ่ายจะคิดกับบัญชีของ key นั้น</p>
+      ${key?'':`<ol class="howk"><li>เปิด <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> แล้วล็อกอิน Google</li><li>กด <b>Create API key</b> แล้วคัดลอก (ขึ้นต้นด้วย AIza)</li><li>วางในช่องด้านล่าง แล้วกด บันทึก</li></ol>
+        <div class="wkey"><input class="tx" id="wkey" type="password" autocomplete="off" placeholder="วาง Gemini API key ที่นี่ (AIza...)"><button class="primary" id="wks">บันทึก</button></div><p class="src" id="wkst"></p>`}
+    </div></div>
+    <div class="wgo"><button class="primary big" id="wgo">${ME&&key?'เริ่มใช้งาน →':'เข้าสู่หน้าแรก →'}</button>${ME&&key?'':'<p class="src">ข้ามไปก่อนก็ได้ วิชาที่ระบบสร้างโจทย์เองและข้อสอบในคลังกลางใช้ได้ทันที</p>'}</div>
+  </div>`;
+  const $=id=>document.getElementById(id);
+  if($('wg'))$('wg').onclick=async()=>{const f=await fb().catch(()=>null);if(!f)return;try{await f.au.signInWithPopup(f.auth,new f.au.GoogleAuthProvider());toast('เข้าสู่ระบบแล้ว')}catch(e){const c=String(e&&e.code||'');toast(c.includes('popup-blocked')?'เบราว์เซอร์บล็อกหน้าต่างล็อกอิน กดอนุญาตป๊อปอัปแล้วลองใหม่':'เข้าสู่ระบบไม่สำเร็จ','bad')}};
+  if($('wm'))$('wm').onclick=()=>loginDialog();
+  if($('wks'))$('wks').onclick=async()=>{const k=$('wkey').value.trim();if(!/^AIza/.test(k)){$('wkst').textContent='key ของ Gemini ต้องขึ้นต้นด้วย AIza';return}
+    AIP.gemini.key=k;if(AIP.provider==='openai')AIP.provider='auto';saveAI();renderAISet();aiChanged();$('wkst').textContent='กำลังทดสอบ key...';
+    try{await aiText('ตอบกลับคำว่า พร้อม เพียงคำเดียว');toast('ใช้ AI ได้แล้ว');renderWelcome()}catch(e){$('wkst').textContent=errCopy(e&&e.code,'ทดสอบ')}};
+  $('wgo').onclick=()=>{welcomeSkip=true;try{sessionStorage.setItem('exam-onboard-skip','1')}catch(e){}setView('home')};
+}
+let HOME_PICK=false;
+function subjBtns(list){return list.map(s=>`<button class="hsub" data-hs="${s.id}"><span>${esc(s.name)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`).join('')}
+function renderHome(){
+  if(VIEW!=='home')return;
+  const pts=P.pts||0,last=SUBJ.find(s=>s.id===P.subject);
+  head(ME?`สวัสดี ${ME.name}`:'หน้าแรก',ME?`ระดับผู้สอบ ${lvlFromPts(pts)} · ${nf(pts)} คะแนน`:'เลือกสิ่งที่อยากทำ');
+  const el=document.getElementById('sheet'),gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
+  el.innerHTML=`${!activeAI()?`<div class="hban"><b>ยังไม่ได้ใส่ AI key</b><span>วิชาภาษาไทย อังกฤษ ${SPEC_LABEL} และการถาม AI ต้องใช้ key (Gemini ใช้ฟรี)</span><button class="ghost" id="hkey">ตั้งค่าตอนนี้</button></div>`:''}
+    ${!ME&&CLOUD.ok!==false?`<div class="hban"><b>ยังไม่ได้เข้าสู่ระบบ</b><span>คะแนนจะเก็บแค่ในเครื่องนี้ และยังไม่ขึ้นอันดับ</span><button class="ghost" id="hlog">เข้าสู่ระบบ</button></div>`:''}
+    <div class="hgrid">
+      <button class="hcard main" id="hc-sub" aria-expanded="${HOME_PICK}"><span class="hi">📝</span><b>ทดสอบรายวิชา</b><span>เลือกวิชา ระบบสร้างโจทย์ตามระดับของคุณ</span></button>
+      <button class="hcard" data-go="mock"><span class="hi">⏱</span><b>สอบจริง</b><span>จับเวลาเหมือนห้องสอบ</span></button>
+      <button class="hcard" data-go="study"><span class="hi">💬</span><b>สอบถาม AI</b><span>ถามได้ทุกเรื่อง ตรวจจากคลังก่อน</span></button>
+      <button class="hcard" data-go="kb"><span class="hi">📤</span><b>อัปเดตความรู้</b><span>อัปโหลดเอกสารเข้าคลังกลาง</span></button>
+      <button class="hcard sm" data-go="rank"><span class="hi">🏆</span><b>อันดับ</b></button>
+      <button class="hcard sm" data-go="hist"><span class="hi">🕘</span><b>ประวัติสอบ</b></button>
+    </div>
+    <div class="hpick" id="hpick" ${HOME_PICK?'':'hidden'}>
+      <div class="hopt"><label for="hcount">จำนวนข้อ</label><select id="hcount">${[5,10,20,50,100].map(v=>`<option value="${v}"${P.count===v?' selected':''}>${v} ข้อ</option>`).join('')}</select>
+        <span class="fl">การเฉลย</span><div class="seg" role="group"><button data-hm="now" aria-pressed="${P.mode==='now'}">ทันที</button><button data-hm="end" aria-pressed="${P.mode==='end'}">ตอนท้าย</button></div></div>
+      ${last?`<button class="primary" id="hlast">ทำต่อ: ${esc(last.name)} (ระดับ ${lvOf(last.id)})</button>`:''}
+      <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="hsubs">${subjBtns(gen)}</div>
+      <p class="lbl">${SPEC_LABEL}</p><input class="tx" type="search" id="hq" placeholder="ค้นหาหัวข้อ เช่น หนี้, PDPA" aria-label="ค้นหาหัวข้อ"><div class="hsubs" id="hspec">${subjBtns(spec)}</div>
+    </div>`;
+  const $=id=>document.getElementById(id);
+  if($('hkey'))$('hkey').onclick=()=>{welcomeSkip=false;setView('welcome')};
+  if($('hlog'))$('hlog').onclick=()=>loginDialog();
+  $('hc-sub').onclick=()=>{HOME_PICK=!HOME_PICK;renderHome();if(HOME_PICK)$('hpick').scrollIntoView({behavior:'smooth',block:'start'})};
+  el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>setView(b.dataset.go));
+  const go=id=>{P.subject=id;if(SUBJ.find(s=>s.id===id).group==='spec')P.lastSpec=id;save();setView('practice');renderSide();start(true)};
+  el.querySelectorAll('[data-hs]').forEach(b=>b.onclick=()=>go(b.dataset.hs));
+  if($('hlast'))$('hlast').onclick=()=>go(last.id);
+  if($('hcount'))$('hcount').onchange=e=>{P.count=+e.target.value;save()};
+  el.querySelectorAll('[data-hm]').forEach(b=>b.onclick=()=>{P.mode=b.dataset.hm;save();renderHome()});
+  if($('hq'))$('hq').oninput=e=>{const q=e.target.value.trim().toLowerCase();$('hspec').querySelectorAll('[data-hs]').forEach(b=>{const s=SUBJ.find(x=>x.id===b.dataset.hs);b.hidden=!!q&&!(s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase().includes(q)})};
 }
 
-/* ---------- ศึกษา: ค้นจากคลังความรู้ (รวมคลังกลาง) แล้วให้ AI สรุปพร้อมอ้างอิง ---------- */
-var STU={q:'',topic:'',res:null,turns:[],ctx:''};
-function kwSearch(q,pool,k){
-  const ql=q.toLowerCase().trim(),toks=[...new Set([ql,...ql.split(/[\s,]+/)])].filter(x=>x.length>=2);
-  return pool.map(c=>{const t=(c.title||'').toLowerCase(),f=(c.fact||'').toLowerCase();let s=0;for(const w of toks){if(t.includes(w))s+=3;s+=countHits(f,[w])}return{c,s}}).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,k).map(x=>x.c);
+/* ---------- สอบถาม AI: ตอบแบบ Google แต่ตรวจจากคลังความรู้ก่อน แล้วอ้างอิงที่มา ---------- */
+var STU={q:'',src:[],turns:[],answer:'',busy:false,ctl:null,open:false};
+const STOPW=['คืออะไร','หมายถึงอะไร','หมายถึง','อย่างไร','ยังไง','อะไรบ้าง','อะไร','คือ','ไหม','บ้าง','ครับ','ค่ะ','คะ','หน่อย','ช่วย','อธิบาย','เกี่ยวกับ','เรื่อง'];
+function qTokens(q){
+  let t=q.toLowerCase().replace(/[?？!.,()"'“”]/g,' ');
+  return [...new Set(t.split(/\s+/).map(w=>{let x=w;for(let k=0;k<3;k++)for(const s of STOPW){if(x.endsWith(s)&&x.length>s.length)x=x.slice(0,-s.length);if(x.startsWith(s)&&x.length>s.length)x=x.slice(s.length)}return x}).filter(w=>w.length>=2&&!STOPW.includes(w)))];
 }
-async function studySearch(){
-  const all=[...activeCards(),...bankItems()];
-  if(STU.topic){STU.res=all.filter(c=>c.topic===STU.topic).slice(0,60);return}
-  if(!STU.q){STU.res=null;return}
-  let res=kwSearch(STU.q,all,30);
-  if(canEmbed()){try{const sem=await searchCards(STU.q,12);for(const c of sem)if(!res.includes(c))res.push(c)}catch(e){}}
-  STU.res=res;
+async function askSearch(q){
+  const toks=qTokens(q),all=[...activeCards(),...bankItems()];if(!toks.length)return[];
+  const topics=new Set();
+  for(const [,name,,kw] of SPEC)if(toks.some(t=>name.toLowerCase()===t||kw.some(k=>k.toLowerCase()===t)))topics.add(name);
+  for(const n of GEN_TOPICS)if(toks.some(t=>n.toLowerCase().includes(t)&&t.length>=3))topics.add(n);
+  const sc=all.map(c=>{const t=(c.title||'').toLowerCase(),f=(c.fact||'').toLowerCase();let s=0;
+    for(const w of toks){if(t.includes(w))s+=4;s+=Math.min(6,countHits(f,[w]))*1.5}
+    if(topics.has(c.topic)&&s>0)s+=3;if(c.type==='q')s*=.7;return{c,s}}).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
+  const res=sc.slice(0,12).map(x=>x.c);
+  if(canEmbed()){try{for(const c of await searchCards(toks.join(' '),8))if(!res.includes(c))res.push(c)}catch(e){}}
+  return res.slice(0,14);
 }
-function studyCardHTML(c){
+/* markdown subset → safe HTML (escape first, then headings / bullets / bold) */
+function mdLite(t){
+  const L=esc(t).split('\n'),out=[];let list=null;
+  const close=()=>{if(list){out.push(`</${list}>`);list=null}};
+  const inl=s=>s.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\[([^\]]{1,120})\]/g,'<span class="cref">[$1]</span>');
+  for(const raw of L){const l=raw.trim();
+    if(!l){close();continue}
+    let m;
+    if((m=l.match(/^#{1,4}\s+(.*)/))){close();out.push(`<h4>${inl(m[1])}</h4>`);continue}
+    if((m=l.match(/^[-*•]\s+(.*)/))){if(list!=='ul'){close();out.push('<ul>');list='ul'}out.push(`<li>${inl(m[1])}</li>`);continue}
+    if((m=l.match(/^(\d+)[.)]\s+(.*)/))){if(list!=='ol'){close();out.push('<ol>');list='ol'}out.push(`<li>${inl(m[2])}</li>`);continue}
+    close();out.push(/^อ้างอิง/.test(l)?`<p class="aref">${inl(l)}</p>`:`<p>${inl(l)}</p>`);
+  }
+  close();return out.join('');
+}
+function askRules(){
+  const src=STU.src.slice(0,10);
+  return `คุณคือติวเตอร์ผู้เชี่ยวชาญเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) ตำแหน่งงานสินเชื่อ
+ผู้เรียนถามว่า: "${STU.q}"
+${src.length?`ข้อมูลที่ระบบค้นได้จากคลังความรู้ (แต่ละรายการมีป้ายที่มาในวงเล็บเหลี่ยม):\n${src.map(c=>`[${cardCite(c)||c.topic}] ${c.type==='q'?`ข้อสอบ: ${c.q.stem} | ตัวเลือก: ${c.q.choices.join(' / ')} | ตอบ: ${c.q.choices[c.q.answer]}`:`${c.title}: ${c.fact}`}`).join('\n')}`:'คลังความรู้ไม่มีข้อมูลที่ตรงกับคำถามนี้'}
+
+วิธีตอบ (ให้ได้แบบสรุปของ Google ที่อ่านแล้วเข้าใจทันที):
+- ตรวจข้อมูลจากคลังก่อน ใช้เฉพาะรายการที่เกี่ยวข้องกับคำถามจริงๆ รายการที่ไม่เกี่ยวให้ข้ามไป
+- ถ้าคลังมีไม่พอ ให้เติมจากความรู้ทั่วไปที่ถูกต้อง โดยตีความในบริบทงานสินเชื่อและการสอบ ธ.ก.ส. ก่อน (เช่น 7C คือหลักพิจารณาสินเชื่อ) แล้วค่อยบอกความหมายอื่นสั้นๆ ถ้ามี และระบุท้ายประโยคว่า (ความรู้ทั่วไป)
+- โครงสร้าง: บรรทัดแรกเป็นคำตอบสั้น 1–2 ประโยค · หัวข้อย่อยขึ้นต้นด้วย ## · รายการขึ้นต้นด้วย - · คำสำคัญใช้ **ตัวหนา** · มีตัวอย่างหรือกรณีลูกค้าสั้นๆ ถ้าช่วยให้เข้าใจ · ปิดด้วยหัวข้อ ## จุดที่มักออกสอบ 2–4 ข้อ
+- เขียนให้คนที่ไม่เคยเรียนเรื่องนี้เข้าใจ ขยายคำย่อ อธิบายศัพท์ ห้ามคัดลอกข้อความในคลังที่อ่านยากมาตรงๆ ให้เรียบเรียงใหม่
+- บรรทัดสุดท้ายเขียน "อ้างอิง:" ตามด้วยป้ายในวงเล็บเหลี่ยมของรายการจากคลังที่ใช้จริง ถ้าไม่ได้ใช้คลังเลยให้เขียน "อ้างอิง: ความรู้ทั่วไป (ไม่มีในคลังความรู้)"
+- ห้ามแต่งตัวเลข อัตรา หรือระเบียบเฉพาะที่ไม่แน่ใจ ภาษาไทยทั้งหมด`;
+}
+async function askAI(text,first){
+  if(!activeAI()||STU.busy)return;
+  const box=document.getElementById('aians'),th=document.getElementById('athread');
+  let target;
+  if(first){STU.turns=[];STU.answer='';box.hidden=false;target=box.querySelector('.abody');target.innerHTML='<p class="msg wait">กำลังค้นในคลังและเรียบเรียงคำตอบ...</p>'}
+  else{const me=document.createElement('div');me.className='msg me';me.textContent=text;th.append(me);target=document.createElement('div');target.className='abody msg ai';target.innerHTML='<p class="wait">กำลังคิด...</p>';th.append(target)}
+  STU.turns.push({role:'user',content:first?'ตอบคำถามข้างบน':text});STU.busy=true;STU.ctl=new AbortController();
+  try{
+    let firstTurn=askRules();
+    if(canVision()){const ids=STU.src.flatMap(c=>c.figs||[]).filter(id=>FIGS.has(id)||CFIG.has(id)).slice(0,3),imgs=[];for(const id of ids){const im=await figForAI(id);if(im)imgs.push(im)}
+      if(imgs.length)firstTurn={text:firstTurn+'\n\nภาพที่แนบคือรูปประกอบจากคลังความรู้ที่เกี่ยวข้อง',images:imgs}}
+    const t=await aiText([{role:'user',content:firstTurn},...STU.turns.slice(-8)],{signal:STU.ctl.signal,onText:({text})=>{target.innerHTML=mdLite(text)}});
+    target.innerHTML=mdLite(t);STU.turns.push({role:'assistant',content:t});if(first)STU.answer=t;
+  }catch(e){STU.turns.pop();if(!(e&&e.code==='cancelled'))target.innerHTML=`<p class="kerr">${esc(errCopy(e&&e.code,'ถาม'))}</p>`}
+  finally{STU.busy=false;STU.ctl=null}
+}
+function srcHTML(c,i){
   const d=docOf(c),figs=(c.figs||[]).filter(id=>FIGS.has(id)||CFIG.has(id));
-  if(c.type==='q')return `<div class="kc"><p class="src">ข้อสอบตัวอย่าง · ${esc(c.topic)}${d?` · ${esc(cardCite(c))}`:''}</p><p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p>${figs.map(id=>figHTML(id,'kthumb')).join('')}
-    <ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p>${(c.q.steps||[]).map(s=>`<p>${esc(s)}</p>`).join('')}</details></div>`;
-  return `<div class="kc"><p class="src">${esc(c.topic)} · ${esc(c.kind)}${d?` · ${esc(cardCite(c))}`:''}${String(c.docId).startsWith('c_')?' · คลังกลาง':''}</p><p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>${figs.map(id=>figHTML(id,'kthumb')).join('')}</div>`;
+  const body=c.type==='q'?`<p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p></details>`
+    :`<p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>`;
+  return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}
+    ${activeAI()?`<div><button class="ghost" data-exp="${i}">✨ ให้ AI อธิบายเรื่องนี้ให้ละเอียด</button></div>`:''}</div>`;
 }
 function renderStudy(){
   if(VIEW!=='study')return;
-  head('ศึกษา','พิมพ์คำที่อยากเรียน ระบบค้นจากคลังความรู้ (รวมคลังกลาง) แล้วให้ AI สรุปอธิบายพร้อมอ้างอิง');
-  const el=document.getElementById('sheet'),all=[...activeCards(),...bankItems()],cnt={};for(const c of all)cnt[c.topic]=(cnt[c.topic]||0)+1;
-  const topics=[...GEN_TOPICS,...SPEC_TOPICS].filter(t=>cnt[t]);
-  el.innerHTML=`<form class="stf" id="stf"><input class="tx" id="stq" type="search" placeholder="เช่น 5C, NPL, ความยินยอม PDPA, ผลต่างชั้นที่สอง" value="${esc(STU.q)}" aria-label="คำที่อยากศึกษา"><button class="primary">ค้นหา</button></form>
-    ${topics.length?`<div class="tags">${topics.map(t=>`<button class="tag tbtn${STU.topic===t?' on':''}" data-tp="${esc(t)}">${esc(t)} ${cnt[t]}</button>`).join('')}</div>`:'<p class="catnote">ยังไม่มีข้อมูลในคลัง อัปโหลดเอกสารที่หน้า คลังความรู้ หรือรอซิงก์คลังกลาง</p>'}
-    <div id="stres">${STU.res==null?'<p class="src">พิมพ์คำค้น หรือกดหัวข้อด้านบนเพื่อดูบัตรความรู้และข้อสอบตัวอย่าง</p>':STU.res.length?`<p class="lbl">พบ ${STU.res.length} รายการ</p><div class="kcards stc">${STU.res.map(studyCardHTML).join('')}</div>`:'<p class="src">ไม่พบในคลัง ลองคำอื่น หรือให้ AI อธิบายจากความรู้ทั่วไป</p>'}</div>
-    ${STU.res!=null?`<div class="askbox"><p class="lbl">ให้ AI ช่วยสอน${activeAI()?'':' (ต้องตั้งค่า AI ก่อน)'}</p><div class="quick"><button type="button" class="qk" data-sq="สรุปเรื่องนี้ให้เข้าใจง่าย พร้อมประเด็นที่มักออกสอบ">สรุปให้เข้าใจง่าย</button><button type="button" class="qk" data-sq="ยกตัวอย่างโจทย์แนวข้อสอบ 2 ข้อ พร้อมเฉลยละเอียด">ขอโจทย์ตัวอย่าง</button><button type="button" class="qk" data-sq="สิ่งที่คนมักเข้าใจผิดในเรื่องนี้มีอะไรบ้าง">จุดที่มักพลาด</button></div>
-      <div class="thread" id="stth">${STU.turns.map(t=>`<div class="msg ${t.role==='user'?'me':'ai'}">${esc(t.content)}</div>`).join('')}</div>
-      <form class="askform" id="staf"><textarea id="sta" rows="2" placeholder="ถามต่อ เช่น ต่างจาก 7C ยังไง"></textarea><div class="askrow"><span class="asknote" id="stn"></span><button type="submit" class="send" ${activeAI()?'':'disabled'}>ถาม</button></div></form></div>`:''}`;
-  document.getElementById('stf').onsubmit=async e=>{e.preventDefault();STU.q=document.getElementById('stq').value.trim();STU.topic='';STU.turns=[];await studySearch();renderStudy()};
-  el.querySelectorAll('[data-tp]').forEach(b=>b.onclick=async()=>{STU.topic=STU.topic===b.dataset.tp?'':b.dataset.tp;STU.q=STU.topic;STU.turns=[];await studySearch();renderStudy()});
-  const ask=async text=>{
-    text=text.trim();if(!text||!activeAI())return;
-    const th=document.getElementById('stth'),n=document.getElementById('stn');
-    const me=document.createElement('div');me.className='msg me';me.textContent=text;th.append(me);
-    const b=document.createElement('div');b.className='msg ai wait';b.textContent='กำลังค้นและเรียบเรียง...';th.append(b);
-    const src=(STU.res||[]).slice(0,10);
-    const RULES=`คุณคือติวเตอร์เตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) ผู้เรียนกำลังศึกษาเรื่อง "${STU.q||STU.topic}"
-${src.length?`ข้อมูลจากคลังความรู้ของระบบ (แต่ละรายการมีป้ายที่มาในวงเล็บเหลี่ยม):\n${src.map(c=>`[${cardCite(c)||c.topic}] ${c.type==='q'?`ข้อสอบ: ${c.q.stem} | ตัวเลือก: ${c.q.choices.join(' / ')} | ตอบ: ${c.q.choices[c.q.answer]}`:`${c.title}: ${c.fact}`}`).join('\n')}`:'คลังความรู้ไม่มีข้อมูลเรื่องนี้'}
-วิธีตอบ:
-- ภาษาไทย อ่านง่าย เป็นขั้นตอน ห้ามใช้ markdown เช่น ** หรือ # ถ้าแบ่งข้อให้ขึ้นบรรทัดใหม่ขึ้นต้นด้วย ① ② ③
-- ใช้ข้อมูลจากคลังเป็นหลัก และปิดท้ายด้วยบรรทัด "อ้างอิง:" ตามด้วยป้ายที่ใช้ ถ้าคลังไม่มีข้อมูลพอ ให้บอกตรงๆ แล้วอธิบายจากหลักการทั่วไปโดยระบุว่าไม่ได้มาจากคลัง
-- ห้ามแต่งตัวเลขหรือระเบียบที่ไม่แน่ใจ`;
-    STU.turns.push({role:'user',content:text});
-    try{const t=await aiText([{role:'user',content:RULES},...STU.turns.slice(-8)],{onText:({text})=>{b.classList.remove('wait');b.textContent=text}});
-      b.classList.remove('wait');b.textContent=t;STU.turns.push({role:'assistant',content:t});n.textContent='';
-    }catch(e){b.remove();STU.turns.pop();n.textContent=errCopy(e&&e.code,'ถาม')}
-  };
-  const af=document.getElementById('staf');
-  if(af){af.onsubmit=e=>{e.preventDefault();const t=document.getElementById('sta');const v=t.value;t.value='';ask(v)};
-    el.querySelectorAll('[data-sq]').forEach(b=>b.onclick=()=>ask(b.dataset.sq))}
+  head('สอบถาม AI','ถามได้ทุกเรื่องเหมือนค้นใน Google · AI ตรวจจากคลังความรู้ก่อน แล้วบอกที่มาทุกครั้ง');
+  const el=document.getElementById('sheet'),ai=!!activeAI(),cnt={};for(const c of activeCards())cnt[c.topic]=(cnt[c.topic]||0)+1;
+  const sug=['7C คืออะไร','NPL คืออะไร','PDPA ต้องขอความยินยอมเมื่อไร','จัดชั้นหนี้มีกี่ชั้น','5C ต่างจาก 7C อย่างไร','ผลต่างชั้นที่สองในอนุกรม'];
+  el.innerHTML=`<form class="ask1" id="askf"><input class="tx" id="askq" type="search" placeholder="พิมพ์คำถาม เช่น 7C คืออะไร" value="${esc(STU.q)}" aria-label="คำถาม" autocomplete="off"><button class="primary">ถาม</button></form>
+    ${!STU.q?`<div class="tags">${sug.map(s=>`<button class="tag tbtn" data-sg="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+      <p class="src">${Object.keys(cnt).length?`คลังความรู้มี ${activeCards().length} เรื่อง และข้อสอบ ${bankItems().length} ข้อ ให้ AI ใช้อ้างอิง`:'คลังความรู้ยังว่าง AI จะตอบจากความรู้ทั่วไปและบอกให้ทราบ'}</p>`:''}
+    ${!ai?'<div class="hban"><b>ยังไม่ได้ใส่ AI key</b><span>ตอนนี้แสดงได้เฉพาะข้อมูลดิบจากคลัง ใส่ key แล้ว AI จะเรียบเรียงคำตอบให้อ่านเข้าใจง่ายพร้อมอ้างอิง</span><button class="ghost" id="askkey">ตั้งค่า</button></div>':''}
+    <div class="aians" id="aians" ${STU.answer&&ai?'':'hidden'}><p class="ahd">✨ คำตอบจาก AI <span class="src">ตรวจจากคลังความรู้ ${STU.src.length} รายการ</span></p><div class="abody">${STU.answer?mdLite(STU.answer):''}</div>
+      <div class="thread" id="athread">${STU.turns.slice(2).map(t=>t.role==='user'?`<div class="msg me">${esc(t.content)}</div>`:`<div class="abody msg ai">${mdLite(t.content)}</div>`).join('')}</div>
+      <form class="askform" id="askf2"><textarea id="askq2" rows="2" placeholder="ถามต่อ เช่น ยกตัวอย่างกรณีลูกค้าให้หน่อย"></textarea><div class="askrow"><span class="asknote"></span><button type="submit" class="send">ถามต่อ</button></div></form></div>
+    ${STU.q?`<details class="asrc" ${STU.open||!ai?'open':''}><summary>ข้อมูลจากคลังความรู้ที่เกี่ยวข้อง (${STU.src.length})</summary>${STU.src.length?`<div class="kcards stc">${STU.src.map(srcHTML).join('')}</div>`:'<p class="src">ไม่พบในคลังความรู้ AI ตอบจากความรู้ทั่วไป</p>'}</details>`:''}`;
+  const $=id=>document.getElementById(id);
+  const run=async q=>{STU.q=q.trim();if(!STU.q)return;STU.src=await askSearch(STU.q);STU.answer='';STU.turns=[];renderStudy();if(activeAI())askAI(STU.q,true)};
+  $('askf').onsubmit=e=>{e.preventDefault();run($('askq').value)};
+  el.querySelectorAll('[data-sg]').forEach(b=>b.onclick=()=>run(b.dataset.sg));
+  if($('askkey'))$('askkey').onclick=()=>{welcomeSkip=false;setView('welcome')};
+  if($('askf2'))$('askf2').onsubmit=e=>{e.preventDefault();const v=$('askq2').value.trim();$('askq2').value='';if(v)askAI(v,false)};
+  const det=el.querySelector('.asrc');if(det)det.addEventListener('toggle',()=>{STU.open=det.open});
+  el.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>{const c=STU.src[+b.dataset.exp];if(!c)return;$('aians').hidden=false;
+    if(!STU.turns.length){STU.turns.push({role:'user',content:'ตอบคำถามข้างบน'},{role:'assistant',content:STU.answer||'-'})}
+    askAI(`อธิบายรายการนี้จากคลังให้ละเอียด อ่านเข้าใจง่าย พร้อมตัวอย่าง: [${cardCite(c)||c.topic}] ${c.type==='q'?c.q.stem:c.title+': '+c.fact}`,false);$('aians').scrollIntoView({behavior:'smooth',block:'start'})});
 }
 
 /* ---------- ส่งเข้าคลังกลางอัตโนมัติเมื่อประมวลผลเสร็จ ---------- */
@@ -3229,10 +3353,9 @@ new MutationObserver(()=>{const on=document.querySelector('.app').classList.cont
 matchMedia('(max-width:760px)').addEventListener('change',e=>{if(!e.matches)setMenu(false)});
 document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
-document.getElementById('count').onchange=e=>{P.count=+e.target.value;save()};
+document.getElementById('count').onchange=e=>{P.count=+e.target.value;save();if(VIEW==='practice'&&R&&!R.picks.some(x=>x!=null)&&R.status!=='loading')start(true);else toast(`ชุดถัดไปจะมี ${P.count} ข้อ`)};
 document.getElementById('mode-now').onclick=()=>{P.mode='now';save();renderSide()};
 document.getElementById('mode-end').onclick=()=>{P.mode='end';save();renderSide()};
-document.getElementById('newset').onclick=()=>{if(VIEW!=='practice')setView('practice');start(true)};
 document.getElementById('resetlv').onclick=()=>{P.levels[P.subject]=1;P.weak[P.subject]=[];save();start(true)};
 if(![5,10,20,50,100].includes(P.count)){P.count=10;save()}
 renderSide();
@@ -3244,6 +3367,6 @@ if(M&&M.status==='run'){
     if(M.viol.length>=M.limit&&M.action==='submit'){setView('mock');submitMock('cheat')}
     else{graceUntil=Date.now()+1500;setView('mock');startTick();warnViol()}
   }
-}else setView(M&&M.status==='done'?'mock':'practice');
+}else setView(M&&M.status==='done'?'mock':'home');
 </script>
 </body></html>

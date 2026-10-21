@@ -125,7 +125,7 @@ function wireAsk(id,q,pick){
 var SIDE_OPEN=null;
 function renderSide(){
   if(!SIDE_OPEN)SIDE_OPEN=Object.assign({gen:false,spec:false},P.sideOpen||{});
-  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span>${aiTag(s)}<span class="lv">ระดับ ${lvOf(s.id)}</span></button>`;
+  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span>${aiTag(s)}<span class="lv">ระดับ ${lvOf(s.id)}</span>${typeof isReviewerMe==='function'&&isReviewerMe()&&s.id!=='specall'&&!String(s.id).startsWith('doc_')?`<span class="sdelx" role="button" tabindex="0" data-sdelside="${esc(s.id)}" title="ลบวิชานี้และข้อมูลทั้งหมด" aria-label="ลบวิชา ${esc(s.name)}">🗑</span>`:''}</button>`;
   const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
   const grp=(g,label,list,extra)=>`<div class="sgrp"><button class="ghead" data-g="${g}" aria-expanded="${!!SIDE_OPEN[g]}"><span class="gl">${label}</span><span class="gc">${list.length}</span><span class="caret" aria-hidden="true">▾</span></button>
     <div class="gbody" ${SIDE_OPEN[g]?'':'hidden'}>${extra||''}<div class="slist">${list.map(x=>btn(x,g==='spec')).join('')}</div>${g==='spec'?'<p class="src ddnone" hidden>ไม่พบหัวข้อที่ค้นหา</p>':''}</div></div>`;

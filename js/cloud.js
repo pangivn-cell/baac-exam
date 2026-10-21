@@ -29,7 +29,7 @@ async function cloudInit(){
         if(s.exists())ME.role=s.data().role||'user';
         else await f.fs.setDoc(fsDoc('users',u.uid),{name:ME.name,email:ME.email,role:'user',createdAt:f.fs.serverTimestamp()});
       }catch(e){}
-      renderAcct();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();
+      renderAcct();renderSide();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();
     });
     f.au.onAuthStateChanged(f.auth,()=>setTimeout(onboard,600));
     await syncCentral();
@@ -338,8 +338,7 @@ function subjAdminHTML(){
     <p class="src">เอาเครื่องหมายถูกออก = ซ่อนวิชานั้นจากเมนูและการสร้างโจทย์ (ข้อมูลในคลังยังอยู่ เปิดกลับได้) · วิชาที่เพิ่มเองใช้ AI สร้างโจทย์ วิชาเฉพาะตำแหน่งจะใช้บัตรความรู้ในคลังที่ตรงหัวข้อด้วย</p>
     <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="sgrid">${grp('gen').map(row).join('')}</div>
     <p class="lbl">${esc(SPEC_LABEL)}</p><div class="sgrid">${grp('spec').map(row).join('')}</div>
-    <div class="btnrow" style="justify-content:flex-start"><input id="snew" class="cetx" style="flex:1;min-width:160px" placeholder="ชื่อวิชาใหม่"><select id="sgrp"><option value="spec">${esc(SPEC_LABEL)}</option><option value="gen">ความรู้ความสามารถทั่วไป</option></select></div>
-    <div class="btnrow" style="justify-content:flex-start"><input id="sdesc" class="cetx" style="flex:2;min-width:200px" placeholder="ขอบเขตเนื้อหา เช่น หลักเกณฑ์ ... (ช่วยให้ AI ออกโจทย์ตรง)"><input id="skw" class="cetx" style="flex:1;min-width:160px" placeholder="คำค้น คั่นด้วย , (ไม่ใส่ก็ได้)"><button class="primary" id="sadd">เพิ่มวิชา</button></div>
+    <p class="src">เพิ่มวิชาใหม่: ตอนอัปโหลดไฟล์ เลือก "＋ เพิ่มวิชาใหม่" แล้วตั้งชื่อ วิชาจะถูกสร้างเมื่อ AI ย่อยไฟล์นั้นเสร็จและมีข้อมูลแล้ว · ลบวิชาพร้อมข้อมูล: กดรูปถังขยะ 🗑 ข้างชื่อวิชาในเมนูซ้าย</p>
     <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="ssave" disabled>บันทึกการแสดง/ซ่อน</button></div></div>`;
 }
 async function saveSubjCfg(cfg){
@@ -348,24 +347,63 @@ async function saveSubjCfg(cfg){
   toast('บันทึกรายวิชาแล้ว กำลังเปิดหน้าใหม่');setTimeout(()=>location.reload(),700);
 }
 function wireSubjAdmin(el){
-  const add=el.querySelector('#sadd');if(!add)return;
+  const sv0=el.querySelector('#ssave');if(!sv0)return;
   const cur=()=>({add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice()});
   const sv=el.querySelector('#ssave');
   el.querySelectorAll('[data-sshow]').forEach(c=>c.onchange=()=>{sv.disabled=false});
   sv.onclick=async()=>{const cfg=cur();cfg.hide=[...el.querySelectorAll('[data-sshow]')].filter(c=>!c.checked).map(c=>c.dataset.sshow);
     if(cfg.hide.length>=SUBJ_ALL.length-1){toast('ต้องเหลืออย่างน้อย 1 วิชา','bad');return}
     try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}};
-  add.onclick=async()=>{
-    const name=el.querySelector('#snew').value.trim(),group=el.querySelector('#sgrp').value,desc=el.querySelector('#sdesc').value.trim(),kw=el.querySelector('#skw').value.split(/[,，]/).map(x=>x.trim()).filter(Boolean);
-    if(!name){toast('ใส่ชื่อวิชาก่อน','bad');return}
-    if(SUBJ_ALL.some(s=>s.name.toLowerCase()===name.toLowerCase())){toast('มีวิชาชื่อนี้แล้ว','bad');return}
-    const cfg=cur();cfg.add.push({id:'u'+newId(),name,group,desc,kw:kw.length?kw:[name]});
-    try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
-  };
   el.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.sdel,s=SUBJ_ALL.find(x=>x.id===id);if(!s)return;
     if(await modal(`<p class="mt">ลบวิชา ${esc(s.name)}?</p><p class="src">บัตรความรู้และข้อสอบในคลังที่เป็นหัวข้อนี้ยังอยู่ แต่จะไม่มีวิชานี้ในเมนู ถ้าแค่ไม่อยากให้เห็นชั่วคราว ให้เอาเครื่องหมายถูกออกแทน</p>`,[{t:'ยกเลิก'},{t:'ลบวิชา',cls:'primary'}])!==1)return;
     const cfg=cur();cfg.add=cfg.add.filter(x=>x.id!==id);cfg.hide=cfg.hide.filter(x=>x!==id);
     try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
   });
+}
+
+/* ---------- ลบวิชาพร้อมข้อมูลทั้งหมด (ผู้ตรวจ/แอดมิน) จากปุ่ม 🗑 ในเมนู ----------
+   ลบบัตรความรู้และข้อสอบที่เป็นหัวข้อนี้ออกจากทุกชุดในคลังกลาง (ชุดที่ไม่เหลืออะไรถูกเอาออกทั้งชุด) และในเครื่องนี้
+   แล้วเอาวิชาออกจากเมนูของทุกคน · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ */
+async function deleteSubject(id){
+  const s=SUBJ.find(x=>x.id===id);if(!s||!isReviewerMe())return;
+  const name=s.name,cards=CARDS.filter(c=>c.topic===name),packIds=[...new Set(cards.filter(c=>String(c.docId).startsWith('c_')).map(c=>c.docId.slice(2)))];
+  const nq=cards.filter(c=>c.type==='q').length,nk=cards.length-nq;
+  const p=modal(`<p class="mt">ลบวิชา ${esc(name)} และข้อมูลทั้งหมด?</p>
+    <p>จะลบบัตรความรู้ <b>${nk}</b> ใบ และข้อสอบ <b>${nq}</b> ข้อ ที่อยู่ในวิชานี้${packIds.length?` (จากคลังกลาง ${packIds.length} ชุด ทุกคนจะไม่เห็นอีก)`:''} แล้วเอาวิชานี้ออกจากเมนูของทุกคน</p>
+    <p class="kwarn">ลบแล้วกู้คืนไม่ได้ · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ ถ้าแค่ไม่อยากให้เห็นชั่วคราว ให้ซ่อนในกล่อง จัดการรายวิชา แทน</p>
+    <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบวิชาและข้อมูลถาวร</b></span></label>`,[{t:'ยกเลิก'},{t:'ลบวิชาและข้อมูล',cls:'primary'}]);
+  let ok=false;const cb=document.getElementById('sdelok');if(cb)cb.onchange=()=>{ok=cb.checked};
+  if(await p!==1)return;
+  if(!ok){toast('ยังไม่ได้ติ๊ก เข้าใจแล้ว จึงยังไม่ลบ','bad');return}
+  toast(`กำลังลบวิชา ${name}...`);
+  try{
+    const f=await fb();
+    for(const pid of packIds){
+      const snap=await f.fs.getDoc(fsDoc('kb',pid));if(!snap.exists())continue;
+      const left=(snap.data().cards||[]).filter(c=>c.topic!==name);
+      if(!left.length)await removePack(pid);
+      else await f.fs.updateDoc(fsDoc('kb',pid),{cards:left,count:left.length,figIds:[...new Set(left.flatMap(c=>c.figs||[]))],updatedAt:f.fs.serverTimestamp()});
+    }
+    const ids=cards.map(c=>c.id);CARDS=CARDS.filter(c=>c.topic!==name);try{await kbDelMany('cards',ids)}catch(e){}
+    const custom=(SUBJ_CFG.add||[]).some(a=>a.id===id);
+    await saveSubjCfg({add:(SUBJ_CFG.add||[]).filter(a=>a.id!==id),hide:custom?(SUBJ_CFG.hide||[]).filter(x=>x!==id):[...new Set([...(SUBJ_CFG.hide||[]),id])]});
+  }catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-sdelside]');if(!b)return;e.preventDefault();e.stopPropagation();deleteSubject(b.dataset.sdelside)},true);
+document.addEventListener('keydown',e=>{const b=e.target.closest&&e.target.closest('[data-sdelside]');if(!b||(e.key!=='Enter'&&e.key!==' '))return;e.preventDefault();e.stopPropagation();deleteSubject(b.dataset.sdelside)},true);
+/* ---------- เพิ่มวิชาจากไฟล์ที่อัปโหลด: สร้างเมื่อย่อยเสร็จและมีข้อมูลแล้ว ---------- */
+async function addSubjectFromDoc(doc){
+  const n=CARDS.filter(c=>c.docId===doc.id).length;
+  if(!doc.newSubj||!doc.topic||!n)return;
+  doc.newSubj=false;await saveDoc(doc);
+  if(SUBJ_ALL.some(s=>s.name===doc.topic)&&!(SUBJ_CFG.hide||[]).includes((SUBJ_ALL.find(s=>s.name===doc.topic)||{}).id))return;
+  if(!isReviewerMe()){toast(`ไฟล์ ${doc.name} ใช้หัวข้อ "${doc.topic}" ซึ่งยังไม่มีในเมนู ให้แอดมินเพิ่มวิชาให้`);return}
+  const old=SUBJ_ALL.find(s=>s.name===doc.topic);
+  const cfg=old?{add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).filter(x=>x!==old.id)}
+    :{add:[...(SUBJ_CFG.add||[]),{id:'u'+newId(),name:doc.topic,group:doc.group||'spec',desc:doc.topicDesc||doc.topic,kw:[doc.topic]}],hide:(SUBJ_CFG.hide||[]).slice()};
+  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify(cfg))}catch(e){}
+  toast(`เพิ่มวิชา "${doc.topic}" แล้ว (มีข้อมูล ${n} รายการ) · หน้าเว็บจะเปิดใหม่เมื่อประมวลผลไฟล์อื่นเสร็จ`);
+  const wait=()=>{if(PROC_ID||PROCQ.length||(M&&M.status==='run'))return setTimeout(wait,5000);location.reload()};setTimeout(wait,2500);
 }

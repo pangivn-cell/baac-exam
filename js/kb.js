@@ -249,6 +249,7 @@ async function processDoc(doc){
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
     doc.tries=0;doc.nextTry=0;doc.errCode='';
+    if(doc.newSubj)setTimeout(()=>addSubjectFromDoc(doc),20);
     setTimeout(()=>autoShare(doc),50);
     toast(`${doc.name} พร้อมแล้ว · ${doc.kind==='exam'?`ข้อสอบ ${CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length} ข้อ`:`บัตรความรู้ ${CARDS.filter(c=>c.docId===doc.id).length} ใบ`}`);
   }catch(e){
@@ -342,7 +343,7 @@ async function digestDoc(doc){
       for(let att=0;att<2&&!r;att++){try{r=images.length?await aiVisionJSON(prompt,images):await aiJSON(prompt)}catch(e){if(!(e&&e.code==='invalid_json'))throw e}}
       const arr=(r&&Array.isArray(r.cards)?r.cards:[]).filter(c=>c&&typeof c.fact==='string'&&c.fact.trim().length>8).map(c=>{
         const figs=(Array.isArray(c.figs)?c.figs:[]).map(String).filter(id=>sent.includes(id));
-        return{id:newId(),docId:doc.id,title:String(c.title||c.fact).slice(0,120),topic:topicsOf(doc.group).includes(c.topic)?c.topic:'อื่นๆ',kind:String(c.kind||'ข้อเท็จจริง'),
+        return{id:newId(),docId:doc.id,title:String(c.title||c.fact).slice(0,120),topic:doc.topic||(topicsOf(doc.group).includes(c.topic)?c.topic:'อื่นๆ'),kind:String(c.kind||'ข้อเท็จจริง'),
           fact:c.fact.trim(),page:pages.includes(+c.page)?+c.page:(figs.length?FIGS.get(figs[0]).page:pages[0]),imp:Math.max(1,Math.min(3,Math.round(+c.importance||2))),at:Date.now(),st:{},
           figs,ansSrc:figs.length?(String(c.answerSource||'').includes('เอกสาร')?'doc':'AI'):''}});
       CARDS.push(...arr);await saveCards(arr);
@@ -388,7 +389,7 @@ async function extractDoc(doc){
       const figs=(Array.isArray(q.figs)?q.figs:[]).map(String).filter(id=>sent.includes(id)),choices=q.choices.slice(0,6).map(String);
       const ans=Number.isInteger(+q.answer)&&+q.answer>=0&&+q.answer<choices.length?+q.answer:-1;
       const steps=(Array.isArray(q.explanation)?q.explanation:[q.explanation]).filter(Boolean).map(String);
-      return{id:newId(),docId:doc.id,type:'q',no:String(q.no||''),title:q.stem.trim().slice(0,90),topic:topicsOf(doc.group).includes(q.topic)?q.topic:'อื่นๆ',kind:'ข้อสอบ',
+      return{id:newId(),docId:doc.id,type:'q',no:String(q.no||''),title:q.stem.trim().slice(0,90),topic:doc.topic||(topicsOf(doc.group).includes(q.topic)?q.topic:'อื่นๆ'),kind:'ข้อสอบ',
         fact:`${q.stem.trim()}\nตัวเลือก: ${choices.join(' | ')}${ans>=0?`\nตอบ: ${choices[ans]}`:''}`,page:pages.includes(+q.page)?+q.page:pages[0],imp:2,at:Date.now(),st:{},
         figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps,viz:cleanViz(q.viz)}}});
     CARDS.push(...arr);await saveCards(arr);
@@ -417,12 +418,25 @@ ${ch.map((p,j)=>`คู่ ${j}:\nเดิม (${cardCite(p.o)}): ${p.o.fact}\n
 
 /* ---------- upload ---------- */
 const radio=(name,val,cur,label,sub)=>`<label class="rad"><input type="radio" name="${name}" value="${val}"${val===cur?' checked':''}><span><b>${label}</b>${sub?`<span class="src">${sub}</span>`:''}</span></label>`;
+function subjPickHTML(cur){
+  const opt=s=>`<option value="${esc(s.name)}"${s.name===cur?' selected':''}>${esc(s.name)}</option>`;
+  const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec'&&s.id!=='specall');
+  return `<fieldset class="ufs"><legend>รายวิชาของไฟล์นี้</legend>
+    <select id="usub" style="width:100%" onchange="document.getElementById('unewsubw').hidden=this.value!=='__new'">
+      <option value="">ให้ AI จัดหัวข้อเอง (ไฟล์มีหลายเรื่อง)</option>
+      <optgroup label="${esc(SPEC_LABEL)}">${spec.map(opt).join('')}</optgroup><optgroup label="ความรู้ความสามารถทั่วไป">${gen.map(opt).join('')}</optgroup>
+      ${typeof isReviewerMe==='function'&&isReviewerMe()?'<option value="__new">＋ เพิ่มวิชาใหม่...</option>':''}
+    </select>
+    <div id="unewsubw" hidden><input id="unewsub" class="cetx" style="width:100%;margin-top:6px" placeholder="ชื่อวิชาใหม่"><input id="unewdesc" class="cetx" style="width:100%;margin-top:6px" placeholder="ขอบเขตเนื้อหา (ไม่ใส่ก็ได้) ช่วยให้ AI ออกโจทย์ตรง">
+      <p class="src">วิชาใหม่จะอยู่ในกลุ่มที่เลือกด้านบน และขึ้นในเมนูเมื่อ AI ย่อยไฟล์นี้เสร็จและมีข้อมูลแล้ว</p></div></fieldset>`;
+}
 function docOptHTML(g,show,kind,noShare){
   return `<fieldset class="ufs"><legend>ประเภทไฟล์</legend>${radio('uk','kb',kind||'kb','เนื้อหา/คลังข้อมูล','ตำรา คู่มือ ระเบียบ สรุปเนื้อหา · AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่')}${radio('uk','exam',kind||'kb','ข้อสอบ/ตัวอย่างโจทย์','ข้อสอบเก่า แนวข้อสอบ แบบฝึกหัด · ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่างสร้างข้อใหม่')}</fieldset>
     <fieldset class="ufs"><legend>กลุ่มวิชาของเอกสาร</legend>${radio('ug','spec',g,'ความรู้เฉพาะตำแหน่ง','สินเชื่อ NCB PDPA ระเบียบ ธ.ก.ส. ฯลฯ')}${radio('ug','gen',g,'ความรู้ความสามารถทั่วไป','คณิตศาสตร์ อนุกรม เงื่อนไข ภาษาไทย ภาษาอังกฤษ')}</fieldset>
     <label class="rad"><input type="checkbox" id="unoshare"${noShare?' checked':''}><span><b>เก็บไว้ใช้คนเดียว ไม่ส่งเข้าคลังกลาง</b><span class="src">ปกติไฟล์ที่ประมวลผลเสร็จจะถูกส่งเข้าคลังกลางให้ทุกคนใช้อัตโนมัติ ห้ามส่งเอกสารลับหรือข้อมูลส่วนบุคคลของผู้อื่น</span></span></label>
     <fieldset class="ufs"><legend>การใช้งาน</legend>${radio('us','db',show?'show':'db','ใช้เป็นฐานข้อมูลอย่างเดียว','AI ย่อยความรู้แล้วนำไปออกข้อสอบในวิชาของกลุ่มนี้ตามหัวข้อที่ตรงกัน')}${radio('us','show',show?'show':'db','แสดงเป็นรายวิชาด้วย','มีวิชาชื่อเดียวกับไฟล์ในกลุ่มนี้ ไว้ฝึกจากเอกสารนี้โดยเฉพาะ')}</fieldset>`;
 }
+const readSubjOpt=()=>{const v=(document.getElementById('usub')||{}).value||'';if(v!=='__new')return{topic:v,newSubj:false};const n=((document.getElementById('unewsub')||{}).value||'').trim();return n?{topic:n,newSubj:true,topicDesc:((document.getElementById('unewdesc')||{}).value||'').trim()}:{topic:'',newSubj:false}};
 const readDocOpt=()=>({noShare:!!(document.getElementById('unoshare')||{}).checked,kind:(document.querySelector('#dlg input[name="uk"]:checked')||{}).value||'kb',group:(document.querySelector('#dlg input[name="ug"]:checked')||{}).value||'spec',show:((document.querySelector('#dlg input[name="us"]:checked')||{}).value)==='show'});
 /* ลายนิ้วมือไฟล์ SHA-256 */
 async function fileSha(buf){try{const h=await crypto.subtle.digest('SHA-256',buf instanceof ArrayBuffer?buf:buf.buffer||buf);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('')}catch(e){return ''}}
@@ -446,8 +460,8 @@ async function handleFiles(files,opt){
   files=[...files];if(!files.length)return;
   if(VIEW!=='kb')setView('kb');
   if(!opt){
-    if(await modal(`<p class="mt">อัปโหลด ${files.length} ไฟล์</p><p class="src">${esc(files.map(f=>f.name).join(', ')).slice(0,200)}</p>${docOptHTML(P.upGroup||'spec',!!P.upShow,P.upKind||'kb')}`,[{t:'ยกเลิก'},{t:'อัปโหลด',cls:'primary'}])!==1)return;
-    opt=readDocOpt();P.upGroup=opt.group;P.upShow=opt.show;P.upKind=opt.kind;save();
+    if(await modal(`<p class="mt">อัปโหลด ${files.length} ไฟล์</p><p class="src">${esc(files.map(f=>f.name).join(', ')).slice(0,200)}</p>${subjPickHTML('')}${docOptHTML(P.upGroup||'spec',!!P.upShow,P.upKind||'kb')}`,[{t:'ยกเลิก'},{t:'อัปโหลด',cls:'primary'}])!==1)return;
+    opt={...readDocOpt(),...readSubjOpt()};P.upGroup=opt.group;P.upShow=opt.show;P.upKind=opt.kind;save();
   }
   for(const f of files){
     const job={name:f.name,msg:'กำลังอ่านไฟล์...'};UPQ.push(job);renderKB();
@@ -461,7 +475,7 @@ async function handleFiles(files,opt){
       const dupCentral=centralDupOf(sha,f.name);
       if(dupCentral){UPQ.splice(UPQ.indexOf(job),1);await attachToCentral(dupCentral,f.name,r.buf,job);renderKB();continue}
       if(old){const ids=CARDS.filter(c=>c.docId===old.id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==old.id);try{await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(old.id).map(f=>f.id));DOCS.splice(DOCS.indexOf(old),1)}
-      const doc={id:old?old.id:newId(),name:f.name,sha,type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',noShare:!!opt.noShare,
+      const doc={id:old?old.id:newId(),name:f.name,sha,topic:opt.topic||'',newSubj:!!opt.newSubj,topicDesc:opt.topicDesc||'',type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',noShare:!!opt.noShare,
         figPages:r.figPages||[],stage:(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest',ocrDone:[],digDone:0,summ:[],err:'',
         warn:r.figSkipped?`มีรูป ${r.figSkipped} รูปที่ระบบแสดงไม่ได้ (เช่น EMF/WMF หรือรูปที่ลิงก์ไว้นอกไฟล์) ถ้าเป็นรูปโจทย์ แนะนำบันทึกเอกสารเป็น PDF แล้วอัปโหลดใหม่`:''};
       if(r.figs&&r.figs.length)await saveFigs(r.figs.map(f=>({...f,docId:doc.id})));

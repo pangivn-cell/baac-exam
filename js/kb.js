@@ -515,7 +515,12 @@ function renderKB(){
   const isDone=d=>d.stage==='ready'&&!isBusy(d)&&!d.err&&!d.prog&&!d.shareErr&&d.subStatus!=='rejected';
   const mine=DOCS.filter(d=>!d.central).slice().reverse(),doing=mine.filter(d=>!isDone(d)),done=mine.filter(isDone);
   const empty=done.filter(d=>!CARDS.some(c=>c.docId===d.id)&&!sameInCentral(d)).length;KB_DONE_N=done.length;
-  if(KB_TAB==='hist'){
+  if(KB_TAB==='central'){
+    head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
+    el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+      ${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}`;
+    document.getElementById('kbback').onclick=()=>{KB_TAB='main';renderKB();window.scrollTo({top:0})};
+  }else if(KB_TAB==='hist'){
     head('ประวัติการอัปโหลด','ไฟล์ที่ประมวลผลเสร็จแล้ว · ดู แก้ ตั้งค่า หรือลบได้ที่นี่');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
       <p class="lbl">เสร็จแล้ว ${done.length} ไฟล์${empty?` · ในนี้ ${empty} ไฟล์ไม่พบเนื้อหา (ดูคำแนะนำในแต่ละไฟล์)`:''}</p>
@@ -532,7 +537,7 @@ function renderKB(){
     ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${mine.length} ไฟล์ (กำลังทำ/มีปัญหา ${doing.length} · เสร็จแล้ว ${done.length}) · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
     ${doing.map(docBox).join('')}
     ${!doing.length&&done.length?'<p class="src" style="text-align:center;margin:0">ไม่มีไฟล์ที่กำลังประมวลผลหรือมีปัญหา · ไฟล์ที่เสร็จแล้วดูได้ที่ปุ่ม 📁 ประวัติการอัปโหลด</p>':''}
-    ${centralListHTML()}`;
+    `;
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
   const drop=document.getElementById('drop');
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
@@ -588,13 +593,13 @@ function cloudBoxHTML(){
   const packs=DOCS.filter(d=>d.central),nq=CARDS.filter(c=>String(c.docId).startsWith('c_')&&c.type==='q').length,nk=CARDS.filter(c=>String(c.docId).startsWith('c_')&&c.type!=='q').length;
   return `<div class="cloudbox"><p><b>☁ คลังกลาง</b> · ${packs.length} ชุด · บัตรความรู้ ${nk} ใบ · ข้อสอบ ${nq} ข้อ</p>
     <p class="src">${CLOUD.ok===false?esc(CLOUD.err):CLOUD.syncing?'กำลังซิงก์...':CLOUD.last?`ซิงก์ล่าสุด ${fmtDate(CLOUD.last)} · ทุกคนที่เปิดเว็บได้ข้อมูลชุดเดียวกันนี้`:'กำลังเชื่อมต่อ...'}</p>
-    <p class="src">${ME?'เอกสารที่ประมวลผลเสร็จแล้ว กด "ส่งเข้าคลังกลาง" เพื่อแบ่งให้ทุกคน (ผู้ตรวจอนุมัติก่อน)':'เข้าสู่ระบบ (แถบซ้าย) เพื่อส่งเอกสารเข้าคลังกลางให้ทุกคนใช้'}</p>
-    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
+    <p class="src">${ME?'เอกสารที่ประมวลผลเสร็จแล้วจะส่งเข้าคลังกลางให้อัตโนมัติ (ผู้ตรวจอนุมัติก่อน)':'เข้าสู่ระบบ (แถบซ้าย) เพื่อส่งเอกสารเข้าคลังกลางให้ทุกคนใช้'}</p>
+    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
 }
 function centralListHTML(){
   const packs=DOCS.filter(d=>d.central);if(!packs.length)return '';
-  return `<p class="lbl">ชุดในคลังกลาง ${packs.length} ชุด (ทุกคนใช้ร่วมกัน)</p>`+packs.slice().reverse().map(d=>{const nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',summ=(d.summ||[]).filter(Boolean);
-    return `<div class="kdoc" data-cid="${d.id}"><div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${ex?'ข้อสอบ':'บัตรความรู้'} ${nc} ${ex?'ข้อ':'ใบ'} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ส่งโดย ${esc(d.owner||'-')}</p></div><span class="tag" style="white-space:nowrap">คลังกลาง</span></div>
+  return `<p class="lbl">ชุดในคลังกลาง ${packs.length} ชุด · อนุมัติแล้วทั้งหมด ทุกคนใช้ร่วมกัน</p><p class="src">ป้ายสีฟ้า = วิชาที่โจทย์/ความรู้ในชุดนั้นไปอยู่ พร้อมจำนวน · "แสดงเป็นรายวิชา" = ให้ชุดนี้ขึ้นเป็นวิชาของตัวเองในเมนูซ้าย</p>`+packs.slice().reverse().map(d=>{const nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',summ=(d.summ||[]).filter(Boolean);
+    return `<div class="kdoc" data-cid="${d.id}"><div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">ประเภท: ${ex?`คลังข้อสอบ ${nc} ข้อ (ใช้ออกข้อสอบตรงๆ และเป็นแบบอย่างโจทย์)`:`บัตรความรู้ ${nc} ใบ (AI ใช้คิดโจทย์ใหม่)`} · กลุ่ม${d.group==='gen'?'ความรู้ทั่วไป':'เฉพาะตำแหน่ง'} · ส่งโดย ${esc(d.owner||'-')}</p></div><span class="substat ok" style="white-space:nowrap">✓ อนุมัติแล้ว</span></div>
       ${docTopics(d).length?`<div class="tags">${docTopics(d).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${ex?'ข้อสอบ':'บัตรความรู้'} (${nc})${isReviewerMe()?' · ผู้ตรวจแก้ได้':''}`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
@@ -603,6 +608,7 @@ function centralListHTML(){
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>syncCentral();
   const g=document.getElementById('gorev');if(g)g.onclick=()=>setView('review');
+  const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
   const h=document.getElementById('gohist');if(h)h.onclick=()=>{KB_TAB='hist';renderKB();window.scrollTo({top:0})};
   el.querySelectorAll('.kdoc[data-cid]').forEach(box=>{const d=DOCS.find(x=>x.id===box.dataset.cid);if(!d)return;
     const go=box.querySelector('[data-go]');if(go)go.onclick=()=>{P.subject='doc_'+d.id;save();setView('practice');renderSide();start(true)};

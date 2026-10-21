@@ -1339,7 +1339,7 @@ function explainHTML(q,pick){
   if(q.expViz)h+=renderViz(q.expViz);
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
-  if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}</p>`;
+  if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
   if(typeof cloudCardOf==='function'&&cloudCardOf(q))h+=`<div><button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button></div>`;
   return h+`</div>`;
 }
@@ -1856,6 +1856,7 @@ function activeCards(){
 }
 const docOf=c=>DOCS.find(d=>d.id===c.docId);
 function cardCite(c){const d=docOf(c);return d?`${d.name} ${d.unit} ${c.page}`:''}
+function upBy(c){const d=c&&docOf(c);if(!d)return'';return d.central?(d.owner||'ไม่ระบุ'):'คุณ (ไฟล์ในเครื่องนี้)'}
 function cardSrc(c){const d=docOf(c),pg=d&&d.pages.find(p=>p.n===+c.page);
   const figs=(c.figs||[]).map(id=>FIGS.get(id)).filter(Boolean);
   return `บัตรความรู้: ${c.title}\n${c.fact}${figs.length?`\nรูปประกอบ: ${figs.map(f=>f.desc||'รูปโจทย์').join(' / ')}${c.ansSrc==='AI'?'\n(เฉลยของรูปนี้ AI ดูจากรูปเอง เอกสารไม่มีเฉลย)':''}`:''}${pg&&pg.text?`\n\nเนื้อหาต้นฉบับ (${cardCite(c)}):\n${pg.text.slice(0,2500)}`:c.src?`\n\nเนื้อหาต้นฉบับ (${cardCite(c)}):\n${c.src}`:''}`}
@@ -1873,7 +1874,7 @@ function recordCards(items,picks){
 }
 function withCard(q,doc){
   const c=q.card&&CARDS.find(x=>x.id===q.card);
-  if(c){q.cite=cardCite(c);q.srcText=cardSrc(c);if(!q.topic)q.topic=c.topic;
+  if(c){q.cite=cardCite(c);q.by=upBy(c);q.srcText=cardSrc(c);if(!q.topic)q.topic=c.topic;
     const figs=(c.figs||[]).filter(id=>FIGS.has(id));
     if(figs.length){q.fig=figs.includes(q.fig)?q.fig:figs[0];q.ansAI=c.ansSrc==='AI'}else q.fig='';}
   else{q.card='';q.fig='';withCite(q,doc)}
@@ -3230,22 +3231,56 @@ function renderHome(){
 
 /* ---------- สอบถาม AI: ตอบแบบ Google แต่ตรวจจากคลังความรู้ก่อน แล้วอ้างอิงที่มา ---------- */
 var STU={q:'',src:[],turns:[],answer:'',busy:false,ctl:null,open:false};
-const STOPW=['คืออะไร','หมายถึงอะไร','หมายถึง','อย่างไร','ยังไง','อะไรบ้าง','อะไร','คือ','ไหม','บ้าง','ครับ','ค่ะ','คะ','หน่อย','ช่วย','อธิบาย','เกี่ยวกับ','เรื่อง'];
+const STOPW=['มีอะไรบ้าง','มีอะรัยบ้าง','มีอะไร','มีอะรัย','คืออะไร','คืออะรัย','หมายถึงอะไร','หมายถึง','อย่างไร','ยังไง','ยังงัย','อะไรบ้าง','อะรัยบ้าง','อะไร','อะรัย','อะไล','อาราย','คือ','ไหม','มั้ย','บ้าง','ครับ','ค่ะ','คะ','หน่อย','ช่วย','อธิบาย','เกี่ยวกับ','เรื่อง'];
 function qTokens(q){
   let t=q.toLowerCase().replace(/[?？!.,()"'“”]/g,' ');
   return [...new Set(t.split(/\s+/).map(w=>{let x=w;for(let k=0;k<3;k++)for(const s of STOPW){if(x.endsWith(s)&&x.length>s.length)x=x.slice(0,-s.length);if(x.startsWith(s)&&x.length>s.length)x=x.slice(s.length)}return x}).filter(w=>w.length>=2&&!STOPW.includes(w)))];
 }
-async function askSearch(q){
-  const toks=qTokens(q),all=[...activeCards(),...bankItems()];if(!toks.length)return[];
-  const topics=new Set();
-  for(const [,name,,kw] of SPEC)if(toks.some(t=>name.toLowerCase()===t||kw.some(k=>k.toLowerCase()===t)))topics.add(name);
-  for(const n of GEN_TOPICS)if(toks.some(t=>n.toLowerCase().includes(t)&&t.length>=3))topics.add(n);
-  const sc=all.map(c=>{const t=(c.title||'').toLowerCase(),f=(c.fact||'').toLowerCase();let s=0;
-    for(const w of toks){if(t.includes(w))s+=4;s+=Math.min(6,countHits(f,[w]))*1.5}
-    if(topics.has(c.topic)&&s>0)s+=3;if(c.type==='q')s*=.7;return{c,s}}).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
+/* ค้นแบบไม่สนเว้นวรรค/ตัวพิมพ์ และยอมให้สะกดผิดเล็กน้อย เช่น Marketcondut → Market Conduct */
+const nz=x=>String(x||'').toLowerCase().replace(/[\s\-_.]+/g,'');
+function editDist(a,b,max){
+  if(Math.abs(a.length-b.length)>max)return max+1;let prev=[...Array(b.length+1).keys()];
+  for(let i=1;i<=a.length;i++){const cur=[i];let lo=i;
+    for(let j=1;j<=b.length;j++){cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));lo=Math.min(lo,cur[j])}
+    if(lo>max)return max+1;prev=cur}
+  return prev[b.length];
+}
+function fuzzyEq(tok,term){const a=nz(tok),b=nz(term);if(a.length<3||b.length<3)return a===b;
+  if(a===b||(a.length>=4&&b.includes(a))||(b.length>=4&&a.includes(b)))return true;
+  return editDist(a,b,a.length>=8?2:a.length>=5?1:0)<=(a.length>=8?2:a.length>=5?1:0)}
+/* หาว่าคำค้นตรงกับวิชา/หัวข้อไหน แล้วเติมคำที่ถูกต้องเข้าไปค้นด้วย */
+function expandQuery(toks){
+  const topics=new Set(),extra=new Set();
+  for(const [,name,,kw] of SPEC)for(const term of [name,...kw])if(toks.some(t=>fuzzyEq(t,term))){topics.add(name);extra.add(name);break}
+  for(const n of GEN_TOPICS)if(toks.some(t=>fuzzyEq(t,n)))topics.add(n);
+  /* คำในการ์ดเอง (ชื่อเรื่อง/หัวข้อ) ที่สะกดใกล้กับคำค้น */
+  const words=new Set();for(const c of CARDS)for(const w of String((c.title||'')+' '+(c.topic||'')).split(/[\s,()/]+/))if(/[a-z]/i.test(w)&&w.length>=4)words.add(w);
+  for(const t of toks)if(/[a-z]/i.test(t)&&t.length>=5)for(const w of words)if(nz(w)!==nz(t)&&fuzzyEq(t,w))extra.add(w);
+  return{topics,extra:[...extra]};
+}
+async function askSearch(q,more){
+  const toks=[...new Set([...qTokens(q),...(more||[]).map(x=>x.toLowerCase())])],all=[...activeCards(),...bankItems()];if(!toks.length)return[];
+  const {topics,extra}=expandQuery(toks),terms=[...new Set([...toks,...extra.map(x=>x.toLowerCase())])].map(nz).filter(w=>w.length>=2);
+  const qn=nz(q+' '+(more||[]).join(' ')),fx=[...new Map(extra.filter(x=>!qn.includes(nz(x))).map(x=>[nz(x),x])).values()];
+  STU.fixed=fx.filter(x=>!fx.some(y=>y!==x&&nz(y).includes(nz(x))));
+  const sc=all.map(c=>{const t=nz(c.title),f=nz(c.fact+' '+(c.type==='q'?c.q.stem:''));let s=0;
+    for(const w of terms){if(t.includes(w))s+=4;s+=Math.min(6,countHits(f,[w]))*1.5}
+    if(topics.has(c.topic))s+=s>0?3:3+(c.imp||2)*.3;if(c.type==='q')s*=.7;return{c,s}}).filter(x=>x.s>=3).sort((a,b)=>b.s-a.s);
   const res=sc.slice(0,12).map(x=>x.c);
-  if(canEmbed()){try{for(const c of await searchCards(toks.join(' '),8))if(!res.includes(c))res.push(c)}catch(e){}}
+  if(canEmbed()){try{for(const c of await searchCards([...toks,...extra].join(' '),8))if(!res.includes(c))res.push(c)}catch(e){}}
   return res.slice(0,14);
+}
+/* ถ้ายังไม่เจออะไร ให้ AI แก้คำผิดแล้วค้นอีกรอบ */
+async function askSearchAI(q){
+  let res=await askSearch(q);if(res.length||!activeAI())return res;
+  try{const names=SPEC.map(x=>x[1]).concat(GEN_TOPICS).join(', ');
+    const r=await aiJSON(`คำค้นนี้อาจพิมพ์ผิดหรือสะกดไม่ตรง: "${q}"
+แก้คำผิดแล้วแยกคำสำคัญสำหรับค้นในคลังความรู้เรื่องการสอบงานสินเชื่อ ธ.ก.ส. (หัวข้อที่มี: ${names})
+ตอบเป็น JSON เท่านั้น: {"fixed":"คำค้นที่แก้แล้ว","keywords":["คำสำคัญ ทั้งไทยและอังกฤษถ้ามี ไม่เกิน 6 คำ"]}`);
+    const kw=[...(r.keywords||[]),r.fixed||''].filter(Boolean).map(String);
+    if(kw.length){res=await askSearch(r.fixed||q,kw);if(res.length&&r.fixed)STU.fixed=[r.fixed]}
+  }catch(e){}
+  return res;
 }
 /* markdown subset → safe HTML (escape first, then headings / bullets / bold) */
 function mdLite(t){
@@ -3266,7 +3301,7 @@ function askRules(){
   const src=STU.src.slice(0,10);
   return `คุณคือติวเตอร์ผู้เชี่ยวชาญเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) ตำแหน่งงานสินเชื่อ
 ผู้เรียนถามว่า: "${STU.q}"
-${src.length?`ข้อมูลที่ระบบค้นได้จากคลังความรู้ (แต่ละรายการมีป้ายที่มาในวงเล็บเหลี่ยม):\n${src.map(c=>`[${cardCite(c)||c.topic}] ${c.type==='q'?`ข้อสอบ: ${c.q.stem} | ตัวเลือก: ${c.q.choices.join(' / ')} | ตอบ: ${c.q.choices[c.q.answer]}`:`${c.title}: ${c.fact}`}`).join('\n')}`:'คลังความรู้ไม่มีข้อมูลที่ตรงกับคำถามนี้'}
+${src.length?`ข้อมูลที่ระบบค้นได้จากคลังความรู้ (แต่ละรายการมีป้ายที่มาในวงเล็บเหลี่ยม):\n${src.map(c=>`[${cardCite(c)||c.topic}${upBy(c)?` · อัปโหลดโดย ${upBy(c)}`:''}] ${c.type==='q'?`ข้อสอบ: ${c.q.stem} | ตัวเลือก: ${c.q.choices.join(' / ')} | ตอบ: ${c.q.choices[c.q.answer]}`:`${c.title}: ${c.fact}`}`).join('\n')}`:'คลังความรู้ไม่มีข้อมูลที่ตรงกับคำถามนี้'}
 
 วิธีตอบ (ให้ได้แบบสรุปของ Google ที่อ่านแล้วเข้าใจทันที):
 - ตรวจข้อมูลจากคลังก่อน ใช้เฉพาะรายการที่เกี่ยวข้องกับคำถามจริงๆ รายการที่ไม่เกี่ยวให้ข้ามไป
@@ -3296,7 +3331,7 @@ function srcHTML(c,i){
   const d=docOf(c),figs=(c.figs||[]).filter(id=>FIGS.has(id)||CFIG.has(id));
   const body=c.type==='q'?`<p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p></details>`
     :`<p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>`;
-  return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}
+  return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))} · อัปโหลดโดย ${esc(upBy(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}
     ${activeAI()?`<div><button class="ghost" data-exp="${i}">✨ ให้ AI อธิบายเรื่องนี้ให้ละเอียด</button></div>`:''}</div>`;
 }
 function renderStudy(){
@@ -3308,12 +3343,12 @@ function renderStudy(){
     ${!STU.q?`<div class="tags">${sug.map(s=>`<button class="tag tbtn" data-sg="${esc(s)}">${esc(s)}</button>`).join('')}</div>
       <p class="src">${Object.keys(cnt).length?`คลังความรู้มี ${activeCards().length} เรื่อง และข้อสอบ ${bankItems().length} ข้อ ให้ AI ใช้อ้างอิง`:'คลังความรู้ยังว่าง AI จะตอบจากความรู้ทั่วไปและบอกให้ทราบ'}</p>`:''}
     ${!ai?'<div class="hban"><b>ยังไม่ได้ใส่ AI key</b><span>ตอนนี้แสดงได้เฉพาะข้อมูลดิบจากคลัง ใส่ key แล้ว AI จะเรียบเรียงคำตอบให้อ่านเข้าใจง่ายพร้อมอ้างอิง</span><button class="ghost" id="askkey">ตั้งค่า</button></div>':''}
-    <div class="aians" id="aians" ${STU.answer&&ai?'':'hidden'}><p class="ahd">✨ คำตอบจาก AI <span class="src">ตรวจจากคลังความรู้ ${STU.src.length} รายการ</span></p><div class="abody">${STU.answer?mdLite(STU.answer):''}</div>
+    <div class="aians" id="aians" ${STU.answer&&ai?'':'hidden'}><p class="ahd">✨ คำตอบจาก AI <span class="src">ตรวจจากคลังความรู้ ${STU.src.length} รายการ${(STU.fixed||[]).length?` · ค้นหาเป็น: ${esc(STU.fixed.join(', '))}`:''}</span></p><div class="abody">${STU.answer?mdLite(STU.answer):''}</div>
       <div class="thread" id="athread">${STU.turns.slice(2).map(t=>t.role==='user'?`<div class="msg me">${esc(t.content)}</div>`:`<div class="abody msg ai">${mdLite(t.content)}</div>`).join('')}</div>
       <form class="askform" id="askf2"><textarea id="askq2" rows="2" placeholder="ถามต่อ เช่น ยกตัวอย่างกรณีลูกค้าให้หน่อย"></textarea><div class="askrow"><span class="asknote"></span><button type="submit" class="send">ถามต่อ</button></div></form></div>
-    ${STU.q?`<details class="asrc" ${STU.open||!ai?'open':''}><summary>ข้อมูลจากคลังความรู้ที่เกี่ยวข้อง (${STU.src.length})</summary>${STU.src.length?`<div class="kcards stc">${STU.src.map(srcHTML).join('')}</div>`:'<p class="src">ไม่พบในคลังความรู้ AI ตอบจากความรู้ทั่วไป</p>'}</details>`:''}`;
+    ${STU.q?`<details class="asrc" ${STU.open||!ai?'open':''}><summary>ข้อมูลจากคลังความรู้ที่เกี่ยวข้อง (${STU.src.length})${(STU.fixed||[]).length?` · ค้นหาเป็น: ${esc(STU.fixed.join(', '))}`:''}</summary>${STU.src.length?`<div class="kcards stc">${STU.src.map(srcHTML).join('')}</div>`:'<p class="src">ไม่พบในคลังความรู้ AI ตอบจากความรู้ทั่วไป</p>'}</details>`:''}`;
   const $=id=>document.getElementById(id);
-  const run=async q=>{STU.q=q.trim();if(!STU.q)return;STU.src=await askSearch(STU.q);STU.answer='';STU.turns=[];renderStudy();if(activeAI())askAI(STU.q,true)};
+  const run=async q=>{STU.q=q.trim();if(!STU.q)return;STU.fixed=[];STU.src=await askSearchAI(STU.q);STU.answer='';STU.turns=[];renderStudy();if(activeAI())askAI(STU.q,true)};
   $('askf').onsubmit=e=>{e.preventDefault();run($('askq').value)};
   el.querySelectorAll('[data-sg]').forEach(b=>b.onclick=()=>run(b.dataset.sg));
   if($('askkey'))$('askkey').onclick=()=>{welcomeSkip=false;setView('welcome')};

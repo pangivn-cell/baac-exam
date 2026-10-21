@@ -399,6 +399,7 @@ nav.subjects{gap:14px}
         <div><h1 id="title">เงื่อนไขสัญลักษณ์</h1><p id="desc"></p></div>
         <div class="pctl" id="pctl"><label class="fl" for="count">จำนวนข้อ</label><select id="count"><option value="5">5 ข้อ</option><option value="10">10 ข้อ</option><option value="20">20 ข้อ</option><option value="50">50 ข้อ</option><option value="100">100 ข้อ</option></select>
           <div class="seg" role="group" aria-label="การเฉลย"><button id="mode-now" aria-pressed="true">เฉลยทันที</button><button id="mode-end" aria-pressed="false">เฉลยตอนท้าย</button></div>
+          <button class="primary" id="newq" type="button">🔄 สร้างโจทย์ชุดใหม่</button>
           <button class="ghost" id="resetlv">เริ่มระดับ 1 ใหม่</button></div>
       </div>
       <section class="sheet" id="sheet" aria-live="polite"></section>
@@ -3360,6 +3361,11 @@ document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>setView(b.da
 document.getElementById('count').onchange=e=>{P.count=+e.target.value;save();if(VIEW==='practice'&&R&&!R.picks.some(x=>x!=null)&&R.status!=='loading')start(true);else toast(`ชุดถัดไปจะมี ${P.count} ข้อ`)};
 document.getElementById('mode-now').onclick=()=>{P.mode='now';save();renderSide()};
 document.getElementById('mode-end').onclick=()=>{P.mode='end';save();renderSide()};
+document.getElementById('newq').onclick=async()=>{
+  const done=R&&R.status==='play'&&R.picks.some(x=>x!=null);
+  if(done&&await modal('<p class="mt">สร้างโจทย์ชุดใหม่?</p><p class="src">ชุดที่กำลังทำอยู่จะถูกยกเลิก และไม่นับคะแนน</p>',[{t:'ทำชุดเดิมต่อ'},{t:'สร้างชุดใหม่',cls:'primary'}])!==1)return;
+  start(true);window.scrollTo({top:0,behavior:'smooth'});
+};
 document.getElementById('resetlv').onclick=()=>{P.levels[P.subject]=1;P.weak[P.subject]=[];save();start(true)};
 if(![5,10,20,50,100].includes(P.count)){P.count=10;save()}
 renderSide();

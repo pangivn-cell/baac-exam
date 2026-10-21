@@ -413,7 +413,7 @@ nav.subjects{gap:14px}
 
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-21d';
+const BUILD='2026-10-21e';
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -1893,12 +1893,22 @@ const decorFig=id=>{const d=figDesc(id);return!!d&&DECOR_FIG.test(d)&&!INFO_FIG.
 /* okFig = ใช้ทำโจทย์จากบัตรความรู้ได้ · okQFig = รูปของข้อสอบที่ดึงมาจากไฟล์ข้อสอบ (รูปง่ายๆ ก็อาจเป็นโจทย์ได้) */
 const okFig=id=>FIGS.has(id)&&!junkFig(id)&&!decorFig(id);
 const okQFig=id=>FIGS.has(id)&&!junkFig(id);
+/* แสดงรูปเฉพาะเมื่อโจทย์อ้างถึงรูปจริง หรือตัวเลือกเป็นรูป
+   รูปที่เป็นภาพหน้าจอของโจทย์+ตัวเลือก (ถอดเป็นข้อความแล้ว) ไม่แสดง เพราะมักมีเฉลยติดมาในรูป */
+const FIG_REF=/(จาก|ตาม|ดัง|ใน|พิจารณา|ดู)\s*(รูป|ภาพ)(?!แบบ)|(?<![ก-๙])(รูป|ภาพ)(ที่|ต่อไปนี้|ข้าง|ด้าน|ประกอบ|นี้|ใด|\s*\d)|ตาราง|แผนภูมิ|แผนผัง|แผนภาพ|ผังงาน|กราฟ(?!ิก)|แผนที่|ไดอะแกรม|figure|diagram|chart|table|graph|picture/i;
+function figNeeded(q){
+  const st=String(q.stem||'').trim(),ch=(q.choices||[]).map(x=>String(x||'').trim());
+  if(FIG_REF.test(st))return true;
+  if(st.length<15)return true;
+  return ch.length>0&&ch.every(x=>x.length<=3||/^(รูป|ภาพ)\s*\S{0,3}$/.test(x));
+}
 function withCard(q,doc){
   const c=q.card&&CARDS.find(x=>x.id===q.card);
   if(c){q.cite=cardCite(c);q.by=upBy(c);q.srcText=cardSrc(c);if(!q.topic)q.topic=c.topic;
     const figs=(c.figs||[]).filter(c.type==='q'?okQFig:okFig);
     if(figs.length){q.fig=figs.includes(q.fig)?q.fig:figs[0];q.ansAI=c.ansSrc==='AI'}else q.fig='';}
   else{q.card='';q.fig='';withCite(q,doc)}
+  if(q.fig&&!figNeeded(q)){q.fig='';q.ansAI=false}
   return q;
 }
 const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(okFig));
@@ -2289,6 +2299,7 @@ async function ocrDoc(doc){
    - box_2d คือ [ymin, xmin, ymax, xmax] สเกล 0–1000 ของภาพหน้านั้น ครอบให้ครบทั้งรูป รวมป้ายกำกับและตัวเลือก ก ข ค ง ที่เป็นส่วนของรูป
    - ถ้าโจทย์ข้อเดียวมีรูปโจทย์และรูปตัวเลือกอยู่ใกล้กัน ให้ครอบรวมเป็นกรอบเดียว
    - desc อธิบายรูปสั้นๆ ว่าเป็นรูปอะไร และถ้าเป็นโจทย์ ถามอะไร
+   - ถ้าโจทย์และตัวเลือกเป็นข้อความที่อ่านได้ (เช่น ภาพหน้าจอแบบทดสอบ สไลด์คำถาม) ให้ถอดเป็นข้อความใน text อย่างเดียว ห้ามตัดเป็นรูป เพราะรูปแบบนี้มักมีเฉลยติดมา (เช่น ตัวเลือกที่ถูกไฮไลต์สีต่าง) ตัดรูปเฉพาะเมื่อโจทย์อ้างถึงรูป ตาราง กราฟ แผนภูมิ หรือตัวเลือกเป็นรูป
    - ห้ามตัดลายเซ็น ลายมือชื่อ โลโก้ ตราสัญลักษณ์ ตราประทับ รูปถ่ายบุคคล QR code ลายน้ำ และภาพตกแต่ง เพราะใช้ออกข้อสอบไม่ได้
    - หน้าที่ไม่มีรูปแบบนี้ให้ figures เป็น []
 ตอบเป็น JSON เท่านั้น: {"pages":[{"n":${nums[0]},"text":"ข้อความทั้งหน้า","figures":[{"box_2d":[100,80,600,920],"desc":"คำอธิบายรูป"}]}]}`,imgs.map(({mime,data})=>({mime,data})));
@@ -2378,7 +2389,7 @@ ${VIZ_RULE}
 - topic เลือกจาก: ${topicsOf(doc.group).join(', ')} หรือ อื่นๆ
 - page คือเลขในป้าย [${doc.unit} ...] ของข้อนั้น
 - ข้ามข้อที่ไม่ใช่ปรนัย และข้อที่โจทย์ขาดหายจนทำไม่ได้${figs.length?`
-- มีภาพแนบ ${figs.length} ภาพ เรียงตามลำดับรหัส: ${figs.join(', ')} ในเนื้อหาจะเห็นป้าย [รูป รหัส] ตรงตำแหน่งของรูป ข้อที่ต้องดูรูปให้ใส่ figs เป็นรหัสรูปนั้น ห้ามทิ้งรูปของโจทย์`:''}
+- มีภาพแนบ ${figs.length} ภาพ เรียงตามลำดับรหัส: ${figs.join(', ')} ในเนื้อหาจะเห็นป้าย [รูป รหัส] ตรงตำแหน่งของรูป ข้อที่ต้องดูรูปให้ใส่ figs เป็นรหัสรูปนั้น (ถ้ารูปเป็นแค่ภาพของตัวโจทย์และตัวเลือกที่เป็นข้อความ ให้ถอดเป็น stem/choices แล้วให้ figs เป็น [] เพราะรูปแบบนี้มักมีเฉลยติดมา) ห้ามทิ้งรูปของโจทย์`:''}
 - ห้ามใช้ markdown
 ${keyText?`\nส่วนเฉลยที่พบในเอกสาร (ใช้จับคู่กับเลขข้อ):\n${keyText}\n`:''}
 เนื้อหา:

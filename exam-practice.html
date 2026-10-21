@@ -252,6 +252,35 @@ nav.subjects{gap:14px}
 .cloudbox p{margin:0}
 .substat{font-size:13px;padding:1px 8px;border-radius:999px;background:var(--unk-soft);color:var(--unk)}
 .substat.ok{background:var(--ok-soft);color:var(--ok)} .substat.bad{background:var(--bad-soft);color:var(--bad)}
+.acct{display:flex;flex-direction:column;gap:6px}
+.acard{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--sheet);border:1px solid var(--line)}
+.av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--sheet);font:600 18px var(--f-display);flex:0 0 auto}
+.ainfo{display:flex;flex-direction:column;min-width:0}
+.aname{all:unset;cursor:pointer;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aname:hover{text-decoration:underline}.aname:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.loginbig{font:600 16px var(--f-body);padding:11px 14px;border-radius:12px;border:none;background:var(--accent);color:var(--sheet);cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.15)}
+.loginbig:hover{filter:brightness(1.08)}
+.logout{font:600 14px var(--f-body);padding:8px 12px;border-radius:10px;border:1.5px solid var(--bad);background:transparent;color:var(--bad);cursor:pointer}
+.logout:hover{background:var(--bad-soft)}
+.acct .src{margin:0}
+.vz{margin:0;align-self:stretch;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--paper)}
+.vz figcaption{font-weight:600;font-size:14px}
+.vz svg{width:100%;max-width:480px;height:auto;align-self:center;color:var(--ink)}
+.vzg{stroke:var(--line);stroke-width:1}.vza{stroke:var(--ink-2);stroke-width:1.2}
+.vzl{fill:var(--ink-2);font:12px var(--f-body)}.vzv{fill:var(--ink);font:600 11px var(--f-body)}.vzp{fill:var(--ink);font:600 13px var(--f-body);paint-order:stroke;stroke:var(--paper);stroke-width:3px}
+.vzt{overflow-x:auto}.vz table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+.vz th,.vz td{border:1px solid var(--line);padding:6px 10px;text-align:left}.vz th{background:var(--accent-soft)}.vz td.n{text-align:right}
+.vzleg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;justify-content:center}.vzleg.col{flex-direction:column;justify-content:center}
+.vzleg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.vzpie{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap}.vzpie svg{max-width:200px}
+.vzu{margin:0;font-size:12px;color:var(--ink-2);text-align:center}
+.rk .rkn{font:600 1.2rem var(--f-display);min-width:2.2em;text-align:center}.rk.me{border-color:var(--accent);background:var(--accent-soft)}
+.stf{display:flex;gap:8px}.stf .tx{flex:1}
+.tbtn{border:1px solid transparent;cursor:pointer;font:inherit}.tbtn.on{border-color:var(--accent);background:var(--accent);color:var(--sheet)}
+.kcards.stc{max-height:none;overflow:visible}
+.kc .ok{color:var(--ok);font-weight:600}
+.obr{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+.obr>span{font-weight:700;color:var(--ink-2)}.obr.ok{border-color:var(--ok)}.obr.ok>span{color:var(--ok)}.obr p{margin:0}
 .upbtn{font:500 14px var(--f-body);padding:8px 10px;border-radius:10px;border:1.5px dashed var(--accent);background:transparent;color:var(--accent);cursor:pointer;text-align:left}
 .upbtn:hover{background:var(--accent-soft)}
 .cite{margin:0;font-size:14px;padding:6px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0}
@@ -302,6 +331,8 @@ nav.subjects{gap:14px}
       <button class="subj" data-v="mock">สอบจริง (Mock Exam)</button>
       <button class="subj" data-v="hist">ประวัติสอบ</button>
       <button class="subj" data-v="kb">คลังความรู้ (อัปโหลดเอกสาร)</button>
+      <button class="subj" data-v="study">📖 ศึกษา</button>
+      <button class="subj" data-v="rank">🏆 อันดับ</button>
       <button class="subj" data-v="review" id="vreview" hidden>ตรวจอนุมัติ (ผู้ตรวจ)</button>
     </nav>
     <div id="pside">
@@ -346,8 +377,8 @@ const SUBJ=[
  {id:'logic',name:'เงื่อนไขภาษา',desc:'ให้ข้อความเงื่อนไข 2–3 ข้อ แล้วเลือกข้อสรุปที่ถูกต้อง',ai:false},
  {id:'thai',name:'ภาษาไทย',desc:'การเข้าใจภาษา การใช้ภาษา เรียงประโยค และคำผิด · โจทย์สร้างโดย AI',ai:true},
  {id:'eng',name:'ภาษาอังกฤษ',desc:'Grammar, vocabulary และ reading สั้นๆ · โจทย์สร้างโดย AI',ai:true},
- {id:'dir',name:'ทิศทาง',desc:'การเดินและหันตามทิศ ระยะทาง และตำแหน่งสัมพันธ์ · โจทย์สร้างโดย AI',ai:true},
- {id:'data',name:'การวิเคราะห์ข้อมูล',desc:'อ่านตาราง ร้อยละ อัตราส่วน และการเปรียบเทียบข้อมูล (ตารางแสดงเป็นข้อความ คั่นช่องด้วย |) · โจทย์สร้างโดย AI',ai:true},
+ {id:'dir',name:'ทิศทาง',desc:'อ่านแผนที่ การเดินและหันตามทิศ ระยะทาง (มีแผนที่ประกอบ)',ai:false},
+ {id:'data',name:'การวิเคราะห์ข้อมูล',desc:'อ่านตาราง กราฟแท่ง กราฟเส้น ร้อยละ ค่าเฉลี่ย และการเปรียบเทียบ',ai:false},
  {id:'spatial',name:'มิติสัมพันธ์',desc:'นับลูกบาศก์ รูปคลี่กล่อง หมุนและพลิกรูป พับกระดาษเจาะรู อนุกรมรูปภาพ · ระบบวาดรูปเองจึงเฉลยถูกแน่นอน และใช้โจทย์รูปจากเอกสารในคลังความรู้ร่วมด้วย',ai:false,figOnly:true},
 ];
 /* ความรู้เฉพาะตำแหน่ง: [id, ชื่อ, ขอบเขต, คำค้นในคลังความรู้] */
@@ -378,7 +409,7 @@ const isTFU=q=>q.kind==='ineq'||(q.kind==='ineq2'&&q.fmt==='tfu');
 const qLabel=q=>q.kind==='ineq'?q.text:q.kind==='ineq2'?(q.fmt==='tfu'?`${q.lines.join(' และ ')} ⇒ ${q.text}`:`${q.lines.join(' และ ')} ⇒ ข้อใดถูกแน่นอน`):q.stem;
 
 /* ---------- prefs (per-viewer convenience) ---------- */
-let P={subject:'ineq',count:10,mode:'now',levels:{},weak:{}};
+let P={subject:'ineq',count:5,mode:'now',levels:{},weak:{}};
 try{const s=JSON.parse(localStorage.getItem('exam-drill-v1')||'null');if(s)P={...P,...s}}catch(e){}
 const save=()=>{try{localStorage.setItem('exam-drill-v1',JSON.stringify(P))}catch(e){}};
 const lvOf=id=>P.levels[id]||1;
@@ -1065,7 +1096,7 @@ function genSpatial(level,n){
   const order=shuffle(Object.keys(SPA_GEN));let i=0;
   return many(()=>{const k=order[i++%order.length];for(let g=0;g<30;g++){const q=SPA_GEN[k](level);if(q)return q}return null},n);
 }
-const LOCAL={series:(l,n)=>many(()=>genSeries1(l),n),math:(l,n)=>many(()=>genMath1(l),n),logic:(l,n)=>many(()=>genLogic1(l),n),spatial:genSpatial};
+const LOCAL={series:(l,n)=>many(()=>genSeries1(l),n),math:(l,n)=>many(()=>genMath1(l),n),logic:(l,n)=>many(()=>genLogic1(l),n),spatial:genSpatial,dir:(l,n)=>genDir(l,n),data:(l,n)=>genData(l,n)};
 
 /* ---------- AI connection ---------- */
 let SAMPLE=null,aiReady=false,R=null,genCtl=null;
@@ -1193,22 +1224,23 @@ function aiChanged(){document.querySelectorAll('.askbox').forEach(b=>b.hidden=!a
 function genPrompt(s,level,n){
   const weak=(P.weak[s.id]||[]).slice(-5);
   return `สร้างข้อสอบใหม่ ${n} ข้อ วิชา "${s.name}" (${s.desc}) แนวข้อสอบความรู้ความสามารถทั่วไป ก.พ. และสอบราชการไทย
-ระดับความยาก ${level} จาก 5: ${LEVEL_TXT[level]}
+ระดับความยาก ${level}: ${levelTxt(level)}
 รหัสชุด ${Math.random().toString(36).slice(2,8)} (ใช้เพื่อให้โจทย์ไม่ซ้ำกับชุดก่อน)
 ${weak.length?`ผู้ทำเคยตอบผิดในโจทย์แนวนี้ ให้มีโจทย์แนวคล้ายกันปนอยู่ 2–3 ข้อ (เปลี่ยนตัวเลขและเนื้อหา):\n- ${weak.join('\n- ')}\n`:''}
 กติกา:
+${VIZ_RULE}
 - ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก
 - คิดคำตอบให้ถูกต้องแน่นอน ตรวจคำนวณซ้ำก่อนส่ง ห้ามมีข้อที่กำกวม
 - ${s.id==='eng'?'โจทย์และตัวเลือกเป็นภาษาอังกฤษ ส่วนเฉลยอธิบายเป็นภาษาไทย':'ใช้ภาษาไทยทั้งหมด'}
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย ห้ามข้ามขั้น แต่ละขั้นบอกที่มา (from) เช่น "โจทย์บอก" หรือ "คูณ 2 ทั้งสองข้าง"
 - ห้ามใช้ markdown ในข้อความ ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"questions":[{"stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
+{"questions":[{"stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
 function cleanAI(data){
   const arr=Array.isArray(data)?data:(data&&Array.isArray(data.questions)?data.questions:[]);
   return arr.filter(q=>q&&typeof q.stem==='string'&&Array.isArray(q.choices)&&q.choices.length>=2&&Number.isInteger(q.answer)&&q.answer>=0&&q.answer<q.choices.length)
-   .map(q=>({kind:'mc',topic:String(q.topic||''),ref:String(q.ref||''),card:String(q.card||''),fig:String(q.fig||''),stem:q.stem,choices:q.choices.slice(0,5).map(String),answer:q.answer,steps:(Array.isArray(q.steps)?q.steps:[]).map(s=>typeof s==='string'?[s,'']:[String(s.text||''),String(s.from||'')]).filter(s=>s[0])}));
+   .map(q=>({kind:'mc',topic:String(q.topic||''),ref:String(q.ref||''),card:String(q.card||''),fig:String(q.fig||''),viz:cleanViz(q.viz),stem:q.stem,choices:q.choices.slice(0,5).map(String),answer:q.answer,steps:(Array.isArray(q.steps)?q.steps:[]).map(s=>typeof s==='string'?[s,'']:[String(s.text||''),String(s.from||'')]).filter(s=>s[0])}));
 }
 
 /* ---------- round ---------- */
@@ -1250,7 +1282,7 @@ function questionHTML(q){
   if(q.kind==='ineq2'){const L=q.lines;let g=`<div class="given"><span class="k">ถ้า</span>`;L.forEach((l,i)=>{g+=`${i?'<span></span>':''}<span class="eq">${esc(l)}${i<L.length-1?' &nbsp;<span class="k">และ</span>':''}</span>`});g+=`<span class="note">ทุกตัวอักษรมีค่ามากกว่าศูนย์</span></div>`;
     return g+(q.fmt==='tfu'?`<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`:`<div class="ask"><div class="lab">คำถาม</div><div class="st2">${esc(q.text)}</div></div>`)}
   if(q.kind==='ineq')return `${givenHTML(q.ctx)}<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`;
-  return `${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}<div class="stem">${esc(q.stem)}</div>`;
+  return `${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${esc(q.stem)}</div>`;
 }
 function choicesHTML(q,pick,locked){
   const mc=!isTFU(q),pics=mc&&q.chSvg;
@@ -1263,6 +1295,7 @@ function explainHTML(q,pick){
   let h=`<div class="explain"><p class="verdict ${ok?'good':'bad'}">${pick==null?'ไม่ได้ตอบ':ok?'ถูกต้อง':'ยังไม่ใช่'} · เฉลย ${isTFU(q)?'':TH[q.answer]+(q.chSvg?'':'. ')}${q.chSvg?'':esc(q.choices[q.answer])}</p>`;
   if(q.kind==='ineq'){const x=q.ctx;h+=`<p class="lbl">แถวรวม <span class="src">(มาจาก: คูณ ${x.k} ทุกตัวในบรรทัดล่างให้ ${FR[x.k]}${esc(x.H)} เป็น ${esc(x.H)} แล้วต่อกับบรรทัดบนตรง ${esc(x.H)})</span></p>${mergedHTML(x,q.hl)}`}
   if(q.exSvg)h+=`<figure class="qsvgw">${q.exSvg}</figure>`;
+  if(q.expViz)h+=renderViz(q.expViz);
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}</p>`;
@@ -1361,7 +1394,7 @@ function renderSide(){
   document.getElementById('mode-now').setAttribute('aria-pressed',P.mode==='now');
   document.getElementById('mode-end').setAttribute('aria-pressed',P.mode==='end');
   if(VIEW!=='practice')return;
-  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`ความรู้เฉพาะตำแหน่ง · ${s.name}`:s.name;document.getElementById('desc').textContent=`${subjDesc(s)} · ระดับ ${lvOf(s.id)} จาก 5`;
+  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`ความรู้เฉพาะตำแหน่ง · ${s.name}`:s.name;document.getElementById('desc').textContent=`${subjDesc(s)} · ระดับ ${lvOf(s.id)}`;
 }
 function render(){
   if(VIEW!=='practice')return;
@@ -1386,11 +1419,11 @@ function render(){
 }
 function finish(){
   const n=R.items.length,score=R.items.filter((q,j)=>R.picks[j]===q.answer).length,pct=n?score/n:0;
-  const before=R.level;let after=before;if(pct>=.8)after=Math.min(5,before+1);else if(pct<.5)after=Math.max(1,before-1);
+  const before=R.level;let after=before;if(pct>=.8)after=before+1;else if(pct<.5)after=Math.max(1,before-1);
   P.levels[R.subject]=after;
   const wrong=R.items.filter((q,j)=>R.picks[j]!==q.answer).map(q=>qLabel(q).replace(/\s+/g,' ').slice(0,90));
   P.weak[R.subject]=[...(P.weak[R.subject]||[]),...wrong].slice(-5);if(!wrong.length)P.weak[R.subject]=[];
-  save();Object.assign(R,{status:'done',score,pct,after});recordCards(R.items,R.picks);
+  save();Object.assign(R,{status:'done',score,pct,after});recordCards(R.items,R.picks);awardPoints(roundPoints(R.items,R.picks,before));
   const sn=(SUBJ.find(s=>s.id===R.subject)||subj()).name,t0=R.t0||Date.now();
   addHist({at:t0,kind:'practice',title:`ฝึก · ${sn}`,n,score,pct,used:(Date.now()-t0)/1000,groups:[{name:sn,ok:score,n}],viol:0,auto:''});
   render();
@@ -1479,7 +1512,7 @@ function setView(v){
   document.getElementById('pside').classList.toggle('off',v!=='practice');
   document.getElementById('resetlv').hidden=v!=='practice';
   if(v!=='mock'){document.getElementById('tbar').hidden=true;document.querySelector('.app').classList.remove('exam')}
-  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else renderHist();
+  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='rank')renderRank();else renderHist();
 }
 const head=(t,d)=>{document.getElementById('title').textContent=t;document.getElementById('desc').textContent=d||''};
 
@@ -1507,7 +1540,7 @@ function genPlan(n,useAI){
 function specPrompt(list,opt={}){
   const kb=kbContext([...new Set(list)]),weak=opt.weak||[];
   return `สร้างข้อสอบใหม่ ${list.length} ข้อ หมวด "ความรู้เฉพาะตำแหน่ง" สำหรับสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) ตำแหน่งพนักงานพัฒนาธุรกิจและงานสินเชื่อ
-${opt.level?`ระดับความยาก ${opt.level} จาก 5: ${LEVEL_TXT[opt.level]}`:'ระดับข้อสอบจริง'}
+${opt.level?`ระดับความยาก ${opt.level}: ${levelTxt(opt.level)}`:'ระดับข้อสอบจริง'}
 รหัสชุด ${Math.random().toString(36).slice(2,8)} (ใช้เพื่อให้โจทย์ไม่ซ้ำกับชุดก่อน)
 หัวข้อของแต่ละข้อ ต้องตรงตามลำดับนี้:
 ${list.map((t,i)=>`ข้อ ${i+1}: ${t}`).join('\n')}
@@ -1517,12 +1550,13 @@ ${weak.length?`ผู้ทำเคยตอบผิดในโจทย์�
 ${kb.text}
 `:''}
 กติกา:
+${VIZ_RULE}
 ${kb.text?'- ใช้ข้อมูลจากเอกสารอ้างอิงข้างบนเป็นหลัก ข้อที่ออกจากเอกสารให้ใส่ ref เป็นป้ายในวงเล็บเหลี่ยมของช่วงที่ใช้ เช่น "PDPA.pdf หน้า 22" ถ้าเอกสารไม่ครอบคลุมหัวข้อนั้นจึงใช้หลักการทั่วไปและให้ ref เป็น ""\n':''}- ใช้เฉพาะความรู้ที่เป็นหลักการมาตรฐานและเป็นที่ยอมรับทั่วไป ห้ามแต่งตัวเลข ชื่อโครงการ อัตราดอกเบี้ย วันที่ หรือข้อเท็จจริงเฉพาะที่ไม่แน่ใจ ถ้าไม่แน่ใจให้ถามหลักการแทน
 - ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก ห้ามมีข้อที่กำกวม
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย แต่ละขั้นบอกที่มา (from) เช่น ชื่อกฎหมายและมาตรา หรือชื่อหลักการ
 - ใช้ภาษาไทย ศัพท์เฉพาะภาษาอังกฤษเขียนได้ ห้ามใช้ markdown ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"questions":[{"topic":"ชื่อหัวข้อตามที่กำหนด","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"ref":"","steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
+{"questions":[{"topic":"ชื่อหัวข้อตามที่กำหนด","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"ref":"","steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
 async function buildMock(){
   const cat=MS.cat,n=MS.n,useAI=!!activeAI(),ctl=new AbortController();
@@ -1576,7 +1610,7 @@ function submitMock(reason){
   const end=Math.min(Date.now(),M.endAt),n=M.items.length,score=M.items.filter((q,j)=>M.picks[j]===q.answer).length;
   const groups=groupStats(M.items,M.picks,q=>q.subName);
   Object.assign(M,{status:'done',endedAt:end,used:(end-M.startAt)/1000,score,pct:n?score/n:0,auto:reason||'',groups,away:false});
-  recordCards(M.items,M.picks);
+  recordCards(M.items,M.picks);awardPoints(roundPoints(M.items,M.picks,3));
   addHist({at:M.startAt,kind:'mock',title:`สอบจริง · ${M.catName}`,n,score,pct:M.pct,used:M.used,limit:M.mins*60,groups,viol:M.viol.length,auto:M.auto});
   saveM();
   if(VIEW!=='mock')setView('mock');else renderMock();
@@ -1821,7 +1855,7 @@ function bankFor(s){const b=bankItems();return s.doc?b.filter(c=>c.docId===s.doc
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
-    fig:(c.figs||[])[0]||'',orig:true,topic:c.topic,sub:s.id,subName:s.name},null);
+    fig:(c.figs||[])[0]||'',viz:c.q.viz||null,orig:true,topic:c.topic,sub:s.id,subName:s.name},null);
   q.ansAI=c.ansSrc==='AI';return q;
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
@@ -1851,7 +1885,6 @@ function cardMixCount(s,n){
   const k=activeCards().filter(c=>c.topic===s.name).length;if(!k)return 0;
   return s.ai?Math.min(n,k*2):Math.min(Math.max(1,Math.round(n*.4)),k*2);
 }
-const localItems=(s,level,n)=>(s.id==='ineq'?genIneq2(level,n):LOCAL[s.id](level,n)).map(q=>({...q,sub:s.id,subName:s.name}));
 const rotTopics=()=>{const order=shuffle(SPEC_TOPICS.slice());return(k,b)=>Array.from({length:k},(_,i)=>order[(b+i)%order.length])};
 /* one place that turns a subject into questions: local generator, AI from cards, AI general, or a mix */
 async function makeItems(s,level,n,o={}){
@@ -1905,7 +1938,7 @@ async function cardPrompt(slots,level,weak){
 function cardPromptText(slots,level,weak,cs,sent){
   const figLine=c=>{const f=(c.figs||[]).filter(id=>sent.includes(id));return f.length?`\nรูปของบัตรนี้: ${f.map(id=>`${id} (ภาพที่แนบลำดับ ${sent.indexOf(id)+1})`).join(', ')}${c.ansSrc==='AI'?' · เอกสารไม่มีเฉลย ต้องดูรูปและคิดคำตอบเองอย่างรอบคอบ':''}`:''};
   return `สร้างข้อสอบปรนัยใหม่ ${slots.length} ข้อ สำหรับเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)
-${level?`ระดับความยาก ${level} จาก 5: ${LEVEL_TXT[level]}`:'ระดับข้อสอบจริง'}
+${level?`ระดับความยาก ${level}: ${levelTxt(level)}`:'ระดับข้อสอบจริง'}
 รหัสชุด ${Math.random().toString(36).slice(2,8)} (ใช้เพื่อให้โจทย์ไม่ซ้ำกับชุดก่อน)
 สร้างตามรายการนี้ตามลำดับ:
 ${slots.map((s,i)=>`ข้อ ${i+1}: หัวข้อ ${s.topic||'-'} · ${s.card?`ใช้บัตร ${s.card.id}`:'ไม่มีบัตร ใช้หลักการมาตรฐานที่เป็นที่ยอมรับทั่วไป ห้ามแต่งตัวเลขหรือข้อเท็จจริงเฉพาะที่ไม่แน่ใจ'}`).join('\n')}
@@ -1915,6 +1948,7 @@ ${cs.map(c=>`[${c.id}] ${c.topic} · ${c.kind} · ${c.title}\n${c.fact}${figLine
 ${sent.length?`\nมีภาพแนบ ${sent.length} ภาพ เรียงตามลำดับรหัส: ${sent.join(', ')}\n`:''}
 ${weak&&weak.length?`\nผู้ทำเคยตอบผิดในโจทย์แนวนี้ ถ้าเกี่ยวข้องให้ถามซ้ำในมุมใหม่:\n- ${weak.join('\n- ')}\n`:''}
 กติกา:
+${VIZ_RULE}
 - ข้อที่ใช้บัตร คำตอบที่ถูกต้องต้องยืนยันได้จากบัตรนั้น ห้ามใช้ข้อเท็จจริงนอกบัตรมาเป็นคำตอบ ใส่ card เป็นรหัสบัตร ข้อที่ไม่มีบัตรใส่ card เป็น ""
 - ห้ามลอกประโยคในบัตรมาเป็นโจทย์ ให้ถามว่าเข้าใจจริงไหม ${!level||level>=3?'อย่างน้อยครึ่งหนึ่งเป็นโจทย์สถานการณ์ เช่น กรณีลูกค้าหรือพนักงาน ที่ต้องนำหลักในบัตรไปใช้ตัดสิน':'ถามความหมาย การจำแนก หรือให้เลือกหลักที่ตรงกับกรณีง่ายๆ'}
 - ตัวลวงมาจากความเข้าใจผิดที่พบบ่อย หรือจากบัตรอื่นที่คล้ายกัน และต้องผิดชัดเจนเมื่ออ่านบัตร
@@ -1926,7 +1960,7 @@ ${weak&&weak.length?`\nผู้ทำเคยตอบผิดในโจท
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย แต่ละขั้นบอกที่มา (from) เช่น ชื่อกฎหมาย หลักการ หรือ "บัตรความรู้"
 - ใช้ภาษาไทย ศัพท์เฉพาะภาษาอังกฤษเขียนได้ ยกเว้นหัวข้อภาษาอังกฤษ ให้โจทย์และตัวเลือกเป็นภาษาอังกฤษแต่เฉลยเป็นไทย ห้ามใช้ markdown ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"questions":[{"card":"รหัสบัตรหรือว่าง",${sent.length?'"fig":"รหัสรูปหรือว่าง",':''}"topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
+{"questions":[{"card":"รหัสบัตรหรือว่าง",${sent.length?'"fig":"รหัสรูปหรือว่าง",':''}"topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
 
 /* ---------- subjects & descriptions ---------- */
@@ -1971,9 +2005,10 @@ function docWindows(doc,max=12000){
 function docPrompt(doc,level,k,base,weak){
   const W=docWindows(doc),win=W[(DOC_OFF+Math.floor(base/20))%W.length];
   return `สร้างข้อสอบปรนัยใหม่ ${k} ข้อ จากเนื้อหาของเอกสาร "${doc.name}" ด้านล่างเท่านั้น สำหรับเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)
-ระดับความยาก ${level} จาก 5: ${LEVEL_TXT[level]}
+ระดับความยาก ${level}: ${levelTxt(level)}
 รหัสชุด ${Math.random().toString(36).slice(2,8)} (ใช้เพื่อให้โจทย์ไม่ซ้ำกับชุดก่อน)
 ${weak&&weak.length?`ผู้ทำเคยตอบผิดในโจทย์แนวนี้ ถ้าเนื้อหาเกี่ยวข้องให้มีโจทย์แนวคล้ายกันปนอยู่ 2–3 ข้อ:\n- ${weak.join('\n- ')}\n`:''}กติกา:
+${VIZ_RULE}
 - ทำความเข้าใจเนื้อหาก่อน แล้วถามว่าผู้สอบเข้าใจจริงไหม ไม่ใช่ลอกประโยคมาเว้นช่อง คำตอบที่ถูกต้องต้องยืนยันได้จากเนื้อหาเท่านั้น
 - ถามประเด็นสำคัญที่น่าจะออกสอบ ห้ามถามเรื่องเลขหน้า ชื่อไฟล์ หรือรูปแบบเอกสาร กระจายให้ทั่วเนื้อหา ถ้าเนื้อหาไม่พอสำหรับ ${k} ข้อ ให้สร้างเท่าที่ทำได้โดยไม่ซ้ำ
 - ref ของแต่ละข้อคือป้ายในวงเล็บเหลี่ยมของช่วงที่ใช้ เช่น "${doc.unit} ${win[0].n}"
@@ -1985,7 +2020,7 @@ ${weak&&weak.length?`ผู้ทำเคยตอบผิดในโจท�
 ${win.map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n\n')}
 
 ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"questions":[{"stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"ref":"${doc.unit} ${win[0].n}","steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
+{"questions":[{"stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"ref":"${doc.unit} ${win[0].n}","steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
 function lookupRef(ref,doc){
   ref=String(ref||'').trim();if(!ref)return doc?{cite:doc.name,text:''}:null;
@@ -2177,6 +2212,7 @@ async function processDoc(doc){
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
+    setTimeout(()=>autoShare(doc),50);
     toast(`${doc.name} พร้อมแล้ว · ${doc.kind==='exam'?`ข้อสอบ ${CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length} ข้อ`:`บัตรความรู้ ${CARDS.filter(c=>c.docId===doc.id).length} ใบ`}`);
   }catch(e){
     const code=e&&e.code;
@@ -2278,6 +2314,7 @@ async function digestDoc(doc){
 function extractPrompt(doc,win,figs,keyText){
   return `เอกสาร "${doc.name}" เป็นข้อสอบหรือตัวอย่างโจทย์ ดึงข้อสอบปรนัยทุกข้อในเนื้อหาด้านล่างออกมาตามต้นฉบับ เพื่อเก็บเป็นคลังข้อสอบ
 กติกา:
+${VIZ_RULE}
 - 1 รายการ = 1 ข้อ stem คือโจทย์ตามต้นฉบับ แก้ได้เฉพาะคำที่อ่านเพี้ยนจากไฟล์ ถ้าโจทย์ต้องอ่านข้อความหรือตารางร่วม ให้ใส่ข้อความนั้นใน stem ด้วย
 - choices คือตัวเลือกตามลำดับเดิม ไม่ต้องใส่ ก ข ค ง หรือ 1 2 3 4 นำหน้า ถ้าตัวเลือกเป็นรูปที่อยู่ในภาพ ให้ใส่ป้ายตามที่เห็นในรูป เช่น "ก" "ข" "ค" "ง"
 - answer คือลำดับตัวเลือกที่ถูก เริ่มจาก 0 ถ้าเอกสารมีเฉลย (ในช่วงนี้หรือในส่วนเฉลยที่แนบ) ให้ใช้เฉลยนั้น และ answerSource เป็น "เอกสาร"
@@ -2293,7 +2330,7 @@ ${keyText?`\nส่วนเฉลยที่พบในเอกสาร (�
 ${win.map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n\n')}
 
 ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"questions":[{"no":"1","topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"answerSource":"เอกสาร","explanation":["เหตุผล"],"figs":[],"page":${win[0].n}}]}`;
+{"questions":[{"no":"1","topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"answerSource":"เอกสาร","explanation":["เหตุผล"],"figs":[],"page":${win[0].n}}]}`;
 }
 async function extractDoc(doc){
   const W=docWindows(doc,9000);
@@ -2312,7 +2349,7 @@ async function extractDoc(doc){
       const steps=(Array.isArray(q.explanation)?q.explanation:[q.explanation]).filter(Boolean).map(String);
       return{id:newId(),docId:doc.id,type:'q',no:String(q.no||''),title:q.stem.trim().slice(0,90),topic:topicsOf(doc.group).includes(q.topic)?q.topic:'อื่นๆ',kind:'ข้อสอบ',
         fact:`${q.stem.trim()}\nตัวเลือก: ${choices.join(' | ')}${ans>=0?`\nตอบ: ${choices[ans]}`:''}`,page:pages.includes(+q.page)?+q.page:pages[0],imp:2,at:Date.now(),st:{},
-        figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps}}});
+        figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps,viz:cleanViz(q.viz)}}});
     CARDS.push(...arr);await saveCards(arr);
     doc.digDone=i+1;await saveDoc(doc);
   }
@@ -2339,12 +2376,13 @@ ${ch.map((p,j)=>`คู่ ${j}:\nเดิม (${cardCite(p.o)}): ${p.o.fact}\n
 
 /* ---------- upload ---------- */
 const radio=(name,val,cur,label,sub)=>`<label class="rad"><input type="radio" name="${name}" value="${val}"${val===cur?' checked':''}><span><b>${label}</b>${sub?`<span class="src">${sub}</span>`:''}</span></label>`;
-function docOptHTML(g,show,kind){
+function docOptHTML(g,show,kind,noShare){
   return `<fieldset class="ufs"><legend>ประเภทไฟล์</legend>${radio('uk','kb',kind||'kb','เนื้อหา/คลังข้อมูล','ตำรา คู่มือ ระเบียบ สรุปเนื้อหา · AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่')}${radio('uk','exam',kind||'kb','ข้อสอบ/ตัวอย่างโจทย์','ข้อสอบเก่า แนวข้อสอบ แบบฝึกหัด · ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่างสร้างข้อใหม่')}</fieldset>
     <fieldset class="ufs"><legend>กลุ่มวิชาของเอกสาร</legend>${radio('ug','spec',g,'ความรู้เฉพาะตำแหน่ง','สินเชื่อ NCB PDPA ระเบียบ ธ.ก.ส. ฯลฯ')}${radio('ug','gen',g,'ความรู้ความสามารถทั่วไป','คณิตศาสตร์ อนุกรม เงื่อนไข ภาษาไทย ภาษาอังกฤษ')}</fieldset>
+    <label class="rad"><input type="checkbox" id="unoshare"${noShare?' checked':''}><span><b>เก็บไว้ใช้คนเดียว ไม่ส่งเข้าคลังกลาง</b><span class="src">ปกติไฟล์ที่ประมวลผลเสร็จจะถูกส่งเข้าคลังกลางให้ทุกคนใช้อัตโนมัติ ห้ามส่งเอกสารลับหรือข้อมูลส่วนบุคคลของผู้อื่น</span></span></label>
     <fieldset class="ufs"><legend>การใช้งาน</legend>${radio('us','db',show?'show':'db','ใช้เป็นฐานข้อมูลอย่างเดียว','AI ย่อยความรู้แล้วนำไปออกข้อสอบในวิชาของกลุ่มนี้ตามหัวข้อที่ตรงกัน')}${radio('us','show',show?'show':'db','แสดงเป็นรายวิชาด้วย','มีวิชาชื่อเดียวกับไฟล์ในกลุ่มนี้ ไว้ฝึกจากเอกสารนี้โดยเฉพาะ')}</fieldset>`;
 }
-const readDocOpt=()=>({kind:(document.querySelector('#dlg input[name="uk"]:checked')||{}).value||'kb',group:(document.querySelector('#dlg input[name="ug"]:checked')||{}).value||'spec',show:((document.querySelector('#dlg input[name="us"]:checked')||{}).value)==='show'});
+const readDocOpt=()=>({noShare:!!(document.getElementById('unoshare')||{}).checked,kind:(document.querySelector('#dlg input[name="uk"]:checked')||{}).value||'kb',group:(document.querySelector('#dlg input[name="ug"]:checked')||{}).value||'spec',show:((document.querySelector('#dlg input[name="us"]:checked')||{}).value)==='show'});
 async function handleFiles(files,opt){
   files=[...files];if(!files.length)return;
   if(VIEW!=='kb')setView('kb');
@@ -2358,7 +2396,7 @@ async function handleFiles(files,opt){
       const r=await readFile(f,(i,n)=>{job.msg=`อ่านแล้ว ${i} จาก ${n} หน้า`;const e=document.querySelector(`[data-job="${UPQ.indexOf(job)}"]`);if(e)e.textContent=job.msg});
       const old=DOCS.find(d=>d.name===f.name&&!d.central);
       if(old){const ids=CARDS.filter(c=>c.docId===old.id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==old.id);try{await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(old.id).map(f=>f.id));DOCS.splice(DOCS.indexOf(old),1)}
-      const doc={id:old?old.id:newId(),name:f.name,type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',
+      const doc={id:old?old.id:newId(),name:f.name,type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',noShare:!!opt.noShare,
         figPages:r.figPages||[],stage:(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest',ocrDone:[],digDone:0,summ:[],err:'',
         warn:r.figSkipped?`มีรูป ${r.figSkipped} รูปที่ระบบแสดงไม่ได้ (เช่น EMF/WMF หรือรูปที่ลิงก์ไว้นอกไฟล์) ถ้าเป็นรูปโจทย์ แนะนำบันทึกเอกสารเป็น PDF แล้วอัปโหลดใหม่`:''};
       if(r.figs&&r.figs.length)await saveFigs(r.figs.map(f=>({...f,docId:doc.id})));
@@ -2429,8 +2467,8 @@ function renderKB(){
         ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai?'':'disabled'}>${d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
         ${!busy&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
-        ${!busy&&d.stage==='ready'&&nc&&d.subStatus!=='pending'?`<button class="ghost" data-sub>${d.subId?'ส่งฉบับปรับปรุงเข้าคลังกลาง':'⇪ ส่งเข้าคลังกลาง'}</button>`:''}
         <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
+      ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
       ${d.subId?`<p class="src"><span class="substat ${d.subStatus==='approved'?'ok':d.subStatus==='rejected'?'bad':''}">${d.subStatus==='approved'?'อยู่ในคลังกลางแล้ว':d.subStatus==='rejected'?'ไม่ผ่านการตรวจ':'รอผู้ตรวจอนุมัติ'}</span>${d.subNote?` ${esc(d.subNote)}`:''}</p>`:''}</div>`}).join('')}
     ${centralListHTML()}`;
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
@@ -2450,9 +2488,9 @@ function renderKB(){
     const sb=box.querySelector('[data-sub]');if(sb)sb.onclick=()=>submitDoc(d);
     box.querySelector('[data-opt]').onclick=async()=>{
       const nc=CARDS.filter(c=>c.docId===id).length;
-      if(await modal(`<p class="mt">ตั้งค่าเอกสาร</p><p class="src">${esc(d.name)}</p>${docOptHTML(d.group||'spec',!!d.show,d.kind||'kb')}${nc?'<p class="src">ถ้าเปลี่ยนประเภทไฟล์หรือกลุ่มวิชา AI ต้องประมวลผลไฟล์นี้ใหม่ ของเดิมของไฟล์นี้จะถูกแทนที่</p>':''}`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+      if(await modal(`<p class="mt">ตั้งค่าเอกสาร</p><p class="src">${esc(d.name)}</p>${docOptHTML(d.group||'spec',!!d.show,d.kind||'kb',!!d.noShare)}${nc?'<p class="src">ถ้าเปลี่ยนประเภทไฟล์หรือกลุ่มวิชา AI ต้องประมวลผลไฟล์นี้ใหม่ ของเดิมของไฟล์นี้จะถูกแทนที่</p>':''}`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
       const o=readDocOpt(),regroup=o.group!==(d.group||'spec')||o.kind!==(d.kind||'kb');
-      d.show=o.show;d.group=o.group;d.kind=o.kind;
+      d.show=o.show;d.group=o.group;d.kind=o.kind;const shareNow=d.noShare&&!o.noShare;d.noShare=o.noShare;if(shareNow)setTimeout(()=>autoShare(d),50);
       if(regroup&&(nc||d.digDone)){const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==id);try{await kbDelMany('cards',ids)}catch(e){}
         Object.assign(d,{digDone:0,summ:[],stage:d.stage==='ocr'?'ocr':'digest',err:''})}
       await saveDoc(d);syncDocSubjects();if(!d.show&&P.subject==='doc_'+id){P.subject='ineq';save()}
@@ -2568,25 +2606,33 @@ async function cloudInit(){
   try{
     const f=await fb();
     f.au.onAuthStateChanged(f.auth,async u=>{
-      if(!u){ME=null;renderAcct();refreshCloudViews();return}
+      if(!u){ME=null;renderAcct();refreshCloudViews();if(VIEW==='rank')renderRank();return}
       ME={uid:u.uid,name:u.displayName||(u.email||'').split('@')[0]||'ผู้ใช้',email:u.email||'',role:'user'};
       try{const s=await f.fs.getDoc(fsDoc('users',u.uid));
         if(s.exists())ME.role=s.data().role||'user';
         else await f.fs.setDoc(fsDoc('users',u.uid),{name:ME.name,email:ME.email,role:'user',createdAt:f.fs.serverTimestamp()});
       }catch(e){}
-      renderAcct();refreshCloudViews();checkSubs();
+      renderAcct();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();
     });
+    f.au.onAuthStateChanged(f.auth,()=>setTimeout(onboard,600));
     await syncCentral();
-  }catch(e){renderAcct();if(VIEW==='kb')renderKB()}
+  }catch(e){renderAcct();if(VIEW==='kb')renderKB();setTimeout(onboard,600)}
 }
 function refreshCloudViews(){if(VIEW==='kb')renderKB();else if(VIEW==='review')renderReview()}
 function renderAcct(){
   const el=document.getElementById('acct');if(!el)return;
   const rv=document.getElementById('vreview');if(rv)rv.hidden=!isReviewerMe();
-  if(ME){el.innerHTML=`<span class="an">👤 ${esc(ME.name)}${ME.role!=='user'?` <span class="tag">${ME.role==='admin'?'แอดมิน':'ผู้ตรวจ'}</span>`:''}</span><button class="ghost" id="logout">ออกจากระบบ</button>`;
-    document.getElementById('logout').onclick=async()=>{await FB.au.signOut(FB.auth);if(VIEW==='review')setView('kb')};}
-  else{el.innerHTML=`<button class="ghost" id="login">เข้าสู่ระบบ</button><span class="src">เพื่อส่งเอกสารเข้าคลังกลาง</span>`;
-    document.getElementById('login').onclick=()=>loginDialog();}
+  const pts=P.pts||0,lv=lvlFromPts(pts);
+  if(ME){
+    el.innerHTML=`<div class="acard"><div class="av" aria-hidden="true">${esc((ME.name||'?').trim().slice(0,1).toUpperCase())}</div><div class="ainfo"><button class="aname" id="rename" title="แตะเพื่อเปลี่ยนชื่อที่แสดงในอันดับ">${esc(ME.name)}</button>
+      <span class="src">ระดับผู้สอบ ${lv} · ${nf(pts)} คะแนน${ME.role!=='user'?` · <b>${ME.role==='admin'?'แอดมิน':'ผู้ตรวจ'}</b>`:''}</span></div></div><button class="logout" id="logout">ออกจากระบบ</button>`;
+    document.getElementById('logout').onclick=async()=>{if(await modal('<p class="mt">ออกจากระบบ?</p><p class="src">คะแนนที่ทำต่อจากนี้จะเก็บในเครื่องก่อน แล้วขึ้นอันดับเมื่อเข้าสู่ระบบอีกครั้ง</p>',[{t:'ยกเลิก'},{t:'ออกจากระบบ',cls:'primary'}])!==1)return;
+      await FB.au.signOut(FB.auth);if(VIEW==='review')setView('kb')};
+    document.getElementById('rename').onclick=renameMe;
+  }else{
+    el.innerHTML=`<button class="loginbig" id="login">🔑 เข้าสู่ระบบ</button><p class="src">เก็บคะแนน ขึ้นอันดับ จำระดับข้ามเครื่อง และเพิ่มเอกสารเข้าคลังกลาง${pts?` · ในเครื่องนี้ ${nf(pts)} คะแนน (ระดับ ${lv})`:''}</p>`;
+    document.getElementById('login').onclick=()=>loginDialog();
+  }
 }
 async function loginDialog(){
   let f;try{f=await fb()}catch(e){toast('เชื่อมต่อคลังกลางไม่ได้ ตรวจอินเทอร์เน็ต','bad');return false}
@@ -2675,10 +2721,10 @@ function packCards(d){
     const o={id:c.id,title:c.title,topic:c.topic,kind:c.kind,fact:c.fact,page:c.page,imp:c.imp||2,figs:c.figs||[],ansSrc:c.ansSrc||'',src:pg&&pg.text?pg.text.slice(0,600):(c.src||'')};
     if(c.type==='q'){o.type='q';o.no=c.no||'';o.q=c.q}return o});
 }
-async function submitDoc(d){
-  if(!ME&&!(await loginDialog()))return;
+async function submitDoc(d,opt={}){
+  if(!ME&&(opt.auto||!(await loginDialog())))return;
   const cards=packCards(d);if(!cards.length){toast('ไฟล์นี้ยังไม่มีบัตรความรู้หรือข้อสอบ ให้ประมวลผลก่อน','bad');return}
-  if(await modal(`<p class="mt">ส่งเข้าคลังกลาง?</p><p>${esc(d.name)} · ${d.kind==='exam'?'ข้อสอบ':'บัตรความรู้'} ${cards.length} ${d.kind==='exam'?'ข้อ':'ใบ'}</p>
+  if(!opt.auto&&await modal(`<p class="mt">ส่งเข้าคลังกลาง?</p><p>${esc(d.name)} · ${d.kind==='exam'?'ข้อสอบ':'บัตรความรู้'} ${cards.length} ${d.kind==='exam'?'ข้อ':'ใบ'}</p>
     <p class="src">ส่งเฉพาะสิ่งที่ AI ย่อยแล้วและรูปที่ตัดไว้ ไม่ส่งไฟล์ต้นฉบับ ${isReviewerMe()?'คุณเป็นผู้ตรวจ ระบบจะอนุมัติให้ทันที':'ผู้ตรวจจะตรวจก่อนเข้าคลังกลาง แล้วทุกคนจะได้ใช้'}</p>
     <p class="src">ห้ามส่งเอกสารลับหรือข้อมูลส่วนบุคคลของผู้อื่น</p>`,[{t:'ยกเลิก'},{t:'ส่งเข้าคลังกลาง',cls:'primary'}])!==1)return;
   const f=await fb(),id=d.subId||newId();
@@ -2697,7 +2743,7 @@ async function submitDoc(d){
         cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
         createdAt:f.fs.serverTimestamp(),updatedAt:f.fs.serverTimestamp()});
     }
-    Object.assign(d,{subId:id,subParts:ids,subStatus:'pending'});await saveDoc(d);
+    Object.assign(d,{subId:id,subParts:ids,subStatus:'pending',shareWait:false});await saveDoc(d);
     if(isReviewerMe()){for(const pid of ids)await approveSub(pid);d.subStatus='approved';await saveDoc(d);await syncCentral()}
     toast(isReviewerMe()?'อนุมัติเข้าคลังกลางแล้ว':'ส่งแล้ว รอผู้ตรวจอนุมัติ');
   }catch(e){toast('ส่งไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e).slice(0,80),'bad')}
@@ -2842,6 +2888,304 @@ function previewCard(c){
   if(c.type==='q'&&c.q)return `<div class="kc"><p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map((x,j)=>`<li${j===c.q.answer?' class="ok"':''}>${esc(x)}${j===c.q.answer?' ✓':''}</li>`).join('')}</ol>${(c.figs||[]).length?'<p class="src">มีรูปประกอบ</p>':''}</div>`;
   return `<div class="kc"><p><b>${esc(c.title)}</b> <span class="src">· ${esc(c.topic)} · ${esc(c.kind)}</span></p><p>${esc(c.fact)}</p>${(c.figs||[]).length?'<p class="src">มีรูปประกอบ</p>':''}</div>`;
 }
+
+/* ---------- ระดับไม่จำกัด: ระดับของผู้สอบแปลงเป็นความยากของตัวสร้างโจทย์ (1–5) ----------
+   ระดับ 1 ง่าย · ระดับ 2 ขึ้นไปยากขึ้นชัดเจน · ตั้งแต่ระดับ 4 ใช้โจทย์ขั้นยากสุดเป็นหลัก ส่วน AI ยากขึ้นต่อไปไม่สิ้นสุด */
+function levelTxt(l){
+  l=Math.max(1,Math.round(+l||1));
+  return {1:'ง่าย พื้นฐาน 1 ขั้นตอน',2:'ปานกลาง 2–3 ขั้นตอน มีตัวลวงที่ต้องคิด',3:'ระดับข้อสอบจริง (ก.พ./ธ.ก.ส.) หลายขั้นตอน',4:'ยาก หลายขั้นตอน ผสมหลายหลักการ ตัวลวงแนบเนียน',5:'ยากมาก ระดับแข่งขันสูง ต้องวิเคราะห์ลึก'}[l]
+    ||`ยากกว่าระดับ 5 ขึ้นไปอีก (ระดับ ${l}) โจทย์ซับซ้อน 3–5 ขั้นตอน ผสมหลายหลักการในข้อเดียว ตัวลวงใกล้เคียงคำตอบมาก`;
+}
+function tierMix(level,n){
+  const w=level<=1?[[1,1]]:level===2?[[2,1],[3,2]]:level===3?[[3,1],[4,2]]:level===4?[[4,1],[5,2]]:[[5,1]];
+  const tot=w.reduce((a,x)=>a+x[1],0),out=w.map(([t,x])=>({t,k:Math.floor(n*x/tot)}));
+  let left=n-out.reduce((a,x)=>a+x.k,0);for(let i=out.length-1;left>0;i=(i+out.length-1)%out.length){out[i].k++;left--}
+  return out.filter(x=>x.k>0);
+}
+function localItems(s,level,n){
+  const gen=(t,k)=>s.id==='ineq'?genIneq2(t,k):LOCAL[s.id](t,k);
+  return shuffle(tierMix(level,n).flatMap(({t,k})=>gen(t,k))).slice(0,n).map(q=>({...q,sub:s.id,subName:s.name}));
+}
+
+/* ---------- ตาราง กราฟ แผนที่: วาดด้วยโค้ดจากข้อมูล (viz) จึงตรงกับเฉลยเสมอ ---------- */
+const VZC=['var(--accent)','var(--mark)','var(--ok)','var(--bad)','var(--unk)','var(--ink-2)'];
+const vnum=x=>{const n=+x;return isFinite(n)?n:0};
+const vfmt=x=>{const n=+x;return isFinite(n)?(Math.abs(n)>=1000?n.toLocaleString('en-US'):String(Math.round(n*100)/100)):esc(String(x))};
+function cleanViz(v){
+  if(!v||typeof v!=='object')return null;
+  const S=x=>String(x==null?'':x).slice(0,60),A=(x,m)=>Array.isArray(x)?x.slice(0,m):[];
+  const t=String(v.type||'');
+  if(t==='table'){const headers=A(v.headers,8).map(S),rows=A(v.rows,14).map(r=>A(r,8).map(S));return headers.length&&rows.length?{type:t,title:S(v.title),headers,rows}:null}
+  if(t==='bar'||t==='line'){const labels=A(v.labels,12).map(S),series=A(v.series,3).map(s=>({name:S(s&&s.name),values:A(s&&s.values,12).map(vnum)})).filter(s=>s.values.length);
+    return labels.length&&series.length?{type:t,title:S(v.title),labels,series,unit:S(v.unit)}:null}
+  if(t==='pie'){const labels=A(v.labels,7).map(S),values=A(v.values,7).map(vnum);return labels.length===values.length&&labels.length?{type:t,title:S(v.title),labels,values,unit:S(v.unit)}:null}
+  if(t==='map'){const points=A(v.points,10).map(p=>({name:S(p&&p.name),x:vnum(p&&p.x),y:vnum(p&&p.y)})).filter(p=>p.name);
+    const path=A(v.path,12).map(p=>[vnum(p&&p[0]),vnum(p&&p[1])]);return points.length||path.length?{type:t,title:S(v.title),points,path,unit:S(v.unit)}:null}
+  return null;
+}
+function renderViz(v){
+  if(!v)return '';
+  const cap=v.title?`<figcaption>${esc(v.title)}</figcaption>`:'';
+  if(v.type==='table')return `<figure class="vz">${cap}<div class="vzt"><table><thead><tr>${v.headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${v.rows.map(r=>`<tr>${r.map((c,i)=>`<td${i&&/^[-\d.,%]+$/.test(c)?' class="n"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></figure>`;
+  if(v.type==='bar'||v.type==='line'){
+    const W=380,H=230,L=46,B=34,T=14,Rr=10,all=v.series.flatMap(s=>s.values),mx=Math.max(1,...all),mn=Math.min(0,...all);
+    const step=(()=>{const r=(mx-mn)/4,p=10**Math.floor(Math.log10(r||1));return [1,2,2.5,5,10].map(k=>k*p).find(s=>s>=r)||r})();
+    const top=Math.ceil(mx/step)*step,bot=Math.floor(mn/step)*step,y=val=>T+(H-T-B)*(1-(val-bot)/((top-bot)||1)),n=v.labels.length,cw=(W-L-Rr)/n;
+    let g='';for(let k=bot;k<=top+1e-9;k+=step)g+=`<line x1="${L}" x2="${W-Rr}" y1="${y(k)}" y2="${y(k)}" class="vzg"/><text x="${L-6}" y="${y(k)+4}" text-anchor="end" class="vzl">${vfmt(k)}</text>`;
+    v.labels.forEach((lb,i)=>g+=`<text x="${L+cw*i+cw/2}" y="${H-B+18}" text-anchor="middle" class="vzl">${esc(lb)}</text>`);
+    if(v.type==='bar'){const sw=cw*.7/v.series.length;v.series.forEach((s,si)=>s.values.forEach((val,i)=>{const x=L+cw*i+cw*.15+sw*si,y0=y(Math.max(0,val)),h=Math.abs(y(val)-y(0));
+      g+=`<rect x="${x}" y="${y0}" width="${sw-2}" height="${Math.max(1,h)}" fill="${VZC[si]}"/><text x="${x+(sw-2)/2}" y="${y0-4}" text-anchor="middle" class="vzv">${vfmt(val)}</text>`}))}
+    else v.series.forEach((s,si)=>{const pts=s.values.map((val,i)=>[L+cw*i+cw/2,y(val)]);
+      g+=`<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${VZC[si]}" stroke-width="2.5"/>`+pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${VZC[si]}"/><text x="${p[0]}" y="${p[1]-8}" text-anchor="middle" class="vzv">${vfmt(s.values[i])}</text>`).join('')});
+    const leg=v.series.length>1?`<div class="vzleg">${v.series.map((s,si)=>`<span><i style="background:${VZC[si]}"></i>${esc(s.name)}</span>`).join('')}</div>`:'';
+    return `<figure class="vz">${cap}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(v.title||'กราฟ')}">${g}<line x1="${L}" x2="${W-Rr}" y1="${y(0)}" y2="${y(0)}" class="vza"/></svg>${leg}${v.unit?`<p class="vzu">หน่วย: ${esc(v.unit)}</p>`:''}</figure>`;
+  }
+  if(v.type==='pie'){
+    const tot=v.values.reduce((a,b)=>a+Math.max(0,b),0)||1,cx=110,cy=110,r=95;let a0=-Math.PI/2,g='';
+    v.values.forEach((val,i)=>{const a1=a0+2*Math.PI*Math.max(0,val)/tot,lg=a1-a0>Math.PI?1:0;
+      g+=v.values.length===1?`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${VZC[i%VZC.length]}"/>`:`<path d="M${cx},${cy} L${cx+r*Math.cos(a0)},${cy+r*Math.sin(a0)} A${r},${r} 0 ${lg} 1 ${cx+r*Math.cos(a1)},${cy+r*Math.sin(a1)} Z" fill="${VZC[i%VZC.length]}" stroke="var(--sheet)" stroke-width="2"/>`;a0=a1});
+    return `<figure class="vz">${cap}<div class="vzpie"><svg viewBox="0 0 220 220" role="img" aria-label="${esc(v.title||'แผนภูมิวงกลม')}">${g}</svg><div class="vzleg col">${v.labels.map((lb,i)=>`<span><i style="background:${VZC[i%VZC.length]}"></i>${esc(lb)} ${vfmt(v.values[i])}${esc(v.unit||'')}</span>`).join('')}</div></div></figure>`;
+  }
+  if(v.type==='map'){
+    const xs=[...v.points.map(p=>p.x),...v.path.map(p=>p[0]),0],ys=[...v.points.map(p=>p.y),...v.path.map(p=>p[1]),0];
+    const x0=Math.min(...xs)-1,x1=Math.max(...xs)+1,y0=Math.min(...ys)-1,y1=Math.max(...ys)+1,sp=Math.max(x1-x0,y1-y0),S=300/sp,W=(x1-x0)*S+76,H=(y1-y0)*S+40;
+    const X=x=>20+(x-x0)*S,Y=y=>20+(y1-y)*S;let g='';
+    for(let x=Math.ceil(x0);x<=x1;x++)g+=`<line x1="${X(x)}" x2="${X(x)}" y1="${Y(y1)}" y2="${Y(y0)}" class="vzg"/>`;
+    for(let y=Math.ceil(y0);y<=y1;y++)g+=`<line x1="${X(x0)}" x2="${X(x1)}" y1="${Y(y)}" y2="${Y(y)}" class="vzg"/>`;
+    if(v.path.length>1){g+=`<polyline points="${v.path.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="none" stroke="var(--mark)" stroke-width="3" marker-end="url(#vzarr)"/>`;
+      g+=`<circle cx="${X(v.path[0][0])}" cy="${Y(v.path[0][1])}" r="5" fill="var(--ok)"/>`}
+    v.points.forEach(p=>g+=`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="6" fill="var(--accent)"/><text x="${X(p.x)}" y="${Y(p.y)-11}" text-anchor="middle" class="vzp">${esc(p.name)}</text>`);
+    g+=`<g transform="translate(${W-24},34)"><path d="M0,-18 L7,4 L0,0 L-7,4 Z" fill="var(--bad)"/><text y="16" text-anchor="middle" class="vzl">N</text></g>`;
+    return `<figure class="vz">${cap}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(v.title||'แผนที่')}"><defs><marker id="vzarr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--mark)"/></marker></defs>${g}</svg>${v.unit?`<p class="vzu">ช่องตาราง 1 ช่อง = ${esc(v.unit)} · ทิศเหนืออยู่ด้านบน</p>`:'<p class="vzu">ทิศเหนืออยู่ด้านบน</p>'}</figure>`;
+  }
+  return '';
+}
+const VIZ_RULE=`- ถ้าโจทย์ต้องอ่านข้อมูลจากตาราง กราฟ หรือแผนที่ ให้ใส่ช่อง viz (ระบบวาดให้ตามข้อมูลจริง) และห้ามพิมพ์ข้อมูลชุดเดียวกันซ้ำใน stem
+  ตาราง: {"type":"table","title":"ชื่อ","headers":["หัวคอลัมน์"],"rows":[["ค่า"]]}
+  กราฟแท่ง/เส้น: {"type":"bar" หรือ "line","title":"ชื่อ","labels":["ป้ายแกน"],"series":[{"name":"ชุดข้อมูล","values":[ตัวเลข]}],"unit":"หน่วย"}
+  วงกลม: {"type":"pie","title":"ชื่อ","labels":["ส่วน"],"values":[ตัวเลข],"unit":"%"}
+  แผนที่ทิศ: {"type":"map","points":[{"name":"ชื่อสถานที่","x":0,"y":0}],"unit":"1 กม."} (x เพิ่ม=ไปทางตะวันออก, y เพิ่ม=ไปทางเหนือ)
+  ข้อที่ไม่ต้องใช้ให้ viz เป็น null และคำตอบต้องคำนวณจากข้อมูลใน viz ได้ถูกต้องแน่นอน`;
+
+/* ---------- ทิศทาง (วาดแผนที่เอง เฉลยคำนวณ) ---------- */
+const DIR8=['เหนือ','ตะวันออกเฉียงเหนือ','ตะวันออก','ตะวันออกเฉียงใต้','ใต้','ตะวันตกเฉียงใต้','ตะวันตก','ตะวันตกเฉียงเหนือ'];
+const dirOf=(dx,dy)=>{if(!dx&&!dy)return null;const a=(Math.atan2(dx,dy)*180/Math.PI+360)%360;return Math.round(a/45)%8};
+const PLACES=['บ้าน','โรงเรียน','ตลาด','วัด','ธนาคาร','ไปรษณีย์','สถานีตำรวจ','โรงพยาบาล','สวนสาธารณะ','ที่ว่าการอำเภอ'];
+const STEP_V=[[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]];
+function dirDist(ans){const o=[(ans+4)%8,(ans+1)%8,(ans+7)%8,(ans+2)%8,(ans+6)%8,(ans+3)%8];return mkMCtext('',DIR8[ans],o.map(i=>DIR8[i]),[])}
+function genDir1(t){
+  const kind=rnd(t<=1?['map','walk','face']:t<=3?['map','walk','walk','face']:['map','walk','walk','face']);
+  if(kind==='face'){
+    let h=ri(0,7);const start=h,nT=t<=1?1:t<=2?2:t<=3?3:4,acts=[],steps=[];
+    for(let i=0;i<nT;i++){const deg=t<=2?rnd([90,180]):rnd([45,90,135,180]),cw=Math.random()<.5,d=deg/45*(cw?1:-1);h=(h+d+8)%8;
+      acts.push(`หมุน${cw?'ตามเข็มนาฬิกา':'ทวนเข็มนาฬิกา'} ${deg} องศา`);steps.push([`${acts[i]} → หันไปทาง${DIR8[h]}`,`ครั้งที่ ${i+1} (45° = 1 ช่องของทิศ 8 ทิศ)`])}
+    const q=dirDist(h);q.stem=`นายเอยืนหันหน้าไปทางทิศ${DIR8[start]} แล้ว${acts.join(' จากนั้น')}\nตอนนี้นายเอหันหน้าไปทางทิศใด`;
+    q.steps=[[`เริ่มหันไปทางทิศ${DIR8[start]}`,'โจทย์บอก'],...steps];q.choices=q.choices.map(c=>'ทิศ'+c);q.expViz=null;return q;
+  }
+  if(kind==='map'){
+    const names=shuffle(PLACES.slice()).slice(0,t<=1?3:t<=3?4:5),pts=[];
+    for(const nm of names){for(let g=0;g<40;g++){const p={name:nm,x:ri(0,8),y:ri(0,7)};if(!pts.some(o=>Math.abs(o.x-p.x)<3&&Math.abs(o.y-p.y)<2)){pts.push(p);break}}}
+    let A,Bp,d;for(let g=0;g<60;g++){[A,Bp]=shuffle(pts.slice()).slice(0,2);const dx=A.x-Bp.x,dy=A.y-Bp.y;if((dx===0||dy===0||Math.abs(dx)===Math.abs(dy))&&(dx||dy)){d=dirOf(dx,dy);break}}
+    if(d==null)return null;
+    const askDist=t>=3&&Math.random()<.5;
+    if(askDist){
+      const trip=[[3,4,5],[6,8,10],[5,12,13]],[a,b,c]=rnd(t>=4?trip:trip.slice(0,1)),S0=pts[0];
+      const P2={name:names[1],x:S0.x+a,y:S0.y+(Math.random()<.5?b:-b)};if(Math.abs(P2.y)>14)return null;pts[1]=P2;
+      const viz={type:'map',title:'แผนที่',points:pts,path:[],unit:'1 กม.'};
+      const q=mkMC(`จากแผนที่ ระยะทางเป็นเส้นตรงจาก${S0.name}ถึง${P2.name}เท่ากับกี่กิโลเมตร`,c,[a+b,c+1,Math.max(a,b),c-1],[[`${P2.name}อยู่ห่างไปทางตะวันออก ${a} ช่อง และ${P2.y>S0.y?'เหนือ':'ใต้'} ${b} ช่อง`,'นับช่องบนแผนที่'],[`ระยะตรง = √(${a}² + ${b}²) = √${a*a+b*b} = ${c} กม.`,'ทฤษฎีบทพีทาโกรัส']],x=>x+' กม.');
+      q.viz=viz;return q;
+    }
+    const q=dirDist(d);q.viz={type:'map',title:'แผนที่',points:pts,path:[],unit:t>=3?'1 กม.':''};
+    q.stem=`จากแผนที่ ${A.name}อยู่ทางทิศใดของ${Bp.name}`;q.choices=q.choices.map(c=>'ทิศ'+c);
+    q.steps=[[`ยืนที่${Bp.name}แล้วมองไปหา${A.name}: ไปทาง${A.x>Bp.x?'ขวา (ตะวันออก)':A.x<Bp.x?'ซ้าย (ตะวันตก)':'ไม่ไปซ้ายขวา'} ${Math.abs(A.x-Bp.x)} ช่อง และ${A.y>Bp.y?'ขึ้น (เหนือ)':A.y<Bp.y?'ลง (ใต้)':'ไม่ขึ้นลง'} ${Math.abs(A.y-Bp.y)} ช่อง`,'นับช่องบนแผนที่ ทิศเหนืออยู่ด้านบน'],
+      [`จึงอยู่ทางทิศ${DIR8[d]}`,'รวมสองทิศ']];
+    return q;
+  }
+  /* walk: absolute legs (tier 1) or relative turns (tier 2+) */
+  const legs=t<=1?2:t<=2?3:t<=3?4:5;let h=rnd([0,2,4,6]),x=0,y=0;const path=[[0,0]],txt=[],steps=[];
+  for(let i=0;i<legs;i++){
+    if(i){const turn=rnd([2,-2]);h=(h+turn+8)%8;txt.push(t<=1?`จากนั้นเดินไปทางทิศ${DIR8[h]}`:`เลี้ยว${turn>0?'ขวา':'ซ้าย'}แล้วเดิน`)}
+    else txt.push(`เริ่มเดินไปทางทิศ${DIR8[h]}`);
+    const dist=ri(1,6);x+=STEP_V[h][0]*dist;y+=STEP_V[h][1]*dist;path.push([x,y]);
+    txt[i]+=` ${dist} กม.`;steps.push([`ช่วงที่ ${i+1}: ไปทาง${DIR8[h]} ${dist} กม. → อยู่ที่ (${x}, ${y})`,'วาดเส้นทางทีละช่วง (x=ตะวันออก, y=เหนือ)'])}
+  if(!x&&!y)return null;
+  const d=dirOf(x,y);if(!(x===0||y===0||Math.abs(x)===Math.abs(y)))return null;
+  const q=dirDist(d);q.stem=`${txt.join(' ')}\nตอนนี้อยู่ทางทิศใดของจุดเริ่มต้น`;q.choices=q.choices.map(c=>'ทิศ'+c);
+  q.steps=[...steps,[`จุดสุดท้ายอยู่ที่ (${x}, ${y}) เทียบกับจุดเริ่ม (0, 0) จึงอยู่ทางทิศ${DIR8[d]}`,'ดูเครื่องหมาย x และ y']];
+  q.expViz={type:'map',title:'เส้นทางที่เดิน',points:[{name:'เริ่ม',x:0,y:0},{name:'จบ',x,y}],path,unit:''};
+  return q;
+}
+function genDir(level,n){return many(()=>{for(let g=0;g<40;g++){const q=genDir1(level);if(q)return q}return null},n)}
+
+/* ---------- การวิเคราะห์ข้อมูล (ตาราง/กราฟจริง เฉลยคำนวณ) ---------- */
+const DSETS=[{cat:'ไตรมาส',labels:['Q1','Q2','Q3','Q4'],what:'ยอดสินเชื่อ',unit:'ล้านบาท'},{cat:'เดือน',labels:['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.'],what:'จำนวนลูกค้าใหม่',unit:'ราย'},
+  {cat:'สาขา',labels:['สาขา ก','สาขา ข','สาขา ค','สาขา ง'],what:'ยอดเงินฝาก',unit:'ล้านบาท'},{cat:'ผลิตภัณฑ์',labels:['ข้าว','ยางพารา','มันสำปะหลัง','อ้อย','ข้าวโพด'],what:'ผลผลิต',unit:'พันตัน'}];
+function genData1(t){
+  const ds=rnd(DSETS),n=ds.labels.length,base=rnd([20,40,50,100]);
+  const vals=ds.labels.map(()=>base*ri(2,12));if(new Set(vals).size<n)return null;
+  const chart=t<=1?rnd(['table','bar']):rnd(['table','bar','line']);
+  const two=t>=4,y1='ปี 2567',y2='ปี 2568',vals2=two?vals.map(v=>Math.max(base,v+base*ri(-4,5))):null;
+  const viz=chart==='table'?{type:'table',title:`${ds.what} (${ds.unit})`,headers:[ds.cat,...(two?[y1,y2]:[ds.what])],rows:ds.labels.map((l,i)=>[l,String(vals[i]),...(two?[String(vals2[i])]:[])])}
+    :{type:chart,title:ds.what,labels:ds.labels,series:two?[{name:y1,values:vals},{name:y2,values:vals2}]:[{name:ds.what,values:vals}],unit:ds.unit};
+  const kinds=t<=1?['max','sum','diff']:t<=2?['avg','pct','diff','min']:t<=3?['pct','avg','share','pct']:['growth','pct2','share','avg'];
+  const k=rnd(kinds),fmtU=x=>nf(x)+' '+ds.unit,lab=i=>ds.labels[i];let q;
+  const i1=ri(0,n-2),i2=ri(i1+1,n-1),sum=vals.reduce((a,b)=>a+b,0);
+  if(k==='max'||k==='min'){const fn=k==='max'?Math.max:Math.min,v=fn(...vals),i=vals.indexOf(v);
+    q=mkMCtext(`จากข้อมูล ${ds.cat}ใดมี${ds.what}${k==='max'?'สูง':'ต่ำ'}ที่สุด`,lab(i),shuffle(ds.labels.filter((_,j)=>j!==i)).slice(0,3),[[`เทียบค่าทุก${ds.cat}: ${ds.labels.map((l,j)=>l+' '+vals[j]).join(', ')}`,'อ่านจากตาราง/กราฟ'],[`${k==='max'?'มากสุด':'น้อยสุด'}คือ ${lab(i)} (${v})`,'เทียบค่า']])}
+  else if(k==='sum')q=mkMC(`${ds.what}รวมทุก${ds.cat}เท่ากับเท่าใด`,sum,[sum+base,sum-base,sum+2*base],[[`${vals.join(' + ')} = ${sum}`,'รวมทุกค่า']],fmtU);
+  else if(k==='diff'){const d=Math.abs(vals[i2]-vals[i1]);q=mkMC(`${lab(i2)}และ${lab(i1)}มี${ds.what}ต่างกันเท่าใด`,d,[d+base,Math.abs(d-base)||base*3,vals[i2]+vals[i1]],[[`|${vals[i2]} − ${vals[i1]}| = ${d}`,'ลบกัน']],fmtU)}
+  else if(k==='avg'){if(sum%n)return null;const a=sum/n;q=mkMC(`${ds.what}เฉลี่ยต่อ${ds.cat}เท่ากับเท่าใด`,a,[a+base/2,a-base/2,sum/(n-1)],[[`รวม ${sum}`,'รวมทุกค่า'],[`${sum} ÷ ${n} = ${a}`,`หารด้วยจำนวน${ds.cat}`]],fmtU)}
+  else if(k==='pct'){const p=(vals[i2]-vals[i1])/vals[i1]*100;if(!p||Math.abs(p*4-Math.round(p*4))>1e-9)return null;
+    q=mkMC(`${ds.what}ของ${lab(i2)}${p>=0?'เพิ่มขึ้น':'ลดลง'}จาก${lab(i1)}ร้อยละเท่าใด`,Math.abs(p),[Math.abs((vals[i2]-vals[i1])/vals[i2]*100),Math.abs(p)+10,Math.abs(vals[i2]-vals[i1])],[[`ส่วนต่าง ${vals[i2]} − ${vals[i1]} = ${vals[i2]-vals[i1]}`,'ลบกัน'],[`${Math.abs(vals[i2]-vals[i1])} ÷ ${vals[i1]} × 100 = ${nf(Math.abs(p))}%`,'เทียบกับค่าเดิม (ฐาน)']],x=>nf(x)+'%')}
+  else if(k==='share'){const p=vals[i1]/sum*100;if(Math.abs(p*4-Math.round(p*4))>1e-9)return null;
+    q=mkMC(`${lab(i1)}คิดเป็นร้อยละเท่าใดของ${ds.what}ทั้งหมด`,p,[p+5,100/n,vals[i1]/vals[i2]*100],[[`ทั้งหมด = ${sum}`,'รวมทุกค่า'],[`${vals[i1]} ÷ ${sum} × 100 = ${nf(p)}%`,'ส่วน ÷ ทั้งหมด']],x=>nf(x)+'%')}
+  else if(k==='growth'&&two){const g=vals2.map((v,i)=>v-vals[i]),m=Math.max(...g),i=g.indexOf(m);if(g.filter(x=>x===m).length>1)return null;
+    q=mkMCtext(`${ds.cat}ใดมี${ds.what}เพิ่มขึ้นจาก ${y1} เป็น ${y2} มากที่สุด (คิดเป็นจำนวน)`,lab(i),shuffle(ds.labels.filter((_,j)=>j!==i)).slice(0,3),[[`ส่วนเพิ่ม: ${ds.labels.map((l,j)=>`${l} ${g[j]>=0?'+':''}${g[j]}`).join(', ')}`,`${y2} − ${y1}`],[`มากที่สุดคือ ${lab(i)}`,'เทียบส่วนเพิ่ม']])}
+  else if(k==='pct2'&&two){const s1=vals.reduce((a,b)=>a+b,0),s2=vals2.reduce((a,b)=>a+b,0),p=(s2-s1)/s1*100;if(!p||Math.abs(p*4-Math.round(p*4))>1e-9)return null;
+    q=mkMC(`${ds.what}รวม ${y2} ${p>=0?'เพิ่มขึ้น':'ลดลง'}จาก ${y1} ร้อยละเท่าใด`,Math.abs(p),[Math.abs((s2-s1)/s2*100),Math.abs(p)+5,Math.abs(s2-s1)],[[`${y1} รวม ${s1} · ${y2} รวม ${s2}`,'รวมแต่ละปี'],[`|${s2} − ${s1}| ÷ ${s1} × 100 = ${nf(Math.abs(p))}%`,'เทียบกับปีฐาน']],x=>nf(x)+'%')}
+  else return null;
+  if(two&&k!=='growth'&&k!=='pct2')q.stem=`พิจารณาเฉพาะ${y1} ${q.stem.replace(/^จากข้อมูล /,'')}`;
+  q.viz=viz;q.stem=q.stem.startsWith('จากข้อมูล')?q.stem:'จากข้อมูล '+q.stem;return q;
+}
+function genData(level,n){return many(()=>{for(let g=0;g<60;g++){const q=genData1(level);if(q)return q}return null},n)}
+
+/* ---------- คะแนน · ระดับผู้สอบ (ไม่จำกัด) · แรงกิ้ง ---------- */
+const lvlFromPts=p=>Math.floor(Math.sqrt(Math.max(0,p)/25))+1;
+function periodKeys(d=new Date()){
+  const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())),day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);
+  const ys=new Date(Date.UTC(t.getUTCFullYear(),0,1)),wk=Math.ceil(((t-ys)/864e5+1)/7);
+  return{all:'all',week:`w${t.getUTCFullYear()}-${String(wk).padStart(2,'0')}`,month:`m${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
+}
+function roundPoints(items,picks,level){return Math.min(1000,items.reduce((a,q,j)=>a+(picks[j]===q.answer?Math.max(1,level):0),0))}
+async function awardPoints(pts){
+  if(!(pts>0))return;
+  P.pts=(P.pts||0)+pts;P.unsynced=(P.unsynced||0)+pts;save();renderAcct();
+  flushPoints();
+}
+async function flushPoints(){
+  if(!ME||!(P.unsynced>0)||flushPoints.busy)return;flushPoints.busy=true;
+  try{const f=await fb(),K=periodKeys();
+    while(P.unsynced>0){const chunk=Math.min(1000,P.unsynced);
+      for(const per of [K.all,K.week,K.month])
+        await f.fs.setDoc(fsDoc('rank',per,'u',ME.uid),{name:ME.name,pts:f.fs.increment(chunk),rounds:f.fs.increment(1),lvl:lvlFromPts(P.pts),updatedAt:f.fs.serverTimestamp()},{merge:true});
+      P.unsynced-=chunk;save();}
+  }catch(e){}finally{flushPoints.busy=false}
+}
+async function loadMyPoints(){
+  if(!ME)return;try{const f=await fb(),s=await f.fs.getDoc(fsDoc('rank','all','u',ME.uid));
+    if(s.exists()){const cp=s.data().pts||0;if(cp+(P.unsynced||0)>(P.pts||0)){P.pts=cp+(P.unsynced||0);save()}}renderAcct();}catch(e){}
+}
+var RK={tab:'week'};
+async function renderRank(){
+  if(VIEW!=='rank')return;
+  head('อันดับผู้สอบ','คะแนนได้จากข้อที่ตอบถูก ข้อละเท่ากับระดับของวิชานั้น (สอบจริงข้อละ 3) · ระดับผู้สอบเพิ่มได้ไม่จำกัด');
+  const el=document.getElementById('sheet'),K=periodKeys(),per={week:K.week,month:K.month,all:K.all}[RK.tab];
+  const tab=(v,t)=>`<button data-rk="${v}" aria-pressed="${RK.tab===v}">${t}</button>`;
+  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(3,1fr)">${tab('week','สัปดาห์นี้')}${tab('month','เดือนนี้')}${tab('all','ตลอดกาล')}</div>
+    <div class="tiles"><div class="tile">คะแนนสะสมของฉัน<b>${nf(P.pts||0)}</b></div><div class="tile">ระดับผู้สอบ<b>${lvlFromPts(P.pts||0)}</b></div><div class="tile">อีกกี่คะแนนขึ้นระดับ<b>${nf(25*lvlFromPts(P.pts||0)**2-(P.pts||0))}</b></div></div>
+    ${ME?'':'<p class="catnote warn">ยังไม่ได้เข้าสู่ระบบ คะแนนเก็บไว้ในเครื่องนี้ก่อน เข้าสู่ระบบแล้วคะแนนจะขึ้นอันดับให้อัตโนมัติ</p>'}
+    <div id="rkbody"><div class="state"><div class="spin"></div></div></div>`;
+  el.querySelectorAll('[data-rk]').forEach(b=>b.onclick=()=>{RK.tab=b.dataset.rk;renderRank()});
+  const body=document.getElementById('rkbody');
+  try{const f=await fb();await flushPoints();
+    const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'rank',per,'u'),f.fs.orderBy('pts','desc'),f.fs.limit(10)));
+    const rows=snap.docs.map((s,i)=>({i:i+1,uid:s.id,...s.data()}));let mine=rows.find(r=>ME&&r.uid===ME.uid);
+    if(ME&&!mine){const s=await f.fs.getDoc(fsDoc('rank',per,'u',ME.uid));if(s.exists())mine={i:'-',uid:ME.uid,...s.data(),out:true}}
+    const medal=i=>i===1?'🥇':i===2?'🥈':i===3?'🥉':i;
+    body.innerHTML=rows.length?`<div class="hlist">${rows.map(r=>`<div class="hrow rk${ME&&r.uid===ME.uid?' me':''}"><div class="rkn">${medal(r.i)}</div><div class="t"><b>${esc(r.name||'ผู้สอบ')}</b><span class="src">ระดับผู้สอบ ${r.lvl||1} · ${r.rounds||0} ชุด</span></div><div class="hp">${nf(r.pts||0)}<small>คะแนน</small></div></div>`).join('')}
+      ${mine&&mine.out?`<p class="src" style="text-align:center">…</p><div class="hrow rk me"><div class="rkn">-</div><div class="t"><b>${esc(mine.name)} (ฉัน)</b><span class="src">ยังไม่ติด 10 อันดับแรก</span></div><div class="hp">${nf(mine.pts||0)}<small>คะแนน</small></div></div>`:''}</div>`
+      :'<p class="src" style="text-align:center">ยังไม่มีใครเก็บคะแนนในช่วงนี้ เริ่มทำข้อสอบเพื่อขึ้นอันดับแรก</p>';
+  }catch(e){body.innerHTML='<p class="kerr">โหลดอันดับไม่ได้ ตรวจอินเทอร์เน็ต</p>'}
+}
+async function renameMe(){
+  if(!ME)return;
+  if(await modal(`<p class="mt">ชื่อที่แสดงในอันดับ</p><input class="tx" id="nm" maxlength="40" value="${esc(ME.name)}">`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+  const v=document.getElementById('nm').value.trim().slice(0,40);if(!v)return;
+  try{const f=await fb();await f.fs.updateDoc(fsDoc('users',ME.uid),{name:v});ME.name=v;const K=periodKeys();
+    for(const per of [K.all,K.week,K.month])await f.fs.setDoc(fsDoc('rank',per,'u',ME.uid),{name:v},{merge:true}).catch(()=>{});
+    renderAcct();toast('เปลี่ยนชื่อแล้ว')}catch(e){toast('เปลี่ยนชื่อไม่สำเร็จ','bad')}
+}
+
+/* ---------- เข้าครั้งแรก: ชวนล็อกอินและใส่ AI key ---------- */
+let onboardShown=false;
+async function onboard(){
+  if(onboardShown||inViewer)return;let skip=false;try{skip=sessionStorage.getItem('exam-onboard-skip')==='1'}catch(e){}if(skip)return;
+  const needLogin=!ME&&CLOUD.ok!==false,needKey=!activeAI();if(!needLogin&&!needKey)return;
+  onboardShown=true;
+  const row=(ok,t,s)=>`<div class="obr${ok?' ok':''}"><span>${ok?'✓':'○'}</span><div><b>${t}</b><p class="src">${s}</p></div></div>`;
+  const r=await modal(`<p class="mt">ยินดีต้อนรับสู่ระบบซ้อมสอบ</p><p class="src">ตั้งค่า 2 อย่างนี้ก่อน จะใช้ได้ครบทุกความสามารถ</p>
+    ${row(!!ME,'เข้าสู่ระบบ','เก็บคะแนน ขึ้นอันดับ จำระดับข้ามเครื่อง และเพิ่มเอกสารเข้าคลังกลาง')}
+    ${row(!needKey,'ใส่ AI key (Gemini ใช้ฟรี)','ให้ AI สร้างโจทย์ใหม่ อธิบายเฉลย อ่านเอกสาร และวิชาภาษาไทย อังกฤษ เฉพาะตำแหน่ง')}
+    <p class="src">ข้ามไปก่อนก็ได้ วิชาที่ระบบสร้างโจทย์เองและข้อสอบในคลังกลางใช้ได้ทันที</p>`,
+    [{t:'ไว้ทีหลัง'},...(needKey?[{t:'ใส่ AI key'}]:[]),...(needLogin?[{t:'เข้าสู่ระบบ',cls:'primary'}]:[])]);
+  const lbl=[ 'later',...(needKey?['key']:[]),...(needLogin?['login']:[])][r];
+  if(lbl==='login'){onboardShown=false;await loginDialog();setTimeout(onboard,800)}
+  else if(lbl==='key'){const d=document.getElementById('aiset');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});const h=d.querySelector('.howto');if(h)h.open=true}
+  else try{sessionStorage.setItem('exam-onboard-skip','1')}catch(e){}
+}
+
+/* ---------- ศึกษา: ค้นจากคลังความรู้ (รวมคลังกลาง) แล้วให้ AI สรุปพร้อมอ้างอิง ---------- */
+var STU={q:'',topic:'',res:null,turns:[],ctx:''};
+function kwSearch(q,pool,k){
+  const ql=q.toLowerCase().trim(),toks=[...new Set([ql,...ql.split(/[\s,]+/)])].filter(x=>x.length>=2);
+  return pool.map(c=>{const t=(c.title||'').toLowerCase(),f=(c.fact||'').toLowerCase();let s=0;for(const w of toks){if(t.includes(w))s+=3;s+=countHits(f,[w])}return{c,s}}).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,k).map(x=>x.c);
+}
+async function studySearch(){
+  const all=[...activeCards(),...bankItems()];
+  if(STU.topic){STU.res=all.filter(c=>c.topic===STU.topic).slice(0,60);return}
+  if(!STU.q){STU.res=null;return}
+  let res=kwSearch(STU.q,all,30);
+  if(canEmbed()){try{const sem=await searchCards(STU.q,12);for(const c of sem)if(!res.includes(c))res.push(c)}catch(e){}}
+  STU.res=res;
+}
+function studyCardHTML(c){
+  const d=docOf(c),figs=(c.figs||[]).filter(id=>FIGS.has(id)||CFIG.has(id));
+  if(c.type==='q')return `<div class="kc"><p class="src">ข้อสอบตัวอย่าง · ${esc(c.topic)}${d?` · ${esc(cardCite(c))}`:''}</p><p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p>${figs.map(id=>figHTML(id,'kthumb')).join('')}
+    <ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p>${(c.q.steps||[]).map(s=>`<p>${esc(s)}</p>`).join('')}</details></div>`;
+  return `<div class="kc"><p class="src">${esc(c.topic)} · ${esc(c.kind)}${d?` · ${esc(cardCite(c))}`:''}${String(c.docId).startsWith('c_')?' · คลังกลาง':''}</p><p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>${figs.map(id=>figHTML(id,'kthumb')).join('')}</div>`;
+}
+function renderStudy(){
+  if(VIEW!=='study')return;
+  head('ศึกษา','พิมพ์คำที่อยากเรียน ระบบค้นจากคลังความรู้ (รวมคลังกลาง) แล้วให้ AI สรุปอธิบายพร้อมอ้างอิง');
+  const el=document.getElementById('sheet'),all=[...activeCards(),...bankItems()],cnt={};for(const c of all)cnt[c.topic]=(cnt[c.topic]||0)+1;
+  const topics=[...GEN_TOPICS,...SPEC_TOPICS].filter(t=>cnt[t]);
+  el.innerHTML=`<form class="stf" id="stf"><input class="tx" id="stq" type="search" placeholder="เช่น 5C, NPL, ความยินยอม PDPA, ผลต่างชั้นที่สอง" value="${esc(STU.q)}" aria-label="คำที่อยากศึกษา"><button class="primary">ค้นหา</button></form>
+    ${topics.length?`<div class="tags">${topics.map(t=>`<button class="tag tbtn${STU.topic===t?' on':''}" data-tp="${esc(t)}">${esc(t)} ${cnt[t]}</button>`).join('')}</div>`:'<p class="catnote">ยังไม่มีข้อมูลในคลัง อัปโหลดเอกสารที่หน้า คลังความรู้ หรือรอซิงก์คลังกลาง</p>'}
+    <div id="stres">${STU.res==null?'<p class="src">พิมพ์คำค้น หรือกดหัวข้อด้านบนเพื่อดูบัตรความรู้และข้อสอบตัวอย่าง</p>':STU.res.length?`<p class="lbl">พบ ${STU.res.length} รายการ</p><div class="kcards stc">${STU.res.map(studyCardHTML).join('')}</div>`:'<p class="src">ไม่พบในคลัง ลองคำอื่น หรือให้ AI อธิบายจากความรู้ทั่วไป</p>'}</div>
+    ${STU.res!=null?`<div class="askbox"><p class="lbl">ให้ AI ช่วยสอน${activeAI()?'':' (ต้องตั้งค่า AI ก่อน)'}</p><div class="quick"><button type="button" class="qk" data-sq="สรุปเรื่องนี้ให้เข้าใจง่าย พร้อมประเด็นที่มักออกสอบ">สรุปให้เข้าใจง่าย</button><button type="button" class="qk" data-sq="ยกตัวอย่างโจทย์แนวข้อสอบ 2 ข้อ พร้อมเฉลยละเอียด">ขอโจทย์ตัวอย่าง</button><button type="button" class="qk" data-sq="สิ่งที่คนมักเข้าใจผิดในเรื่องนี้มีอะไรบ้าง">จุดที่มักพลาด</button></div>
+      <div class="thread" id="stth">${STU.turns.map(t=>`<div class="msg ${t.role==='user'?'me':'ai'}">${esc(t.content)}</div>`).join('')}</div>
+      <form class="askform" id="staf"><textarea id="sta" rows="2" placeholder="ถามต่อ เช่น ต่างจาก 7C ยังไง"></textarea><div class="askrow"><span class="asknote" id="stn"></span><button type="submit" class="send" ${activeAI()?'':'disabled'}>ถาม</button></div></form></div>`:''}`;
+  document.getElementById('stf').onsubmit=async e=>{e.preventDefault();STU.q=document.getElementById('stq').value.trim();STU.topic='';STU.turns=[];await studySearch();renderStudy()};
+  el.querySelectorAll('[data-tp]').forEach(b=>b.onclick=async()=>{STU.topic=STU.topic===b.dataset.tp?'':b.dataset.tp;STU.q=STU.topic;STU.turns=[];await studySearch();renderStudy()});
+  const ask=async text=>{
+    text=text.trim();if(!text||!activeAI())return;
+    const th=document.getElementById('stth'),n=document.getElementById('stn');
+    const me=document.createElement('div');me.className='msg me';me.textContent=text;th.append(me);
+    const b=document.createElement('div');b.className='msg ai wait';b.textContent='กำลังค้นและเรียบเรียง...';th.append(b);
+    const src=(STU.res||[]).slice(0,10);
+    const RULES=`คุณคือติวเตอร์เตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) ผู้เรียนกำลังศึกษาเรื่อง "${STU.q||STU.topic}"
+${src.length?`ข้อมูลจากคลังความรู้ของระบบ (แต่ละรายการมีป้ายที่มาในวงเล็บเหลี่ยม):\n${src.map(c=>`[${cardCite(c)||c.topic}] ${c.type==='q'?`ข้อสอบ: ${c.q.stem} | ตัวเลือก: ${c.q.choices.join(' / ')} | ตอบ: ${c.q.choices[c.q.answer]}`:`${c.title}: ${c.fact}`}`).join('\n')}`:'คลังความรู้ไม่มีข้อมูลเรื่องนี้'}
+วิธีตอบ:
+- ภาษาไทย อ่านง่าย เป็นขั้นตอน ห้ามใช้ markdown เช่น ** หรือ # ถ้าแบ่งข้อให้ขึ้นบรรทัดใหม่ขึ้นต้นด้วย ① ② ③
+- ใช้ข้อมูลจากคลังเป็นหลัก และปิดท้ายด้วยบรรทัด "อ้างอิง:" ตามด้วยป้ายที่ใช้ ถ้าคลังไม่มีข้อมูลพอ ให้บอกตรงๆ แล้วอธิบายจากหลักการทั่วไปโดยระบุว่าไม่ได้มาจากคลัง
+- ห้ามแต่งตัวเลขหรือระเบียบที่ไม่แน่ใจ`;
+    STU.turns.push({role:'user',content:text});
+    try{const t=await aiText([{role:'user',content:RULES},...STU.turns.slice(-8)],{onText:({text})=>{b.classList.remove('wait');b.textContent=text}});
+      b.classList.remove('wait');b.textContent=t;STU.turns.push({role:'assistant',content:t});n.textContent='';
+    }catch(e){b.remove();STU.turns.pop();n.textContent=errCopy(e&&e.code,'ถาม')}
+  };
+  const af=document.getElementById('staf');
+  if(af){af.onsubmit=e=>{e.preventDefault();const t=document.getElementById('sta');const v=t.value;t.value='';ask(v)};
+    el.querySelectorAll('[data-sq]').forEach(b=>b.onclick=()=>ask(b.dataset.sq))}
+}
+
+/* ---------- ส่งเข้าคลังกลางอัตโนมัติเมื่อประมวลผลเสร็จ ---------- */
+function autoShare(d){
+  if(!d||d.central||d.noShare||d.subStatus==='pending'||d.subStatus==='approved')return;
+  if(!CARDS.some(c=>c.docId===d.id))return;
+  if(ME)submitDoc(d,{auto:true});else{d.shareWait=true;saveDoc(d)}
+}
+function flushShares(){if(!ME)return;for(const d of DOCS)if(!d.central&&d.stage==='ready'&&!d.noShare&&!d.subId)autoShare(d)}
 
 document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 

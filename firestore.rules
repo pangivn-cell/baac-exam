@@ -45,6 +45,15 @@ service cloud.firestore {
       allow delete: if isReviewer() || (signedIn() && resource.data.ownerUid == request.auth.uid);
     }
 
+    // อันดับผู้สอบ (all / w2026-43 / m2026-10): ทุกคนอ่านได้ เขียนได้เฉพาะของตัวเอง เพิ่มได้ไม่เกิน 1000 คะแนนต่อครั้ง
+    match /rank/{period}/u/{uid} {
+      allow read: if true;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.pts is number && request.resource.data.pts >= 0 && request.resource.data.pts <= 1000;
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.pts >= resource.data.pts && request.resource.data.pts <= resource.data.pts + 1000;
+    }
+
     // รายงานเฉลยผิด
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';

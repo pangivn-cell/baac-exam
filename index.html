@@ -1,6 +1,65 @@
-<!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Baac_Exam</title>
-<meta http-equiv="refresh" content="0;url=exam-practice.html">
-<style>body{font-family:system-ui,sans-serif;background:#f3f5f8;color:#1c2538;display:grid;place-items:center;min-height:100vh;margin:0}@media (prefers-color-scheme:dark){body{background:#11151f;color:#e7ebf4}}a{color:#2f47b8}</style>
-</head><body><p>กำลังเปิดระบบซ้อมสอบ... ถ้าไม่ไปเอง <a href="exam-practice.html">กดที่นี่</a></p></body></html>
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Baac_Exam</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600&family=Sarabun:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/app.css?v=2026-10-22a">
+</head><body>
+
+<header class="mtop" id="mtop"><button class="mbtn" id="mmenu" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="side"><span class="ic" aria-hidden="true">☰</span>เมนู</button><span class="mtitle" id="mtitle">ระบบซ้อมสอบ</span><button class="mav out" id="mav" type="button">เข้าสู่ระบบ</button></header>
+<div class="mback" id="mback"></div>
+<div class="app">
+  <aside class="side" id="side" aria-label="เมนู">
+    <button class="mclose" id="mclose" type="button" aria-label="ปิดเมนู">✕ ปิดเมนู</button>
+    <p class="brand">ระบบซ้อมสอบ<small>โจทย์ใหม่ทุกชุด ความยากปรับตามผลของคุณ</small></p>
+    <div class="acct" id="acct"></div>
+    <nav class="views" id="views" aria-label="โหมด">
+      <button class="subj" data-v="home">🏠 หน้าแรก</button>
+      <button class="subj" data-v="mock">⏱ สอบจริง (Mock Exam)</button>
+      <button class="subj" data-v="study">💬 สอบถาม AI</button>
+      <button class="subj" data-v="kb">📤 อัปเดตความรู้ (คลังความรู้)</button>
+      <button class="subj" data-v="rank">🏆 อันดับ</button>
+      <button class="subj" data-v="hist">🕘 ประวัติสอบ</button>
+      <button class="subj" data-v="review" id="vreview" hidden>ตรวจอนุมัติ (ผู้ตรวจ)</button>
+    </nav>
+    <div id="pside">
+    <nav class="subjects" id="subjects" aria-label="วิชา"></nav>
+    </div>
+    <details class="aiset" id="aiset"><summary><span>ตั้งค่า AI</span><span class="pill" id="aipill">-</span></summary><div class="bd" id="aibody"></div></details>
+  </aside>
+  <main class="main">
+    <div class="col">
+      <div class="tbar" id="tbar" hidden></div>
+      <div class="head">
+        <div><h1 id="title">เงื่อนไขสัญลักษณ์</h1><p id="desc"></p></div>
+        <div class="pctl" id="pctl"><label class="fl" for="count">จำนวนข้อ</label><select id="count"><option value="5">5 ข้อ</option><option value="10">10 ข้อ</option><option value="20">20 ข้อ</option><option value="50">50 ข้อ</option><option value="100">100 ข้อ</option></select>
+          <div class="seg" role="group" aria-label="การเฉลย"><button id="mode-now" aria-pressed="true">เฉลยทันที</button><button id="mode-end" aria-pressed="false">เฉลยตอนท้าย</button></div>
+          <button class="primary" id="newq" type="button">🔄 สร้างโจทย์ชุดใหม่</button>
+          <button class="ghost" id="resetlv">เริ่มระดับ 1 ใหม่</button></div>
+      </div>
+      <section class="sheet" id="sheet" aria-live="polite"></section>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="assertive"></div>
+<dialog id="dlg"></dialog>
+<input type="file" id="kbfile" hidden multiple accept=".pdf,.docx,.txt,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html">
+<script>
+/* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
+const BUILD='2026-10-22a';
+if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
+  const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
+  let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
+  try{sessionStorage.setItem('exam-build-reload',m[1])}catch(e){}
+  location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+location.hash);
+}).catch(()=>{});
+</script>
+<script src="js/core.js?v=2026-10-22a"></script>
+<script src="js/generators.js?v=2026-10-22a"></script>
+<script src="js/ai.js?v=2026-10-22a"></script>
+<script src="js/practice.js?v=2026-10-22a"></script>
+<script src="js/questions.js?v=2026-10-22a"></script>
+<script src="js/kb.js?v=2026-10-22a"></script>
+<script src="js/cloud.js?v=2026-10-22a"></script>
+<script src="js/visuals.js?v=2026-10-22a"></script>
+<script src="js/views.js?v=2026-10-22a"></script>
+</body></html>

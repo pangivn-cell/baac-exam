@@ -307,23 +307,39 @@ nav.subjects{gap:14px}
 .kconf{display:flex;flex-direction:column;gap:8px;border:1px solid var(--unk);border-radius:10px;padding:10px;background:var(--unk-soft)}
 .kconf .kc{background:var(--sheet)}
 .cetx{width:100%;box-sizing:border-box;font:15px/1.6 var(--f-body);padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.mtop,.mback{display:none}
 @media (max-width:760px){
-  .slist{flex-direction:row;overflow-x:auto;padding-bottom:4px}
-  .slist .subj,.upbtn{flex:0 0 auto;max-width:70vw}
-  .views{flex-direction:row;overflow-x:auto}
-  .views .subj{flex:0 0 auto}
+  .mtop{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:30;background:var(--rail);border-bottom:1px solid var(--line);
+    padding:8px max(12px,env(safe-area-inset-right,0px)) 8px max(12px,env(safe-area-inset-left,0px));padding-top:max(8px,env(safe-area-inset-top,0px))}
+  .mbtn{display:flex;align-items:center;gap:6px;font:600 15px var(--f-body);padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sheet);color:var(--ink);cursor:pointer}
+  .mbtn .ic{font-size:20px;line-height:1}
+  .mbtn:focus-visible,.mav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .mtitle{flex:1;min-width:0;font:600 16px var(--f-display);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mav{flex:0 0 auto;font:600 14px var(--f-body);border:none;cursor:pointer;border-radius:999px;padding:0}
+  .mav.in{width:36px;height:36px;display:grid;place-items:center;background:var(--accent);color:var(--sheet);font-size:16px}
+  .mav.out{padding:8px 12px;background:var(--accent);color:var(--sheet)}
   .app{grid-template-columns:1fr}
-  .side{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-right:max(16px,env(safe-area-inset-right,0px));gap:12px}
-  nav.subjects{gap:8px}
-  .set{display:grid;grid-template-columns:1fr 1fr;align-items:end}
-  .set .primary{grid-column:1/-1}
+  .side{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(330px,88vw);height:100dvh;box-sizing:border-box;transform:translateX(-105%);
+    transition:transform .22s ease;box-shadow:0 0 30px rgba(0,0,0,.35);padding-top:max(16px,env(safe-area-inset-top,0px));padding-bottom:max(24px,env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain}
+  body.menu-open .side{transform:none}
+  .mback{position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.45)}
+  body.menu-open .mback{display:block}
+  body.menu-open{overflow:hidden}
+  body.exam-on .mtop{display:none}
+  .side .mclose{display:flex}
+  .main{padding-top:14px}
 }
+.mclose{display:none;align-self:flex-end;font:600 14px var(--f-body);padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sheet);color:var(--ink);cursor:pointer;margin-bottom:-8px}
+@media (prefers-reduced-motion:reduce){.side{transition:none}}
 @media (max-width:440px){.choices:not(.mc) .ch{font-size:15px;padding:12px 4px}.ask .st{font-size:1.3rem}}
 @media (prefers-reduced-motion:reduce){.bar>i{transition:none}.spin{animation-duration:3s}}
 </style></head><body>
 
+<header class="mtop" id="mtop"><button class="mbtn" id="mmenu" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="side"><span class="ic" aria-hidden="true">☰</span>เมนู</button><span class="mtitle" id="mtitle">ระบบซ้อมสอบ</span><button class="mav out" id="mav" type="button">เข้าสู่ระบบ</button></header>
+<div class="mback" id="mback"></div>
 <div class="app">
-  <aside class="side" aria-label="เมนู">
+  <aside class="side" id="side" aria-label="เมนู">
+    <button class="mclose" id="mclose" type="button" aria-label="ปิดเมนู">✕ ปิดเมนู</button>
     <p class="brand">ระบบซ้อมสอบ<small>โจทย์ใหม่ทุกชุด ความยากปรับตามผลของคุณ</small></p>
     <div class="acct" id="acct"></div>
     <nav class="views" id="views" aria-label="โหมด">
@@ -3187,6 +3203,30 @@ function autoShare(d){
 }
 function flushShares(){if(!ME)return;for(const d of DOCS)if(!d.central&&d.stage==='ready'&&!d.noShare&&!d.subId)autoShare(d)}
 
+/* ---------- เมนูบนมือถือ: ปุ่ม ☰ เปิดแถบเมนูจากด้านซ้าย เลือกแล้วปิดเอง ---------- */
+const isPhone=()=>matchMedia('(max-width:760px)').matches;
+function setMenu(open){
+  document.body.classList.toggle('menu-open',open);
+  const b=document.getElementById('mmenu');if(b)b.setAttribute('aria-expanded',open);
+  if(open){document.getElementById('side').scrollTop=0;const f=document.querySelector('#side .mclose');if(f)f.focus({preventScroll:true})}
+}
+document.getElementById('mmenu').onclick=()=>setMenu(!document.body.classList.contains('menu-open'));
+document.getElementById('mclose').onclick=()=>{setMenu(false);document.getElementById('mmenu').focus()};
+document.getElementById('mback').onclick=()=>setMenu(false);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('menu-open')){setMenu(false);document.getElementById('mmenu').focus()}});
+document.getElementById('side').addEventListener('click',e=>{
+  if(isPhone()&&e.target.closest('#views button,#subjects [data-s],#newset'))setTimeout(()=>{setMenu(false);window.scrollTo({top:0})},0);
+},true); /* capture: the subject list re-renders inside its own click handler */
+/* page title and account shortcut in the top bar follow the page */
+new MutationObserver(()=>{const t=document.getElementById('title').textContent;document.getElementById('mtitle').textContent=t||'ระบบซ้อมสอบ'}).observe(document.getElementById('title'),{childList:true,characterData:true,subtree:true});
+function renderMav(){
+  const b=document.getElementById('mav');if(!b)return;
+  if(ME){b.className='mav in';b.textContent=(ME.name||'?').trim().slice(0,1).toUpperCase();b.setAttribute('aria-label','บัญชีของฉัน: '+ME.name);b.onclick=()=>setMenu(true)}
+  else{b.className='mav out';b.textContent='เข้าสู่ระบบ';b.removeAttribute('aria-label');b.onclick=()=>loginDialog()}
+}
+new MutationObserver(renderMav).observe(document.getElementById('acct'),{childList:true});renderMav();
+new MutationObserver(()=>{const on=document.querySelector('.app').classList.contains('exam');document.body.classList.toggle('exam-on',on);if(on)setMenu(false)}).observe(document.querySelector('.app'),{attributes:true,attributeFilter:['class']});
+matchMedia('(max-width:760px)').addEventListener('change',e=>{if(!e.matches)setMenu(false)});
 document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
 document.getElementById('count').onchange=e=>{P.count=+e.target.value;save()};

@@ -32,7 +32,7 @@ async function keyCall(prov,input,json,signal){
   for(const model of models){
     for(let attempt=0;attempt<3;attempt++){
       try{const t=await keyCallOnce(prov,model,input,json,signal);LAST_MODEL=model;return t}
-      catch(e){lastErr=e;
+      catch(e){lastErr=e;if(e&&typeof e==='object'){e.prov=prov;e.model=model}
         if(e.code==='overloaded'||e.code==='network'&&attempt===0){await sleep(1500*(attempt+1),signal);continue}
         if(e.code==='bad_model'||(e.code==='rate_limited'&&prov==='gemini'))break;
         throw e;

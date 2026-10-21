@@ -256,7 +256,7 @@ async function processDoc(doc){
   }catch(e){
     const code=e&&e.code;
     doc.errCode=code||'';
-    doc.err=code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)';
+    doc.err=code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+(e&&e.model?` [${AINAME[e.prov]||e.prov} · โมเดล ${e.model}]`:'')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)';
     await saveDoc(doc);
   }finally{doc.prog='';renderKB();renderSide()}
 }

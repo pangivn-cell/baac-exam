@@ -8,9 +8,15 @@ try{const a=JSON.parse(localStorage.getItem('exam-drill-ai')||'null');if(a)AIP=m
 /* ตั้งค่า AI (รวม key) ผูกกับบัญชี: เก็บที่ users/{uid}/qlog/aiset (กฎเดียวกับบันทึกโจทย์ อ่าน/เขียนได้เฉพาะเจ้าของ) ล็อกอินเครื่องไหนก็ได้ key ชุดเดียวกัน */
 const AIP_AT='exam-drill-ai-at';
 const saveAI=(push=true)=>{try{localStorage.setItem('exam-drill-ai',JSON.stringify(AIP));if(push)localStorage.setItem(AIP_AT,String(Date.now()))}catch(e){}if(push)pushAIP()};
+/* สถานะการซิงก์ แสดงในหน้าตั้งค่า AI */
+const AISYNC={msg:'',bad:false};
+const aiSyncMsg=(m,bad)=>{AISYNC.msg=m;AISYNC.bad=!!bad;const e=document.getElementById('aisync');if(e){e.textContent=m;e.className='hint '+(bad?'err':'ok')}};
+const syncErr=e=>{const c=String(e&&e.code||e&&e.message||e);return c==='permission-denied'?'ฐานข้อมูลไม่อนุญาต (ลองออกจากระบบแล้วเข้าใหม่)':c==='unavailable'?'เชื่อมต่อฐานข้อมูลไม่ได้ ตรวจอินเทอร์เน็ต':c.slice(0,80)};
 async function pushAIP(){
-  if(typeof ME==='undefined'||!ME)return;
-  try{const f=await fb();await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','aiset'),{aip:JSON.stringify(AIP),at:+(localStorage.getItem(AIP_AT)||Date.now())})}catch(e){console.warn('ai sync',e&&e.code||e)}
+  if(typeof ME==='undefined'||!ME){aiSyncMsg('ยังไม่ได้เข้าสู่ระบบ ตั้งค่า AI เก็บไว้แค่ในเครื่องนี้');return false}
+  try{const f=await fb(),at=+(localStorage.getItem(AIP_AT)||Date.now());await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','aiset'),{aip:JSON.stringify(AIP),at});
+    aiSyncMsg(`☁ บันทึกตั้งค่า AI ไว้กับบัญชี ${ME.email||ME.name} แล้ว (${fmtDate(Date.now())}) เครื่องอื่นที่ล็อกอินบัญชีนี้จะได้ key ชุดนี้`);return true}
+  catch(e){aiSyncMsg('ส่งตั้งค่า AI ขึ้นบัญชีไม่สำเร็จ: '+syncErr(e),true);return false}
 }
 async function pullAIP(){
   if(!ME)return;
@@ -20,8 +26,11 @@ async function pullAIP(){
     if(s.exists()&&(s.data().at>localAt||!hasLocal)){
       AIP=mergeAIP(JSON.parse(s.data().aip||'{}'));saveAI(false);try{localStorage.setItem(AIP_AT,String(s.data().at))}catch(e){}
       renderAISet();aiChanged();if(activeAI())toast(`ใช้ตั้งค่า AI จากบัญชีของคุณ (${AINAME[activeAI()]})`);
-    }else if(hasLocal&&(!s.exists()||s.data().at<localAt))pushAIP();
-  }catch(e){console.warn('ai sync',e&&e.code||e)}
+      aiSyncMsg(`☁ ใช้ตั้งค่า AI จากบัญชี ${ME.email||ME.name} (บันทึกเมื่อ ${fmtDate(s.data().at)})`);
+    }else if(hasLocal&&(!s.exists()||s.data().at<localAt))await pushAIP();
+    else if(!s.exists())aiSyncMsg(`บัญชี ${ME.email||ME.name} ยังไม่มีตั้งค่า AI ที่บันทึกไว้ ใส่ key แล้วกด บันทึก ในเครื่องที่มี key`,true);
+    else aiSyncMsg(`☁ ตั้งค่า AI ตรงกับบัญชี ${ME.email||ME.name} แล้ว`);
+  }catch(e){aiSyncMsg('ดึงตั้งค่า AI จากบัญชีไม่สำเร็จ: '+syncErr(e),true)}
 }
 const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta'};
 const KEY_PROVS=['gemini','openai','anthropic','meta'];
@@ -151,6 +160,8 @@ function renderAISet(){
    <div class="field"><label for="mmodel">โมเดล Meta</label><input class="tx" id="mmodel" type="text" autocomplete="off" list="mmodels"><datalist id="mmodels"><option value="muse-spark-1.3"><option value="muse-spark-1.3-contributor"></datalist></div>
    <div class="btns"><button class="primary" id="aisave">บันทึก</button><button class="ghost" id="aitest">ทดสอบ</button><button class="ghost" id="aiclear">ลบ key</button></div>
    <p class="hint" id="aistat"></p>
+   <p class="hint ${AISYNC.bad?'err':'ok'}" id="aisync">${esc(AISYNC.msg||((typeof ME!=='undefined'&&ME)?'':'เข้าสู่ระบบเพื่อเก็บ key ไว้กับบัญชี ใช้ได้ทุกเครื่อง'))}</p>
+   <div class="btns"><button class="ghost" id="aisyncbtn">⇅ ซิงก์ตั้งค่า AI กับบัญชี</button></div>
    <details class="howto"><summary>วิธีขอ Gemini key (มีโควตาฟรี)</summary><ol>
 <li>กดลิงก์ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> แล้วเข้าสู่ระบบด้วยบัญชี Google</li>
 <li>ครั้งแรกจะมีหน้าข้อตกลงการใช้งาน ให้กดยอมรับ</li>
@@ -182,6 +193,7 @@ function renderAISet(){
   const read=()=>{AIP.provider=$('aiprov').value;AIP.gemini={key:$('gkey').value.trim(),model:$('gmodel').value.trim()||'gemini-flash-latest'};AIP.openai={key:$('okey').value.trim(),model:$('omodel').value.trim()||'gpt-5-mini'};AIP.anthropic={key:$('akey').value.trim(),model:$('amodel').value.trim()||'claude-opus-5-5'};AIP.meta={key:$('mkey').value.trim(),model:$('mmodel').value.trim()||'muse-spark-1.3'}};
   const stat=(t,c)=>{const e=$('aistat');e.textContent=t;e.className='hint '+(c||'')};
   $('aisave').onclick=()=>{read();saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent=activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
+  $('aisyncbtn').onclick=async()=>{if(typeof ME==='undefined'||!ME){aiSyncMsg('เข้าสู่ระบบก่อน แล้วกดอีกครั้ง',true);return}aiSyncMsg('กำลังซิงก์...');await pullAIP()};
   $('aiclear').onclick=()=>{for(const x of KEY_PROVS)AIP[x].key='';saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent='ลบ key แล้ว'};
   $('aitest').onclick=async()=>{read();saveAI();const a2=activeAI();if(!a2){stat('ยังไม่มี key ให้ทดสอบ','err');return}
     stat(`กำลังทดสอบ ${AINAME[a2]}...`);

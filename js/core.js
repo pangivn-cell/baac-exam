@@ -55,11 +55,12 @@ try{const s=JSON.parse(localStorage.getItem('exam-drill-v1')||'null');if(s)P={..
 if(P.subject&&!String(P.subject).startsWith('doc_')&&!SUBJ.some(s=>s.id===P.subject))P.subject=SUBJ[0].id;
 const save=()=>{try{localStorage.setItem('exam-drill-v1',JSON.stringify(P))}catch(e){}};
 /* ระดับรวมของผู้สอบ (ใช้กับทุกวิชา): ทำชุดข้อสอบผ่าน (ได้ 60% ขึ้นไป) = 1 คะแนน
-   ระดับ 2 ที่ 5 คะแนน แล้วแต่ละระดับต้องเก็บเพิ่มมากขึ้นอีก 2 คะแนน (5, 7, 9, 11 …): ระดับ 3 ที่ 12, ระดับ 4 ที่ 21 … ไม่จำกัด */
+   ระดับ 1 ที่ 5 คะแนน · ระดับถัดไปต้องเก็บเพิ่ม 1.5 เท่าของช่วงก่อนหน้า: 5 → 5+7.5=12.5 → 12.5+11.25=23.75 → 40.625 …
+   คะแนนเป็นจำนวนเต็ม จึงต้องได้เกินเกณฑ์ (ระดับ 2 = 13 คะแนน, ระดับ 3 = 24, ระดับ 4 = 41) · ต่ำกว่า 5 คะแนน = ระดับ 0 */
 const PASS_PCT=.6;
-function levelInfo(n){n=Math.max(0,n||0);let lv=1,need=5,acc=0;while(n>=acc+need){acc+=need;lv++;need+=2}return{lv,from:acc,to:acc+need,left:acc+need-n}}
+function levelInfo(n){n=Math.max(0,n||0);let lv=0,step=5,at=5,prev=0;while(n>=at){lv++;prev=at;step*=1.5;at+=step}return{lv,from:prev,to:at,left:Math.ceil(at)-n}}
 const myLevel=()=>levelInfo(P.pass).lv;
-const lvOf=id=>myLevel();
+const lvOf=id=>Math.max(1,myLevel());   /* ความยากของโจทย์เริ่มที่ 1 แม้ระดับผู้สอบยังเป็น 0 */
 /* เปลี่ยนจากระบบเดิม: นับชุดที่เคยผ่านจากประวัติสอบในเครื่องเป็นคะแนนเริ่มต้น */
 if(P.pass==null){let h=[];try{h=JSON.parse(localStorage.getItem('exam-history-v1')||'[]')}catch(e){}
   P.pass=(Array.isArray(h)?h:[]).filter(x=>x&&x.pct>=PASS_PCT).length;P.unsyncedPass=P.pass;try{localStorage.setItem('exam-drill-v1',JSON.stringify(P))}catch(e){}}

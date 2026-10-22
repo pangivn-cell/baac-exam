@@ -21,6 +21,7 @@ function normTurns(input){
 async function httpFail(res){
   let msg='';try{msg=await res.text()}catch(e){}
   const bad=res.status===401||res.status===403||(res.status===400&&/API[_ ]?key/i.test(msg));
+  if(/credit balance|insufficient_quota|exceeded your current quota|billing|payment required/i.test(msg)||res.status===402)throw{code:'no_credit',message:msg.slice(0,300)};
   throw{code:bad?'bad_key':res.status===404?'bad_model':res.status===429?'rate_limited':(res.status>=500||/overloaded|high demand|UNAVAILABLE/i.test(msg))?'overloaded':'upstream_error',message:msg.slice(0,300)};
 }
 const GEMINI_FALLBACK=['gemini-flash-latest','gemini-2.5-flash','gemini-flash-lite-latest','gemini-2.5-flash-lite'];
@@ -63,6 +64,7 @@ async function anthCall(model,turns,signal){
   catch(e){
     if(signal&&signal.aborted)throw{code:'cancelled'};
     const s=e&&e.status;if(!s)throw{code:'network',message:String(e&&e.message||e)};
+    if(/credit balance|billing/i.test(String(e.message||''))||s===402)throw{code:'no_credit',message:String(e.message||'').slice(0,300)};
     throw{code:s===401||s===403?'bad_key':s===404?'bad_model':s===429?'rate_limited':s>=500?'overloaded':'upstream_error',message:String(e.message||'').slice(0,300)};
   }
   if(msg.stop_reason==='refusal')throw{code:'refused'};
@@ -109,6 +111,7 @@ async function aiJSON(input,{signal,onText}={}){
 }
 const HIDE_CODES=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'];
 function errCopy(code,what){
+  if(code==='no_credit')return 'บัญชี AI นี้เครดิตไม่พอ (ยังไม่ได้เติมเงิน หรือเงินหมด) ให้เติมเงินในเว็บของผู้ให้บริการ หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
   return code==='rate_limited'?`${what}ถี่เกินไปหรือโควตาหมด รอสักครู่แล้วลองใหม่`:code==='bad_key'?'API key ไม่ถูกต้องหรือไม่มีสิทธิ์ ตรวจในตั้งค่า AI':code==='bad_model'?'ไม่พบชื่อโมเดลนี้ แก้ชื่อโมเดลในตั้งค่า AI':code==='overloaded'?'เซิร์ฟเวอร์ AI มีคนใช้เยอะชั่วคราว ระบบลองซ้ำและลองโมเดลสำรองแล้วยังไม่ได้ รอสักครู่แล้วลองใหม่':code==='network'?'เชื่อมต่อผู้ให้บริการ AI ไม่ได้ ตรวจอินเทอร์เน็ต':code==='session_expired'?'กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง':code==='invalid_json'?'ได้โจทย์ไม่ครบ ลองลดจำนวนข้อแล้วสร้างใหม่':(code==='refused'||code==='empty_completion')?'AI ไม่ตอบข้อนี้ ลองใหม่อีกครั้ง':`${what}ไม่สำเร็จ ลองใหม่อีกครั้ง`;
 }
 function renderAISet(){

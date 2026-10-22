@@ -706,7 +706,7 @@ onAppReady(async()=>{
    - ส่งเข้าคลังกลาง / ส่งต้นฉบับขึ้น Drive ไม่สำเร็จ → ลองใหม่ตามรอบเดียวกัน
    ข้อผิดพลาดที่ลองใหม่ไม่ช่วย (ไม่มีข้อความ ไม่มีไฟล์ ไม่มี AI) จะไม่ลองซ้ำ */
 const RETRY_MIN=[2,5,15,30,60];
-const noRetry=c=>['no_text','no_file','no_ai','bad_key','bad_model','cancelled'].includes(c);
+const noRetry=c=>['no_text','no_file','no_ai','bad_key','bad_model','no_credit','cancelled'].includes(c);
 function retryLater(d,code){d.tries=(d.tries||0)+1;d.nextTry=Date.now()+(code==='rate_limited'?60:RETRY_MIN[Math.min(d.tries-1,RETRY_MIN.length-1)])*60000}
 async function withRetry(fn,times=4){let e0;for(let i=0;i<times;i++){try{return await fn()}catch(e){e0=e;if(e&&e.full)break;await new Promise(r=>setTimeout(r,[3000,8000,20000,40000][i]||40000))}}throw e0}
 let retryBusy=false;

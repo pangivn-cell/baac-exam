@@ -20,6 +20,7 @@ async function takePrefetch(s,level,n){
 }
 async function start(go){
   if(genCtl){genCtl.abort();genCtl=null}
+  if(R&&R.moreCtl){R.moreCtl.abort();R.moreCtl=null}
   const s=subj(),level=lvOf(s.id),n=P.count;
   R={subject:s.id,level,mode:P.mode,items:[],picks:[],i:0,status:'loading',go:go===true};
   const ai=!!activeAI(),nb=bankFor(s).length;
@@ -31,10 +32,14 @@ async function start(go){
   const my=R;genCtl=new AbortController();
   try{
     const pre=await takePrefetch(s,level,n);
-    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,n,{signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
+    /* ข้อแรกขึ้นทันที: สร้าง 2 ข้อก่อนให้เริ่มทำได้เลย ที่เหลือสร้างต่อเบื้องหลัง */
+    const quick=!(pre&&pre.length>=Math.ceil(n*.6))&&n>=4;
+    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,quick?2:n,{signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
     if(R!==my)return;
     if(!items.length){R.status='error';R.err='ได้โจทย์ที่ใช้ไม่ได้ ลองสร้างชุดใหม่อีกครั้ง';render();return}
-    R.items=items;R.status='play';R.t0=Date.now();render();
+    R.items=items;R.status='play';R.t0=Date.now();
+    if(quick&&items.length<n)loadMore(my,s,level,n);
+    render();
   }catch(e){
     if(R!==my)return;const code=e&&e.code;
     if(code==='cancelled')return;
@@ -42,6 +47,23 @@ async function start(go){
     R.err=code==='need_figs'?'วิชานี้ต้องใช้รูปโจทย์จากเอกสาร อัปโหลดเอกสารแนวข้อสอบมิติสัมพันธ์ (เลือกกลุ่มความรู้ความสามารถทั่วไป) ในคลังความรู้ก่อน AI วาดรูปโจทย์ใหม่เองไม่ได้':code==='no_vision'?'วิชานี้ต้องใช้ AI ที่ดูรูปได้ ตั้งค่า Gemini หรือ OpenAI key':code==='no_doc'?'ไม่พบเอกสารนี้ในคลังความรู้แล้ว':code==='doc_empty'?'เอกสารนี้ยังไม่มีข้อความ (น่าจะเป็นไฟล์สแกน) ไปที่คลังความรู้แล้วกด ประมวลผลด้วย AI ก่อน':errCopy(code,'สร้างโจทย์');
     render();
   }finally{if(R===my)genCtl=null}
+}
+
+/* สร้างข้อที่เหลือของชุดต่อเบื้องหลัง แล้วต่อท้ายชุดที่กำลังทำ */
+async function loadMore(my,s,level,n){
+  const ctl=new AbortController();my.more=true;my.target=n;my.moreCtl=ctl;
+  try{
+    const have=new Set(my.items.map(qKey));
+    const rest=await makeItems(s,level,n-my.items.length+1,{signal:ctl.signal,weak:(P.weak[s.id]||[]).slice(-5)});
+    if(R!==my)return;
+    const waiting=my.i>=my.items.length-1;
+    for(const q of rest)if(my.items.length<n&&!have.has(qKey(q))){have.add(qKey(q));my.items.push(q)}
+    my.more=false;my.moreCtl=null;
+    if(VIEW==='practice'&&my.status==='play'&&waiting)render();else{const m=document.getElementById('pmeta');if(m)m.textContent=`ข้อ ${my.i+1} จาก ${my.items.length}`}
+  }catch(e){
+    if(R!==my||(e&&e.code==='cancelled'))return;
+    my.more=false;my.moreCtl=null;toast(`สร้างข้อที่เหลือไม่สำเร็จ ชุดนี้มี ${my.items.length} ข้อ`,'bad');if(VIEW==='practice'&&my.status==='play')render();
+  }
 }
 
 /* ---------- render ---------- */
@@ -56,7 +78,7 @@ function questionHTML(q){
   if(q.kind==='ineq2'){const L=q.lines;let g=`<div class="given"><span class="k">ถ้า</span>`;L.forEach((l,i)=>{g+=`${i?'<span></span>':''}<span class="eq">${esc(l)}${i<L.length-1?' &nbsp;<span class="k">และ</span>':''}</span>`});g+=`<span class="note">ทุกตัวอักษรมีค่ามากกว่าศูนย์</span></div>`;
     return g+(q.fmt==='tfu'?`<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`:`<div class="ask"><div class="lab">คำถาม</div><div class="st2">${esc(q.text)}</div></div>`)}
   if(q.kind==='ineq')return `${givenHTML(q.ctx)}<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`;
-  return `${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${esc(q.stem)}</div>`;
+  return `${q.pool?'<p class="origtag pooltag">♻ โจทย์จากคลังกลาง (ไม่ใช้เครดิต AI)</p>':''}${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${esc(q.stem)}</div>`;
 }
 function choicesHTML(q,pick,locked){
   const mc=!isTFU(q),pics=mc&&q.chSvg;
@@ -170,17 +192,17 @@ function render(){
   if(R.status==='needai'){el.innerHTML=`<div class="state"><p><b>${aiReady?'วิชานี้ต้องใช้ AI สร้างโจทย์':'กำลังเชื่อมต่อ AI...'}</b></p><p class="src">${aiReady?(inViewer?'หน้านี้ยังใช้ Claude ไม่ได้ ลองกดอีกครั้งแล้วกดอนุญาต ส่วนอีก 4 วิชาระบบสร้างโจทย์เองได้':'ใส่ API key ของ Gemini หรือ OpenAI ในเมนู ตั้งค่า AI ด้านซ้ายก่อน ส่วนอีก 4 วิชาระบบสร้างโจทย์เองได้โดยไม่ต้องใช้ AI'):''}</p>${aiReady?'<button class="primary" id="retry">ลองอีกครั้ง</button>':''}</div>`;const r=document.getElementById('retry');if(r)r.onclick=()=>{if(!inViewer&&!activeAI()){const d=document.getElementById('aiset');d.open=true;d.scrollIntoView({block:'nearest'});return}start(true)};return}
   if(R.status==='error'){el.innerHTML=`<div class="state"><p><b>${esc(R.err||'เกิดข้อผิดพลาด')}</b></p><button class="primary" id="retry">สร้างชุดใหม่</button></div>`;document.getElementById('retry').onclick=()=>start(true);return}
   if(R.status==='done'){renderDone(el);return}
-  const n=R.items.length,q=R.items[R.i],pick=R.picks[R.i],locked=R.mode==='now'&&pick!=null;
+  const n=R.items.length,q=R.items[R.i],pick=R.picks[R.i],locked=R.mode==='now'&&pick!=null,shown=R.more?Math.max(R.target||n,n):n,wait=R.more&&R.i+1>=n;
   const done=R.picks.filter((p,j)=>p!=null&&p===R.items[j].answer).length;
-  el.innerHTML=fx(`<div class="meta"><span>ข้อ ${R.i+1} จาก ${n}</span><span>${R.mode==='now'?`ถูก ${done}`:`ตอบแล้ว ${R.picks.filter(p=>p!=null).length}`}</span></div>
-   <div class="bar"><i style="width:${R.i/n*100}%"></i></div>
+  el.innerHTML=fx(`<div class="meta"><span id="pmeta">ข้อ ${R.i+1} จาก ${shown}</span><span>${R.mode==='now'?`ถูก ${done}`:`ตอบแล้ว ${R.picks.filter(p=>p!=null).length}`}</span></div>
+   <div class="bar"><i style="width:${R.i/shown*100}%"></i></div>
    ${questionHTML(q)}
    ${choicesHTML(q,pick,locked)}
    ${locked?explainHTML(q,pick)+askHTML('cur',q,pick):''}
-   <div class="navrow"><span class="src">${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null?'disabled':''}>${R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
+   <div class="navrow"><span class="src">${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null||wait?'disabled':''}>${wait?'กำลังสร้างข้อถัดไป...':R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
   el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{R.picks[R.i]=+b.dataset.j;render();if(R.picks.filter(x=>x!=null).length>=Math.ceil(R.items.length/2))prefetchNext();const nb=document.getElementById('next');if(nb&&R.mode==='now')nb.focus({preventScroll:true})});
   if(locked)wireAsk('cur',q,pick);
-  document.getElementById('next').onclick=()=>{if(R.i+1<n){R.i++;render();el.scrollIntoView({block:'start',behavior:'smooth'})}else finish()};
+  document.getElementById('next').onclick=()=>{if(R.more&&R.i+1>=R.items.length)return;if(R.i+1<R.items.length){R.i++;render();el.scrollIntoView({block:'start',behavior:'smooth'})}else finish()};
 }
 function finish(){
   const n=R.items.length,score=R.items.filter((q,j)=>R.picks[j]===q.answer).length,pct=n?score/n:0;

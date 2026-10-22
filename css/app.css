@@ -246,6 +246,7 @@ nav.subjects{gap:14px}
 .srcbtn{margin-top:4px}.srcv{min-height:120px;max-height:65vh;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
 .srcv .src,.srcv .kwarn{margin:12px}.srctext{white-space:pre-wrap;font-size:13px;max-height:30vh;overflow:auto}
 .linkbtn{background:none;border:0;padding:0;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline}
+.pooltag{background:var(--unk-soft);color:var(--ink-2)}
 .retrytag{background:var(--accent-soft);color:var(--accent)}
 .acct{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:14px}
 .acct .an{font-weight:600;overflow-wrap:anywhere}

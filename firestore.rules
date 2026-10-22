@@ -64,6 +64,17 @@ service cloud.firestore {
       allow write: if isReviewer();
     }
 
+    // คลังโจทย์กลาง: โจทย์ที่ AI สร้างแล้ว ทุกคนใช้ซ้ำได้ (อ่านได้ทุกคน · เพิ่มได้เมื่อล็อกอิน · ผู้ตรวจแก้/ลบได้)
+    match /qpool/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.by == request.auth.uid
+        && request.resource.data.items is list && request.resource.data.items.size() <= 40;
+      // ผู้ใช้บันทึกได้เฉพาะช่อง used (ว่าตัวเองทำข้อไหนแล้ว)
+      allow update: if isReviewer()
+        || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used']));
+      allow delete: if isReviewer();
+    }
+
     // รายงานเฉลยผิด
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';

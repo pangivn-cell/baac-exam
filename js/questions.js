@@ -181,7 +181,7 @@ function logQs(items,picks){
   items.forEach((q,j)=>{const pk=picks[j];if(pk==null||pk<0||!q||!qText(q))return;const k=qKey(q),now=Date.now();ch.push(k);
     if(pk===q.answer)QLOG[k]={s:'r',t:now,sub:q.sub||'',st:qText(q).slice(0,140)};
     else{const {retry,...keep}=q;QLOG[k]={s:'w',t:now,sub:q.sub||'',st:qText(q).slice(0,140),n:((QLOG[k]&&QLOG[k].n)||0)+1,q:keep}}});
-  saveQLog();pushQLog(ch);
+  saveQLog();pushQLog(ch);if(typeof poolMarkUsed==='function')poolMarkUsed(items);
 }
 /* ---------- ซิงก์บันทึกโจทย์กับบัญชี (users/{uid}/qlog/r และ /w) ทุกเครื่องที่ล็อกอินบัญชีเดียวกันเห็นชุดเดียวกัน ----------
    r = ข้อที่ตอบถูกแล้ว (เก็บแค่รหัส เวลา วิชา) · w = ข้อที่ยังตอบผิด (เก็บทั้งข้อ เพื่อนำกลับมาให้ตอบใหม่) */
@@ -248,9 +248,17 @@ async function makeItems0(s,level,n,o={}){
   catch(e){if(!orig.length||(e&&e.code==='cancelled'))throw e}
   return shuffle([...orig,...gen]);
 }
+/* โจทย์ที่ต้องให้ AI สร้าง: หยิบจากคลังโจทย์กลางก่อน ให้ AI สร้างเฉพาะส่วนที่ขาด แล้วส่งโจทย์ใหม่เข้าคลังให้คนอื่นใช้ */
 async function makeNew(s,level,n,o,pool){
+  let fromPool=[];try{fromPool=typeof poolTake==='function'?await poolTake(s,level,n):[]}catch(e){}
+  if(fromPool.length>=n)return fromPool.slice(0,n);
+  const gen=await makeNew0(s,level,n-fromPool.length,o,pool);
+  if(typeof poolPut==='function')poolPut(s,level,gen);
+  return shuffle([...fromPool,...gen]);
+}
+async function makeNew0(s,level,n,o,pool){
   const weak=o.weak||[],act=activeCards(),doc=s.doc?DOCS.find(d=>d.id===s.doc):null;DOC_OFF=Math.floor(Math.random()*1000);
-  const tag=q=>withCard({...q,sub:s.id,subName:s.name},doc),run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
+  const tag=q=>withCard({...q,sub:s.id,subName:s.name,gen:'ai'},doc),run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
   if(s.figOnly&&!LOCAL[s.id]&&!figCards().some(c=>c.topic===s.name)){if(pool.length)return[];throw{code:'need_figs'}}
   if(s.doc&&doc&&doc.kind==='exam'&&!act.some(c=>c.docId===doc.id))return (await run(k=>genPrompt({name:doc.name,desc:'ข้อสอบแนวเดียวกับตัวอย่าง'},level,k),n)).map(tag);
   if(s.doc){

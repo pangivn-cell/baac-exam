@@ -524,6 +524,20 @@ var KB_TAB='main',KB_DONE_N=0;
 /* ไฟล์ในเครื่องที่มีชุดชื่อเดียวกันอยู่ในคลังกลางแล้ว (เช่น ส่งจากเครื่องอื่น) */
 const baseName=n=>String(n||'').replace(/ \(ส่วนที่ \d+\)$/,'').trim().toLowerCase();
 const sameInCentral=d=>DOCS.some(x=>x.central&&baseName(x.name)===baseName(d.name));
+/* ปุ่ม ประมวลผลต่อทั้งหมด: ไฟล์ที่ยังไม่เสร็จหรือผิดพลาด (ไม่รวมที่กำลังทำ) + ไฟล์ที่ส่งเข้าคลังกลางไม่สำเร็จ */
+function runAllList(){
+  const busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
+  return DOCS.filter(d=>!d.central&&!busy(d)&&(d.stage!=='ready'||d.shareErr));
+}
+function runAll(){
+  const list=runAllList();let n=0;
+  for(const d of list){
+    Object.assign(d,{tries:0,nextTry:0});
+    if(d.stage!=='ready'){d.err='';d.errCode='';saveDoc(d);queueDoc(d.id);n++}
+    else if(d.shareErr&&ME){d.shareErr='';saveDoc(d);submitDoc(d,{auto:true});n++}
+  }
+  toast(n?`เริ่มประมวลผลต่อ ${n} ไฟล์ ระบบทำทีละไฟล์ตามคิว`:'ไม่มีไฟล์ที่ต้องทำต่อ');renderKB();
+}
 function renderKB(){
   if(VIEW!=='kb')return;
   head('คลังความรู้','อัปโหลดไฟล์ได้ 2 ประเภท: เนื้อหา (AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่) และข้อสอบ/ตัวอย่างโจทย์ (ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่าง) · เก็บไว้ในเครื่องนี้');
@@ -580,10 +594,12 @@ function renderKB(){
     ${cloudBoxHTML()}
     ${UPQ.map((j,i)=>`<div class="kdoc"><p class="kn">${esc(j.name)}</p>${j.err?`<p class="kerr">${esc(j.err)}</p><div><button class="ghost" data-dismiss="${i}">ปิด</button></div>`:`<p class="src" data-job="${i}">${esc(j.msg)}</p>`}</div>`).join('')}
     ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${mine.length} ไฟล์ (กำลังทำ/มีปัญหา ${doing.length} · เสร็จแล้ว ${done.length}) · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
+    ${(n=>n?`<div class="btnrow" style="justify-content:flex-start"><button class="primary" id="runall" ${ai?'':'disabled'}>▶ ประมวลผลต่อทั้งหมด (${n} ไฟล์)</button>${ai?'':'<span class="src">ตั้งค่า AI ก่อน</span>'}</div>`:'')(runAllList().length)}
     ${doing.map(docBox).join('')}
     ${!doing.length&&done.length?'<p class="src" style="text-align:center;margin:0">ไม่มีไฟล์ที่กำลังประมวลผลหรือมีปัญหา · ไฟล์ที่เสร็จแล้วดูได้ที่ปุ่ม 📁 ประวัติการอัปโหลด</p>':''}
     `;
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
+  const ra=document.getElementById('runall');if(ra)ra.onclick=runAll;
   const drop=document.getElementById('drop');
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
   drop.ondragleave=()=>drop.classList.remove('over');

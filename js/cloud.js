@@ -58,10 +58,12 @@ async function loginDialog(){
     <p class="src" style="text-align:center">หรือใช้อีเมล</p>
     <label class="lbl" for="lg-e">อีเมล</label><input class="tx" id="lg-e" type="email" autocomplete="email">
     <label class="lbl" for="lg-p">รหัสผ่าน (อย่างน้อย 6 ตัว)</label><input class="tx" id="lg-p" type="password" autocomplete="current-password">
-    <p class="kerr" id="lg-err" role="alert" hidden></p>
+    <p style="margin:0;text-align:right"><button class="linkbtn" id="lg-forgot" type="button">ลืมรหัสผ่าน?</button></p>
+    <p class="kerr" id="lg-err" role="alert" hidden></p><p class="kok" id="lg-ok" role="status" hidden></p>
     <p class="src">ยังไม่มีบัญชี: กรอกอีเมลและตั้งรหัสผ่าน แล้วกด <b>สมัครด้วยอีเมล</b> · มีบัญชีแล้ว: กด <b>เข้าสู่ระบบด้วยอีเมล</b></p>`,[{t:'ยกเลิก'},{t:'สมัครด้วยอีเมล'},{t:'เข้าสู่ระบบด้วยอีเมล',cls:'primary'}]);
   const $=id=>document.getElementById(id),err=$('lg-err'),btns=[...document.querySelectorAll('#dlg .dlgbtns button')];
-  const show=(msg,fields)=>{err.textContent=msg;err.hidden=false;for(const id of ['lg-e','lg-p'])$(id).classList.toggle('bad',fields.includes(id));if(fields[0])$(fields[0]).focus()};
+  const okBox=$('lg-ok');
+  const show=(msg,fields)=>{okBox.hidden=true;err.textContent=msg;err.hidden=false;for(const id of ['lg-e','lg-p'])$(id).classList.toggle('bad',fields.includes(id));if(fields[0])$(fields[0]).focus()};
   for(const id of ['lg-e','lg-p'])$(id).addEventListener('input',()=>{$(id).classList.remove('bad');if(!document.querySelector('#dlg .tx.bad'))err.hidden=true});
   $('lg-g').onclick=()=>closeModal(9);
   const emailAct=async signup=>{
@@ -94,6 +96,21 @@ async function loginDialog(){
     }
   };
   btns[1].onclick=()=>emailAct(true);btns[2].onclick=()=>emailAct(false);
+  /* ลืมรหัสผ่าน: ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมล (อีเมลภาษาไทย กดแล้วตั้งรหัสใหม่ แล้วกลับมาเข้าสู่ระบบที่เว็บนี้) */
+  $('lg-forgot').onclick=async()=>{
+    const e=$('lg-e').value.trim();
+    if(!e)return show('กรอกอีเมลที่ใช้สมัครในช่องอีเมลก่อน แล้วกด ลืมรหัสผ่าน? อีกครั้ง',['lg-e']);
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))return show('รูปแบบอีเมลไม่ถูกต้อง เช่น name@gmail.com',['lg-e']);
+    const b=$('lg-forgot');b.disabled=true;err.hidden=true;
+    try{
+      f.auth.languageCode='th';
+      await f.au.sendPasswordResetEmail(f.auth,e,{url:location.origin+location.pathname});
+      okBox.textContent=`ถ้าอีเมล ${e} ลงทะเบียนไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ให้แล้ว ตรวจกล่องจดหมาย (และโฟลเดอร์ Spam/จดหมายขยะ) กดลิงก์ ตั้งรหัสใหม่ แล้วกลับมาเข้าสู่ระบบด้วยรหัสใหม่ · ถ้าเคยเข้าสู่ระบบด้วย Google ให้กดปุ่ม เข้าสู่ระบบด้วย Google แทน ไม่ต้องใช้รหัสผ่าน`;
+      okBox.hidden=false;
+    }catch(x){const c=String(x&&x.code||'');
+      show(c.includes('too-many-requests')?'ขอรหัสใหม่บ่อยเกินไป รอสักครู่แล้วลองใหม่':c.includes('invalid-email')?'รูปแบบอีเมลไม่ถูกต้อง':c.includes('network')?'เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่':c.includes('user-not-found')?'ยังไม่มีบัญชีอีเมลนี้ กรุณากดปุ่ม สมัครด้วยอีเมล ก่อน':'ส่งลิงก์ไม่สำเร็จ ('+c+')',c.includes('email')||c.includes('user')?['lg-e']:[]);
+    }finally{b.disabled=false}
+  };
   $('lg-p').addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();emailAct(false)}});
   const r=await p;
   if(r===10){toast('เข้าสู่ระบบแล้ว');return true}

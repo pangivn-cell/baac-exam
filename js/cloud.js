@@ -51,25 +51,55 @@ function renderAcct(){
     document.getElementById('login').onclick=()=>loginDialog();
   }
 }
+/* หน้าต่างเข้าสู่ระบบ: ปุ่มอีเมลตรวจข้อมูลก่อน (ช่องว่าง = กรอบแดง + ข้อความ) หน้าต่างไม่ปิดจนกว่าจะสำเร็จ */
 async function loginDialog(){
   let f;try{f=await fb()}catch(e){toast('เชื่อมต่อคลังกลางไม่ได้ ตรวจอินเทอร์เน็ต','bad');return false}
   const p=modal(`<p class="mt">เข้าสู่ระบบ</p><button class="primary" id="lg-g" type="button">เข้าสู่ระบบด้วย Google</button>
     <p class="src" style="text-align:center">หรือใช้อีเมล</p>
     <label class="lbl" for="lg-e">อีเมล</label><input class="tx" id="lg-e" type="email" autocomplete="email">
     <label class="lbl" for="lg-p">รหัสผ่าน (อย่างน้อย 6 ตัว)</label><input class="tx" id="lg-p" type="password" autocomplete="current-password">
-    <p class="kerr" id="lg-err" hidden></p>`,[{t:'ยกเลิก'},{t:'สมัครด้วยอีเมล'},{t:'เข้าสู่ระบบด้วยอีเมล',cls:'primary'}]);
-  document.getElementById('lg-g').onclick=()=>closeModal(9);
-  const r=await p;
-  try{
-    if(r===9)await f.au.signInWithPopup(f.auth,new f.au.GoogleAuthProvider());
-    else if(r===1||r===2){
-      const e=document.getElementById('lg-e').value.trim(),pw=document.getElementById('lg-p').value;
-      if(!e||pw.length<6){toast('กรอกอีเมลและรหัสผ่านอย่างน้อย 6 ตัว','bad');return false}
-      if(r===1){const c=await f.au.createUserWithEmailAndPassword(f.auth,e,pw);await f.au.updateProfile(c.user,{displayName:e.split('@')[0]})}
+    <p class="kerr" id="lg-err" role="alert" hidden></p>
+    <p class="src">ยังไม่มีบัญชี: กรอกอีเมลและตั้งรหัสผ่าน แล้วกด <b>สมัครด้วยอีเมล</b> · มีบัญชีแล้ว: กด <b>เข้าสู่ระบบด้วยอีเมล</b></p>`,[{t:'ยกเลิก'},{t:'สมัครด้วยอีเมล'},{t:'เข้าสู่ระบบด้วยอีเมล',cls:'primary'}]);
+  const $=id=>document.getElementById(id),err=$('lg-err'),btns=[...document.querySelectorAll('#dlg .dlgbtns button')];
+  const show=(msg,fields)=>{err.textContent=msg;err.hidden=false;for(const id of ['lg-e','lg-p'])$(id).classList.toggle('bad',fields.includes(id));if(fields[0])$(fields[0]).focus()};
+  for(const id of ['lg-e','lg-p'])$(id).addEventListener('input',()=>{$(id).classList.remove('bad');if(!document.querySelector('#dlg .tx.bad'))err.hidden=true});
+  $('lg-g').onclick=()=>closeModal(9);
+  const emailAct=async signup=>{
+    const e=$('lg-e').value.trim(),pw=$('lg-p').value,miss=[];
+    if(!e)miss.push('lg-e');if(!pw)miss.push('lg-p');
+    if(miss.length)return show(miss.length===2?'กรุณากรอกอีเมลและรหัสผ่านก่อน':!e?'กรุณากรอกอีเมลก่อน':'กรุณากรอกรหัสผ่านก่อน',miss);
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))return show('รูปแบบอีเมลไม่ถูกต้อง เช่น name@gmail.com',['lg-e']);
+    if(pw.length<6)return show('รหัสผ่านต้องมีอย่างน้อย 6 ตัว',['lg-p']);
+    err.hidden=true;btns.forEach(b=>b.disabled=true);
+    try{
+      if(signup){const c=await f.au.createUserWithEmailAndPassword(f.auth,e,pw);await f.au.updateProfile(c.user,{displayName:e.split('@')[0]})}
       else await f.au.signInWithEmailAndPassword(f.auth,e,pw);
-    }else return false;
-    toast('เข้าสู่ระบบแล้ว');return true;
-  }catch(e){
+      closeModal(10);
+    }catch(x){
+      btns.forEach(b=>b.disabled=false);const c=String(x&&x.code||'');
+      if(c.includes('network'))return show('เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่',[]);
+      if(c.includes('too-many-requests'))return show('ลองหลายครั้งเกินไป รอสักครู่แล้วลองใหม่',[]);
+      if(signup){
+        if(c.includes('email-already-in-use'))return show('อีเมลนี้สมัครไว้แล้ว กรุณากดปุ่ม เข้าสู่ระบบด้วยอีเมล แทน',['lg-e']);
+        if(c.includes('weak-password'))return show('รหัสผ่านง่ายเกินไป ใช้อย่างน้อย 6 ตัว',['lg-p']);
+        if(c.includes('invalid-email'))return show('รูปแบบอีเมลไม่ถูกต้อง',['lg-e']);
+        return show('สมัครไม่สำเร็จ ('+c+')',[]);
+      }
+      if(c.includes('user-not-found'))return show('ยังไม่มีบัญชีอีเมลนี้ กรุณากดปุ่ม สมัครด้วยอีเมล ก่อน',['lg-e']);
+      if(c.includes('wrong-password'))return show('รหัสผ่านไม่ถูกต้อง',['lg-p']);
+      /* Firebase ไม่บอกว่าอีเมลนี้เคยสมัครหรือยัง (ป้องกันการเดาบัญชี) จึงแจ้งรวม */
+      if(c.includes('invalid-credential')||c.includes('invalid-login'))return show('อีเมลหรือรหัสผ่านไม่ถูกต้อง · ถ้ายังไม่เคยลงทะเบียน กรุณากดปุ่ม สมัครด้วยอีเมล ก่อน',['lg-e','lg-p']);
+      if(c.includes('invalid-email'))return show('รูปแบบอีเมลไม่ถูกต้อง',['lg-e']);
+      return show('เข้าสู่ระบบไม่สำเร็จ ('+c+')',[]);
+    }
+  };
+  btns[1].onclick=()=>emailAct(true);btns[2].onclick=()=>emailAct(false);
+  $('lg-p').addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();emailAct(false)}});
+  const r=await p;
+  if(r===10){toast('เข้าสู่ระบบแล้ว');return true}
+  if(r!==9)return false;
+  try{await f.au.signInWithPopup(f.auth,new f.au.GoogleAuthProvider());toast('เข้าสู่ระบบแล้ว');return true}
+  catch(e){
     const c=String(e&&e.code||'');
     toast(c.includes('popup-blocked')||c.includes('operation-not-supported')?'เบราว์เซอร์บล็อกหน้าต่างล็อกอิน กดอนุญาตป๊อปอัป (ไอคอนที่แถบที่อยู่) แล้วลองใหม่ หรือใช้อีเมลแทน':c.includes('popup-closed')||c.includes('cancelled-popup')?'ปิดหน้าต่างล็อกอินก่อนเสร็จ':c.includes('invalid-credential')||c.includes('wrong-password')||c.includes('user-not-found')?'อีเมลหรือรหัสผ่านไม่ถูกต้อง':c.includes('email-already-in-use')?'อีเมลนี้สมัครไว้แล้ว ให้กดเข้าสู่ระบบ':c.includes('unauthorized-domain')?'เว็บนี้ยังไม่ได้รับอนุญาตให้ล็อกอิน':c.includes('weak-password')?'รหัสผ่านสั้นเกินไป':'เข้าสู่ระบบไม่สำเร็จ ('+c+')','bad');
     return false;

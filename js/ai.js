@@ -3,8 +3,26 @@
 let SAMPLE=null,aiReady=false,R=null,genCtl=null;
 const inViewer=!!window.claude;
 let AIP={provider:'auto',gemini:{key:'',model:'gemini-flash-latest'},openai:{key:'',model:'gpt-5-mini'},anthropic:{key:'',model:'claude-opus-5-5'},meta:{key:'',model:'muse-spark-1.3'}};
-try{const a=JSON.parse(localStorage.getItem('exam-drill-ai')||'null');if(a)AIP={...AIP,...a,gemini:{...AIP.gemini,...(a.gemini||{})},openai:{...AIP.openai,...(a.openai||{})},anthropic:{...AIP.anthropic,...(a.anthropic||{})},meta:{...AIP.meta,...(a.meta||{})}}}catch(e){}
-const saveAI=()=>{try{localStorage.setItem('exam-drill-ai',JSON.stringify(AIP))}catch(e){}};
+const mergeAIP=a=>({...AIP,...a,gemini:{...AIP.gemini,...(a.gemini||{})},openai:{...AIP.openai,...(a.openai||{})},anthropic:{...AIP.anthropic,...(a.anthropic||{})},meta:{...AIP.meta,...(a.meta||{})}});
+try{const a=JSON.parse(localStorage.getItem('exam-drill-ai')||'null');if(a)AIP=mergeAIP(a)}catch(e){}
+/* ตั้งค่า AI (รวม key) ผูกกับบัญชี: เก็บที่ users/{uid}/qlog/aiset (กฎเดียวกับบันทึกโจทย์ อ่าน/เขียนได้เฉพาะเจ้าของ) ล็อกอินเครื่องไหนก็ได้ key ชุดเดียวกัน */
+const AIP_AT='exam-drill-ai-at';
+const saveAI=(push=true)=>{try{localStorage.setItem('exam-drill-ai',JSON.stringify(AIP));if(push)localStorage.setItem(AIP_AT,String(Date.now()))}catch(e){}if(push)pushAIP()};
+async function pushAIP(){
+  if(typeof ME==='undefined'||!ME)return;
+  try{const f=await fb();await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','aiset'),{aip:JSON.stringify(AIP),at:+(localStorage.getItem(AIP_AT)||Date.now())})}catch(e){console.warn('ai sync',e&&e.code||e)}
+}
+async function pullAIP(){
+  if(!ME)return;
+  try{
+    const f=await fb(),s=await f.fs.getDoc(fsDoc('users',ME.uid,'qlog','aiset')),localAt=+(localStorage.getItem(AIP_AT)||0);
+    const hasLocal=KEY_PROVS.some(x=>AIP[x].key);
+    if(s.exists()&&(s.data().at>localAt||!hasLocal)){
+      AIP=mergeAIP(JSON.parse(s.data().aip||'{}'));saveAI(false);try{localStorage.setItem(AIP_AT,String(s.data().at))}catch(e){}
+      renderAISet();aiChanged();if(activeAI())toast(`ใช้ตั้งค่า AI จากบัญชีของคุณ (${AINAME[activeAI()]})`);
+    }else if(hasLocal&&(!s.exists()||s.data().at<localAt))pushAIP();
+  }catch(e){console.warn('ai sync',e&&e.code||e)}
+}
 const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta'};
 const KEY_PROVS=['gemini','openai','anthropic','meta'];
 function activeAI(){
@@ -21,7 +39,8 @@ function normTurns(input){
 async function httpFail(res){
   let msg='';try{msg=await res.text()}catch(e){}
   const bad=res.status===401||res.status===403||(res.status===400&&/API[_ ]?key/i.test(msg));
-  if(/credit balance|insufficient_quota|exceeded your current quota|billing|payment required/i.test(msg)||res.status===402)throw{code:'no_credit',message:msg.slice(0,300)};
+  if(/credit balance|insufficient_quota|billing|payment required/i.test(msg)||res.status===402)throw{code:'no_credit',message:msg.slice(0,300)};
+  if(res.status===429&&/quota|RESOURCE_EXHAUSTED|exceeded your current/i.test(msg))throw{code:'quota',message:msg.slice(0,300)};
   throw{code:bad?'bad_key':res.status===404?'bad_model':res.status===429?'rate_limited':(res.status>=500||/overloaded|high demand|UNAVAILABLE/i.test(msg))?'overloaded':'upstream_error',message:msg.slice(0,300)};
 }
 const GEMINI_FALLBACK=['gemini-flash-latest','gemini-2.5-flash','gemini-flash-lite-latest','gemini-2.5-flash-lite'];
@@ -35,7 +54,7 @@ async function keyCall(prov,input,json,signal){
       try{const t=await keyCallOnce(prov,model,input,json,signal);LAST_MODEL=model;return t}
       catch(e){lastErr=e;if(e&&typeof e==='object'){e.prov=prov;e.model=model}
         if(e.code==='overloaded'||e.code==='network'&&attempt===0){await sleep(1500*(attempt+1),signal);continue}
-        if(e.code==='bad_model'||(e.code==='rate_limited'&&prov==='gemini'))break;
+        if(e.code==='bad_model'||((e.code==='rate_limited'||e.code==='quota')&&prov==='gemini'))break;
         throw e;
       }
     }
@@ -65,6 +84,7 @@ async function anthCall(model,turns,signal){
     if(signal&&signal.aborted)throw{code:'cancelled'};
     const s=e&&e.status;if(!s)throw{code:'network',message:String(e&&e.message||e)};
     if(/credit balance|billing/i.test(String(e.message||''))||s===402)throw{code:'no_credit',message:String(e.message||'').slice(0,300)};
+    if(s===429&&/quota/i.test(String(e.message||'')))throw{code:'quota',message:String(e.message||'').slice(0,300)};
     throw{code:s===401||s===403?'bad_key':s===404?'bad_model':s===429?'rate_limited':s>=500?'overloaded':'upstream_error',message:String(e.message||'').slice(0,300)};
   }
   if(msg.stop_reason==='refusal')throw{code:'refused'};
@@ -111,7 +131,8 @@ async function aiJSON(input,{signal,onText}={}){
 }
 const HIDE_CODES=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'];
 function errCopy(code,what){
-  if(code==='no_credit')return 'บัญชี AI นี้เครดิตไม่พอ (ยังไม่ได้เติมเงิน หรือเงินหมด) ให้เติมเงินในเว็บของผู้ให้บริการ หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
+  if(code==='no_credit')return 'เครดิต AI หมด (บัญชีนี้ยังไม่ได้เติมเงิน หรือเงินหมด) เติมเงินในเว็บของผู้ให้บริการ หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
+  if(code==='quota')return 'โควตาฟรีของ AI หมดแล้ว ระบบจะประมวลผลต่อเองเมื่อโควตากลับมา (ทุก 60 นาที / วันถัดไป) หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
   return code==='rate_limited'?`${what}ถี่เกินไปหรือโควตาหมด รอสักครู่แล้วลองใหม่`:code==='bad_key'?'API key ไม่ถูกต้องหรือไม่มีสิทธิ์ ตรวจในตั้งค่า AI':code==='bad_model'?'ไม่พบชื่อโมเดลนี้ แก้ชื่อโมเดลในตั้งค่า AI':code==='overloaded'?'เซิร์ฟเวอร์ AI มีคนใช้เยอะชั่วคราว ระบบลองซ้ำและลองโมเดลสำรองแล้วยังไม่ได้ รอสักครู่แล้วลองใหม่':code==='network'?'เชื่อมต่อผู้ให้บริการ AI ไม่ได้ ตรวจอินเทอร์เน็ต':code==='session_expired'?'กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง':code==='invalid_json'?'ได้โจทย์ไม่ครบ ลองลดจำนวนข้อแล้วสร้างใหม่':(code==='refused'||code==='empty_completion')?'AI ไม่ตอบข้อนี้ ลองใหม่อีกครั้ง':`${what}ไม่สำเร็จ ลองใหม่อีกครั้ง`;
 }
 function renderAISet(){
@@ -165,7 +186,7 @@ function renderAISet(){
   $('aitest').onclick=async()=>{read();saveAI();const a2=activeAI();if(!a2){stat('ยังไม่มี key ให้ทดสอบ','err');return}
     stat(`กำลังทดสอบ ${AINAME[a2]}...`);
     try{const t=await aiText('ตอบกลับคำว่า พร้อม เพียงคำเดียว');stat(`${AINAME[a2]} ใช้งานได้ (โมเดล ${LAST_MODEL}) ตอบว่า: ${t.trim().slice(0,40)}`,'ok');renderAISetPill();aiChanged()}
-    catch(e){stat(errCopy(e&&e.code,'ทดสอบ')+(e&&e.message?` (${String(e.message).slice(0,120)})`:''),'err')}};
+    catch(e){const cr=e&&(e.code==='no_credit'||e.code==='quota');stat((cr?'💳 ':'')+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message&&!cr?` (${String(e.message).slice(0,120)})`:''),cr?'':'err')}};
 }
 function renderAISetPill(){const a=activeAI(),p=document.getElementById('aipill');if(p)p.textContent=a?AINAME[a]:'ยังไม่ตั้ง'}
 function aiChanged(){document.querySelectorAll('.askbox').forEach(b=>b.hidden=!activeAI());if(typeof VIEW!=='undefined'&&VIEW==='mock'&&!M&&!G)renderMock();if(R&&(R.status==='needai'||R.status==='idle')){R.status=activeAI()?'idle':'needai';render()}}

@@ -546,7 +546,7 @@ function renderKB(){
       return `<div class="kdoc" data-id="${d.id}">
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap">${ex?'ข้อสอบ':'เนื้อหา'} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||''}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''} · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}</p>
-      ${d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
+      ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
       ${d.stage==='ready'&&!busy&&!nc&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
       ${tp.length?`<div class="tags">${tp.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
@@ -594,12 +594,14 @@ function renderKB(){
     ${cloudBoxHTML()}
     ${UPQ.map((j,i)=>`<div class="kdoc"><p class="kn">${esc(j.name)}</p>${j.err?`<p class="kerr">${esc(j.err)}</p><div><button class="ghost" data-dismiss="${i}">ปิด</button></div>`:`<p class="src" data-job="${i}">${esc(j.msg)}</p>`}</div>`).join('')}
     ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${mine.length} ไฟล์ (กำลังทำ/มีปัญหา ${doing.length} · เสร็จแล้ว ${done.length}) · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
+    ${(c=>c?`<div class="hban"><b>💳 ${DOCS.some(d=>!d.central&&d.errCode==='no_credit')?'เครดิต AI หมด':'โควตาฟรีของ AI หมด'}</b><span>มี ${c} ไฟล์รอประมวลผล ${DOCS.some(d=>!d.central&&d.errCode==='no_credit')?'เติมเงินในบัญชีของ AI ที่ใช้ หรือเปลี่ยนไปใช้ AI ตัวอื่น':'ระบบจะทำต่อเองเมื่อโควตากลับมา หรือเปลี่ยนไปใช้ AI ตัวอื่น'}</span><button class="ghost" id="kbaiset">ตั้งค่า AI</button></div>`:'')(DOCS.filter(d=>!d.central&&(d.errCode==='no_credit'||d.errCode==='quota')).length)}
     ${(n=>n?`<div class="btnrow" style="justify-content:flex-start"><button class="primary" id="runall" ${ai?'':'disabled'}>▶ ประมวลผลต่อทั้งหมด (${n} ไฟล์)</button>${ai?'':'<span class="src">ตั้งค่า AI ก่อน</span>'}</div>`:'')(runAllList().length)}
     ${doing.map(docBox).join('')}
     ${!doing.length&&done.length?'<p class="src" style="text-align:center;margin:0">ไม่มีไฟล์ที่กำลังประมวลผลหรือมีปัญหา · ไฟล์ที่เสร็จแล้วดูได้ที่ปุ่ม 📁 ประวัติการอัปโหลด</p>':''}
     `;
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
   const ra=document.getElementById('runall');if(ra)ra.onclick=runAll;
+  const kas=document.getElementById('kbaiset');if(kas)kas.onclick=()=>{const a=document.getElementById('aiset');if(a){a.open=true;if(isPhone())setMenu(true);a.scrollIntoView({behavior:'smooth'})}};
   const drop=document.getElementById('drop');
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
   drop.ondragleave=()=>drop.classList.remove('over');
@@ -722,8 +724,9 @@ onAppReady(async()=>{
    - ส่งเข้าคลังกลาง / ส่งต้นฉบับขึ้น Drive ไม่สำเร็จ → ลองใหม่ตามรอบเดียวกัน
    ข้อผิดพลาดที่ลองใหม่ไม่ช่วย (ไม่มีข้อความ ไม่มีไฟล์ ไม่มี AI) จะไม่ลองซ้ำ */
 const RETRY_MIN=[2,5,15,30,60];
+/* เครดิตหมด: ไม่ลองซ้ำเองจนกว่าจะเติมเงิน (กด ประมวลผลต่อทั้งหมด หลังเติม) · โควตาฟรีหมด: ลองใหม่ทุก 60 นาที */
 const noRetry=c=>['no_text','no_file','no_ai','bad_key','bad_model','no_credit','cancelled'].includes(c);
-function retryLater(d,code){d.tries=(d.tries||0)+1;d.nextTry=Date.now()+(code==='rate_limited'?60:RETRY_MIN[Math.min(d.tries-1,RETRY_MIN.length-1)])*60000}
+function retryLater(d,code){d.tries=(d.tries||0)+1;d.nextTry=Date.now()+(code==='rate_limited'||code==='quota'?60:RETRY_MIN[Math.min(d.tries-1,RETRY_MIN.length-1)])*60000}
 async function withRetry(fn,times=4){let e0;for(let i=0;i<times;i++){try{return await fn()}catch(e){e0=e;if(e&&e.full)break;await new Promise(r=>setTimeout(r,[3000,8000,20000,40000][i]||40000))}}throw e0}
 let retryBusy=false;
 async function autoRetry(){

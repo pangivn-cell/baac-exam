@@ -16,7 +16,7 @@ service cloud.firestore {
         || (signedIn() && request.auth.uid == uid && request.resource.data.role == resource.data.role);
       allow delete: if isAdmin();
     }
-    // บันทึกโจทย์ที่เคยทำของแต่ละคน (ซิงก์ข้ามเครื่อง) เจ้าของอ่าน/เขียนได้คนเดียว
+    // บันทึกโจทย์ที่เคยทำ + ตั้งค่า AI (aiset) ของแต่ละคน (ซิงก์ข้ามเครื่อง) เจ้าของอ่าน/เขียนได้คนเดียว
     match /users/{uid}/qlog/{doc} {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }

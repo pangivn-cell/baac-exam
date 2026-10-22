@@ -24,7 +24,7 @@ async function loadMyPoints(){
 var RK={tab:'week'};
 async function renderRank(){
   if(VIEW!=='rank')return;
-  head('อันดับผู้สอบ',`ทำชุดข้อสอบผ่าน (ได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป) = 1 คะแนน · ระดับ 1 ที่ 5 คะแนน แล้วระดับถัดไปต้องเก็บเพิ่ม 1.5 เท่าของช่วงก่อนหน้า (ระดับ 2 = 13, ระดับ 3 = 24, ระดับ 4 = 41 คะแนน …) ไม่จำกัดระดับ`);
+  head('อันดับผู้สอบ',`ทำชุดข้อสอบผ่าน (ได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป) = 1 คะแนน · เริ่มที่ระดับ 1 · ช่วงคะแนนแรก 5 แล้วช่วงถัดไปเพิ่ม 1.5 เท่า (ระดับ 2 = 13, ระดับ 3 = 24, ระดับ 4 = 41 คะแนน …) ไม่จำกัดระดับ`);
   const el=document.getElementById('sheet'),K=periodKeys(),per={week:K.week,month:K.month,all:K.all}[RK.tab];
   const tab=(v,t)=>`<button data-rk="${v}" aria-pressed="${RK.tab===v}">${t}</button>`;
   el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(3,1fr)">${tab('week','สัปดาห์นี้')}${tab('month','เดือนนี้')}${tab('all','ตลอดกาล')}</div>
@@ -38,7 +38,7 @@ async function renderRank(){
     const rows=snap.docs.map((s,i)=>({i:i+1,uid:s.id,...s.data()}));let mine=rows.find(r=>ME&&r.uid===ME.uid);
     if(ME&&!mine){const s=await f.fs.getDoc(fsDoc('rank2',per,'u',ME.uid));if(s.exists())mine={i:'-',uid:ME.uid,...s.data(),out:true}}
     const medal=i=>i===1?'🥇':i===2?'🥈':i===3?'🥉':i;
-    body.innerHTML=rows.length?`<div class="hlist">${rows.map(r=>`<div class="hrow rk${ME&&r.uid===ME.uid?' me':''}"><div class="rkn">${medal(r.i)}</div><div class="t"><b>${esc(r.name||'ผู้สอบ')}</b><span class="src">ระดับผู้สอบ ${r.lvl||0}</span></div><div class="hp">${nf(r.pass||0)}<small>คะแนน</small></div></div>`).join('')}
+    body.innerHTML=rows.length?`<div class="hlist">${rows.map(r=>`<div class="hrow rk${ME&&r.uid===ME.uid?' me':''}"><div class="rkn">${medal(r.i)}</div><div class="t"><b>${esc(r.name||'ผู้สอบ')}</b><span class="src">ระดับผู้สอบ ${r.lvl||1}</span></div><div class="hp">${nf(r.pass||0)}<small>คะแนน</small></div></div>`).join('')}
       ${mine&&mine.out?`<p class="src" style="text-align:center">…</p><div class="hrow rk me"><div class="rkn">-</div><div class="t"><b>${esc(mine.name)} (ฉัน)</b><span class="src">ยังไม่ติด 10 อันดับแรก</span></div><div class="hp">${nf(mine.pass||0)}<small>คะแนน</small></div></div>`:''}</div>`
       :'<p class="src" style="text-align:center">ยังไม่มีใครเก็บคะแนนในช่วงนี้ เริ่มทำข้อสอบเพื่อขึ้นอันดับแรก</p>';
   }catch(e){body.innerHTML='<p class="kerr">โหลดอันดับไม่ได้ ตรวจอินเทอร์เน็ต</p>'}

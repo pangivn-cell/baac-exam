@@ -71,13 +71,16 @@ async function scriptList(d){
   const j=await upCall(`${d.up}${d.up.includes('?')?'&':'?'}a=list&t=${encodeURIComponent(await idTok())}`);
   if(!j.ok)throw{message:j.error||'อ่านรายชื่อไฟล์ไม่ได้'};return j.files||[];
 }
-async function scriptBytes(up,id){
-  const t=encodeURIComponent(await idTok()),CH=8388608;
-  const get=async off=>{const j=await upCall(`${up}${up.includes('?')?'&':'?'}a=file&id=${encodeURIComponent(id)}&off=${off}&t=${t}`);
+async function scriptBytes(up,id,size){
+  /* ชิ้นละ 3 MB ยิงพร้อมกันได้ทีละ 6 ชิ้น · รู้ขนาดไฟล์จากดัชนีแล้วยิงทุกชิ้นตั้งแต่แรก */
+  const t=encodeURIComponent(await idTok()),CH=3145728;
+  const get=async off=>{const j=await upCall(`${up}${up.includes('?')?'&':'?'}a=file&id=${encodeURIComponent(id)}&off=${off}&len=${CH}&t=${t}`);
     if(!j.ok)throw{message:j.error||'อ่านไฟล์ไม่ได้'};const bin=atob(j.data),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return{u8,size:j.size}};
-  const first=await get(0),offs=[];for(let o=first.u8.length;o<first.size;o+=CH)offs.push(o);
-  const rest=await Promise.all(offs.map(get));   /* ไฟล์ใหญ่: ดึงส่วนที่เหลือพร้อมกัน */
-  return await new Blob([first.u8,...rest.map(r=>r.u8)]).arrayBuffer();
+  const pool=async offs=>{const out=new Array(offs.length);let k=0;await Promise.all(Array.from({length:Math.min(6,offs.length)},async()=>{while(k<offs.length){const i=k++;out[i]=await get(offs[i])}}));return out};
+  let parts;
+  if(size>0){const offs=[];for(let o=0;o<size;o+=CH)offs.push(o);parts=await pool(offs)}
+  else{const first=await get(0),offs=[];for(let o=first.u8.length;o<first.size;o+=CH)offs.push(o);parts=[first,...await pool(offs)]}
+  return await new Blob(parts.map(r=>r.u8)).arrayBuffer();
 }
 /* ไฟล์ต้นฉบับ: ผ่านตัวรับไฟล์ของโฟลเดอร์นั้นก่อน (ไม่รู้ว่าอยู่โฟลเดอร์ไหนก็ลองทุกตัว) แล้วค่อยลอง Drive API ตรงๆ */
 /* ไฟล์ต้นฉบับที่เคยเปิดเก็บไว้ในเบราว์เซอร์ (IndexedDB) เปิดครั้งต่อไปทันที · เก็บล่าสุดไม่เกิน 300 MB */
@@ -97,7 +100,8 @@ function srcBytes(s){
     let b=await srcCacheGet(s.id);
     if(!b&&DRIVE_DIRECT!==false){try{b=await driveBytes(s.id);DRIVE_DIRECT=true}catch(e){DRIVE_DIRECT=false}}
     if(!b){const ups=s.up?[s.up]:SRC.dirs.filter(d=>d.up).map(d=>d.up);let err=null;
-      for(const up of ups){try{b=await scriptBytes(up,s.id);break}catch(e){err=e}}
+      const size=s.size||((SRC.files.get(srcKeys(s.name||'')[0])||{}).size)||0;
+      for(const up of ups){try{b=await scriptBytes(up,s.id,size);break}catch(e){err=e}}
       if(!b)throw err||{message:'อ่านไฟล์ไม่ได้'};}
     srcCachePut(s.id,b);
     if(PDF_CACHE.size>4)PDF_CACHE.delete(PDF_CACHE.keys().next().value);PDF_CACHE.set(s.id,b);return b;

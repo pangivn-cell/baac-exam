@@ -246,6 +246,7 @@ async function processDoc(doc){
   setProg(doc,'กำลังเริ่ม...');
   try{
     if(doc.stage==='ocr'){if(canVision())await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
+    if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
@@ -431,8 +432,46 @@ function subjPickHTML(cur){
     <div id="unewsubw" hidden><input id="unewsub" class="cetx" style="width:100%;margin-top:6px" placeholder="ชื่อวิชาใหม่"><input id="unewdesc" class="cetx" style="width:100%;margin-top:6px" placeholder="ขอบเขตเนื้อหา (ไม่ใส่ก็ได้) ช่วยให้ AI ออกโจทย์ตรง">
       <p class="src">วิชาใหม่จะอยู่ในกลุ่มที่เลือกด้านบน และขึ้นในเมนูเมื่อ AI ย่อยไฟล์นี้เสร็จและมีข้อมูลแล้ว</p></div></fieldset>`;
 }
-function docOptHTML(g,show,kind,noShare){
-  return `<fieldset class="ufs"><legend>ประเภทไฟล์</legend>${radio('uk','kb',kind||'kb','เนื้อหา/คลังข้อมูล','ตำรา คู่มือ ระเบียบ สรุปเนื้อหา · AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่')}${radio('uk','exam',kind||'kb','ข้อสอบ/ตัวอย่างโจทย์','ข้อสอบเก่า แนวข้อสอบ แบบฝึกหัด · ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่างสร้างข้อใหม่')}</fieldset>
+/* ตรวจประเภทไฟล์อัตโนมัติ (ข้อสอบ/ตัวอย่างโจทย์ หรือ เนื้อหา)
+   หา "ชุดตัวเลือก" ที่เรียงกันอย่างน้อย 3 ตัว ทุกรูปแบบ: ก. ข. ค. · (1) (2) (3) · 1) 2) · 1. 2. 3. · A B C · a. b. c. และแบบ ถาม-ตอบ (บรรทัด "ตอบ")
+   ตัวเลือกแบบตัวเลขนับเฉพาะเมื่อมีคำถามนำ (ข้อใด อะไร เท่าใด กี่ ? …) กันข้อย่อยในตัวบทกฎหมาย/รายการเนื้อหา
+   แล้ววัดว่าเนื้อไฟล์เป็นโจทย์กี่ส่วน: เป็นโจทย์ ≥45% (และหนาแน่นพอ) = ข้อสอบ · ไฟล์เกิน 60 หน้าต้องเป็นโจทย์ ≥60%
+   ชื่อไฟล์ช่วยตัดสิน (ข้อสอบ แบบทดสอบ โจทย์ เฉลย ถาม-ตอบ) เมื่อมีโจทย์บ้าง หรือเป็นไฟล์สแกนที่อ่านข้อความไม่ได้ */
+const KIND_NAME=/ข้อสอบ|แบบทดสอบ|แบบฝึก|โจทย์|เฉลย|ถาม-ตอบ|ถามตอบ|คำถาม|ตะลุย|exam|quiz|test/i;
+function kindStats(pages){
+  const lines=(pages||[]).map(p=>p.text||'').join('\n').split('\n'),total=lines.reduce((x,l)=>x+l.trim().length,0)||1;
+  const fam=[['ก','ข','ค','ง'],['a','b','c','d'],['1','2','3','4']],cue=/ข้อใด|อะไร|เท่าใด|เท่าไร|กี่|ใดต่อไปนี้|\?|…|\.\.\./;
+  const marks=l=>{const out=[],str=' '+l,re=/(?:^|\s|\t)[(\[]?([กขคงabcdABCD1-5])[.)\]]?(?=\s|\S)/g;let m;
+    while((m=re.exec(str))){const ch=m[1].toLowerCase(),raw=m[0];
+      const delim=/[.)\](\[]/.test(raw)||(/^[A-D]$/.test(raw.trim())&&/\s/.test(str[m.index+raw.length]||''));
+      if(!delim&&!'กขคง'.includes(ch))continue;
+      for(let f=0;f<fam.length;f++){const k=fam[f].indexOf(ch);if(k>=0)out.push([f,k])}}
+    return out};
+  let q=0,qChars=0,i=0;
+  while(i<lines.length){
+    const l=lines[i].trim();
+    if(/^ตอบ[\s:]/.test(l)){q++;qChars+=l.length+(lines[i-1]||'').trim().length;i++;continue}
+    let found=false;
+    for(const [f] of marks(l).filter(([,k])=>k===0)){
+      let need=1,j=i,span=0,chars=0;const seen=new Set();
+      while(j<lines.length&&span<10&&need<3){for(const [g,k] of marks(lines[j]))if(g===f&&k===need)need++;if(!seen.has(j)){chars+=lines[j].trim().length;seen.add(j)}if(need>=3)break;j++;span++}
+      if(need<3)continue;
+      const prev=(lines[i-1]||'')+' '+(lines[i-2]||'');if(f===2&&!cue.test(prev)&&!cue.test(l))continue;
+      q++;qChars+=chars+prev.trim().length;i=j+1;found=true;break;
+    }
+    if(!found)i++;
+  }
+  const n=Math.max(1,(pages||[]).length);
+  return{q,ratio:qChars/total,dens:q/n,pages:n,perPage:total/n};
+}
+function detectKind(pages,name){
+  const r=kindStats(pages),big=r.pages>60,hint=KIND_NAME.test(name||'');
+  if(r.q>=3&&(big?r.ratio>=.6:(r.ratio>=.45&&r.dens>=.6)||(r.ratio>=.3&&r.dens>=1.2)))return'exam';
+  if(hint&&!big&&(r.q>=3||r.perPage<150))return'exam';
+  return'kb';
+}
+function docOptHTML(g,show,kind,noShare,withKind){
+  return `${withKind?`<fieldset class="ufs"><legend>ประเภทไฟล์ (ระบบตรวจให้อัตโนมัติ เปลี่ยนได้ถ้าผิด)</legend>${radio('uk','kb',kind||'kb','เนื้อหา/คลังข้อมูล','ตำรา คู่มือ ระเบียบ สรุปเนื้อหา · AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่')}${radio('uk','exam',kind||'kb','ข้อสอบ/ตัวอย่างโจทย์','ข้อสอบเก่า แนวข้อสอบ แบบฝึกหัด · ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่างสร้างข้อใหม่')}</fieldset>`:''}
     <fieldset class="ufs"><legend>กลุ่มวิชาของเอกสาร</legend>${radio('ug','spec',g,'ความรู้เฉพาะตำแหน่ง','สินเชื่อ NCB PDPA ระเบียบ ธ.ก.ส. ฯลฯ')}${radio('ug','gen',g,'ความรู้ความสามารถทั่วไป','คณิตศาสตร์ อนุกรม เงื่อนไข ภาษาไทย ภาษาอังกฤษ')}</fieldset>
     <label class="rad"><input type="checkbox" id="unoshare"${noShare?' checked':''}><span><b>เก็บไว้ใช้คนเดียว ไม่ส่งเข้าคลังกลาง</b><span class="src">ปกติไฟล์ที่ประมวลผลเสร็จจะถูกส่งเข้าคลังกลางให้ทุกคนใช้อัตโนมัติ ห้ามส่งเอกสารลับหรือข้อมูลส่วนบุคคลของผู้อื่น</span></span></label>
     <fieldset class="ufs"><legend>การใช้งาน</legend>${radio('us','db',show?'show':'db','ใช้เป็นฐานข้อมูลอย่างเดียว','AI ย่อยความรู้แล้วนำไปออกข้อสอบในวิชาของกลุ่มนี้ตามหัวข้อที่ตรงกัน')}${radio('us','show',show?'show':'db','แสดงเป็นรายวิชาด้วย','มีวิชาชื่อเดียวกับไฟล์ในกลุ่มนี้ ไว้ฝึกจากเอกสารนี้โดยเฉพาะ')}</fieldset>`;
@@ -476,7 +515,7 @@ async function handleFiles(files,opt){
       const dupCentral=centralDupOf(sha,f.name);
       if(dupCentral){UPQ.splice(UPQ.indexOf(job),1);await attachToCentral(dupCentral,f.name,r.buf,job);renderKB();continue}
       if(old){const ids=CARDS.filter(c=>c.docId===old.id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==old.id);try{await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(old.id).map(f=>f.id));DOCS.splice(DOCS.indexOf(old),1)}
-      const doc={id:old?old.id:newId(),name:f.name,sha,topic:opt.topic||'',newSubj:!!opt.newSubj,topicDesc:opt.topicDesc||'',type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:opt.kind||'kb',noShare:!!opt.noShare,
+      const doc={id:old?old.id:newId(),name:f.name,sha,kindAuto:true,topic:opt.topic||'',newSubj:!!opt.newSubj,topicDesc:opt.topicDesc||'',type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:detectKind(r.pages,f.name),noShare:!!opt.noShare,
         figPages:r.figPages||[],stage:(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest',ocrDone:[],digDone:0,summ:[],err:'',
         warn:r.figSkipped?`มีรูป ${r.figSkipped} รูปที่ระบบแสดงไม่ได้ (เช่น EMF/WMF หรือรูปที่ลิงก์ไว้นอกไฟล์) ถ้าเป็นรูปโจทย์ แนะนำบันทึกเอกสารเป็น PDF แล้วอัปโหลดใหม่`:''};
       if(r.figs&&r.figs.length)await saveFigs(r.figs.map(f=>({...f,docId:doc.id})));
@@ -544,7 +583,7 @@ function renderKB(){
   const el=document.getElementById('sheet'),ai=activeAI(),nCards=activeCards().length,nBank=bankItems().length;
   const docBox=d=>{const tp=docTopics(d),busy=PROC_ID===d.id||PROCQ.includes(d.id),nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',unit=ex?'ข้อ':'ใบ',lab=ex?'ข้อสอบ':'บัตรความรู้',summ=(d.summ||[]).filter(Boolean);
       return `<div class="kdoc" data-id="${d.id}">
-      <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap">${ex?'ข้อสอบ':'เนื้อหา'} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
+      <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap" title="${d.kindAuto?'ระบบตรวจประเภทไฟล์ให้อัตโนมัติ เปลี่ยนได้ที่ ตั้งค่าประเภท/กลุ่ม/การแสดง':''}">${ex?'ข้อสอบ':'เนื้อหา'}${d.kindAuto?' (ตรวจอัตโนมัติ)':''} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||''}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''} · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}</p>
       ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
@@ -620,9 +659,9 @@ function renderKB(){
     const sb=box.querySelector('[data-sub]');if(sb)sb.onclick=()=>submitDoc(d);
     box.querySelector('[data-opt]').onclick=async()=>{
       const nc=CARDS.filter(c=>c.docId===id).length;
-      if(await modal(`<p class="mt">ตั้งค่าเอกสาร</p><p class="src">${esc(d.name)}</p>${docOptHTML(d.group||'spec',!!d.show,d.kind||'kb',!!d.noShare)}${nc?'<p class="src">ถ้าเปลี่ยนประเภทไฟล์หรือกลุ่มวิชา AI ต้องประมวลผลไฟล์นี้ใหม่ ของเดิมของไฟล์นี้จะถูกแทนที่</p>':''}`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+      if(await modal(`<p class="mt">ตั้งค่าเอกสาร</p><p class="src">${esc(d.name)}</p>${docOptHTML(d.group||'spec',!!d.show,d.kind||'kb',!!d.noShare,true)}${nc?'<p class="src">ถ้าเปลี่ยนประเภทไฟล์หรือกลุ่มวิชา AI ต้องประมวลผลไฟล์นี้ใหม่ ของเดิมของไฟล์นี้จะถูกแทนที่</p>':''}`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
       const o=readDocOpt(),regroup=o.group!==(d.group||'spec')||o.kind!==(d.kind||'kb');
-      d.show=o.show;d.group=o.group;d.kind=o.kind;const shareNow=d.noShare&&!o.noShare;d.noShare=o.noShare;if(shareNow)setTimeout(()=>autoShare(d),50);
+      if(o.kind!==(d.kind||'kb'))d.kindAuto=false;d.show=o.show;d.group=o.group;d.kind=o.kind;const shareNow=d.noShare&&!o.noShare;d.noShare=o.noShare;if(shareNow)setTimeout(()=>autoShare(d),50);
       if(regroup&&(nc||d.digDone)){const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==id);try{await kbDelMany('cards',ids)}catch(e){}
         Object.assign(d,{digDone:0,summ:[],stage:d.stage==='ocr'?'ocr':'digest',err:''})}
       await saveDoc(d);syncDocSubjects();if(!d.show&&P.subject==='doc_'+id){P.subject='ineq';save()}

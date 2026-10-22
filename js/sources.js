@@ -72,21 +72,46 @@ async function scriptList(d){
   if(!j.ok)throw{message:j.error||'อ่านรายชื่อไฟล์ไม่ได้'};return j.files||[];
 }
 async function scriptBytes(up,id){
-  const t=encodeURIComponent(await idTok()),parts=[];let off=0,size=1;
-  while(off<size){
-    const j=await upCall(`${up}${up.includes('?')?'&':'?'}a=file&id=${encodeURIComponent(id)}&off=${off}&t=${t}`);
-    if(!j.ok)throw{message:j.error||'อ่านไฟล์ไม่ได้'};
-    const bin=atob(j.data),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
-    parts.push(u8);size=j.size;off+=u8.length;if(!u8.length)break;
-  }
-  return await new Blob(parts).arrayBuffer();
+  const t=encodeURIComponent(await idTok()),CH=8388608;
+  const get=async off=>{const j=await upCall(`${up}${up.includes('?')?'&':'?'}a=file&id=${encodeURIComponent(id)}&off=${off}&t=${t}`);
+    if(!j.ok)throw{message:j.error||'อ่านไฟล์ไม่ได้'};const bin=atob(j.data),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return{u8,size:j.size}};
+  const first=await get(0),offs=[];for(let o=first.u8.length;o<first.size;o+=CH)offs.push(o);
+  const rest=await Promise.all(offs.map(get));   /* ไฟล์ใหญ่: ดึงส่วนที่เหลือพร้อมกัน */
+  return await new Blob([first.u8,...rest.map(r=>r.u8)]).arrayBuffer();
 }
 /* ไฟล์ต้นฉบับ: ผ่านตัวรับไฟล์ของโฟลเดอร์นั้นก่อน (ไม่รู้ว่าอยู่โฟลเดอร์ไหนก็ลองทุกตัว) แล้วค่อยลอง Drive API ตรงๆ */
-async function srcBytes(s){
-  if(PDF_CACHE.has(s.id))return PDF_CACHE.get(s.id);
-  const ups=s.up?[s.up]:SRC.dirs.filter(d=>d.up).map(d=>d.up);let err=null;
-  for(const up of ups){try{const b=await scriptBytes(up,s.id);if(PDF_CACHE.size>4)PDF_CACHE.delete(PDF_CACHE.keys().next().value);PDF_CACHE.set(s.id,b);return b}catch(e){err=e}}
-  try{return await driveBytes(s.id)}catch(e){throw err||e}
+/* ไฟล์ต้นฉบับที่เคยเปิดเก็บไว้ในเบราว์เซอร์ (IndexedDB) เปิดครั้งต่อไปทันที · เก็บล่าสุดไม่เกิน 300 MB */
+const SRC_IDB_KEY='exam-src-cache',SRC_IDB_MAX=300*1048576,SRC_LOADING=new Map();
+let DRIVE_DIRECT=null;   /* null = ยังไม่รู้ · false = คีย์ยังใช้ Drive ตรงไม่ได้ (ใช้ตัวรับไฟล์แทน) */
+function srcCacheList(){try{return JSON.parse(localStorage.getItem(SRC_IDB_KEY)||'[]')}catch(e){return[]}}
+async function srcCacheGet(id){try{const r=await kbGet('files','drv_'+id);if(r&&r.buf){const l=srcCacheList().map(x=>x.id===id?{...x,at:Date.now()}:x);localStorage.setItem(SRC_IDB_KEY,JSON.stringify(l));return r.buf}}catch(e){}return null}
+async function srcCachePut(id,buf){
+  try{let l=srcCacheList().filter(x=>x.id!==id);l.push({id,size:buf.byteLength,at:Date.now()});l.sort((a,b)=>a.at-b.at);
+    let tot=l.reduce((a,x)=>a+x.size,0);const drop=[];while(tot>SRC_IDB_MAX&&l.length>1){const x=l.shift();tot-=x.size;drop.push('drv_'+x.id)}
+    if(drop.length)await kbDelMany('files',drop);await kbPutMany('files',[{id:'drv_'+id,buf}]);localStorage.setItem(SRC_IDB_KEY,JSON.stringify(l))}catch(e){}
+}
+function srcBytes(s){
+  if(PDF_CACHE.has(s.id))return Promise.resolve(PDF_CACHE.get(s.id));
+  if(SRC_LOADING.has(s.id))return SRC_LOADING.get(s.id);
+  const p=(async()=>{
+    let b=await srcCacheGet(s.id);
+    if(!b&&DRIVE_DIRECT!==false){try{b=await driveBytes(s.id);DRIVE_DIRECT=true}catch(e){DRIVE_DIRECT=false}}
+    if(!b){const ups=s.up?[s.up]:SRC.dirs.filter(d=>d.up).map(d=>d.up);let err=null;
+      for(const up of ups){try{b=await scriptBytes(up,s.id);break}catch(e){err=e}}
+      if(!b)throw err||{message:'อ่านไฟล์ไม่ได้'};}
+    srcCachePut(s.id,b);
+    if(PDF_CACHE.size>4)PDF_CACHE.delete(PDF_CACHE.keys().next().value);PDF_CACHE.set(s.id,b);return b;
+  })();
+  SRC_LOADING.set(s.id,p);p.finally(()=>SRC_LOADING.delete(s.id));return p;
+}
+/* อ่านเฉลยอยู่ = มีแนวโน้มจะกดเปิดต้นฉบับ: โหลดไฟล์เตรียมไว้เบื้องหลัง (ทีละไฟล์) */
+const SRC_PRE=new Set();
+async function prefetchSource(cardId){
+  if(typeof ME==='undefined'||!ME||SRC_PRE.has(cardId))return;SRC_PRE.add(cardId);
+  try{const c=CARDS.find(x=>x.id===cardId),d=c&&docOf(c);if(!d||!d.central)return;
+    if(!SRC.ready)await loadSrcIndex();const s=srcFor(d);if(!s||(!/pdf/i.test(s.mime||'')&&!/\.pdf$/i.test(s.name||'')))return;
+    if(PDF_CACHE.has(s.id)||SRC_LOADING.size)return;await srcBytes(s);
+  }catch(e){}
 }
 async function driveBytes(id){
   if(PDF_CACHE.has(id))return PDF_CACHE.get(id);
@@ -103,7 +128,7 @@ async function openSource(cardId){
   modal(`<p class="mt">📂 ต้นฉบับ: ${esc(d.name)} · ${esc(d.unit||'หน้า')} ${page}</p>
     <div id="srcv" class="srcv"><p class="src"><span class="spin sm" aria-hidden="true"></span> กำลังเปิดไฟล์ต้นฉบับ...</p></div>
     <div id="srcnav" class="btnrow" hidden><button class="ghost" id="srcprev">← หน้าก่อน</button><span class="src" id="srcpg"></span><button class="ghost" id="srcnext">หน้าถัดไป →</button><a class="ghost" id="srclink" target="_blank" rel="noopener" hidden>เปิดใน Google Drive</a></div>
-    ${text?`<details class="kprev"><summary>ข้อความต้นฉบับที่ระบบเก็บไว้ (${esc(d.unit||'หน้า')} ${page})</summary><pre class="srctext">${esc(text.slice(0,3000))}</pre></details>`:''}`,[{t:'ปิด'}]);
+    ${text?`<details class="kprev" id="srctxt" open><summary>ข้อความต้นฉบับที่ระบบเก็บไว้ (${esc(d.unit||'หน้า')} ${page})</summary><pre class="srctext">${esc(text.slice(0,3000))}</pre></details>`:''}`,[{t:'ปิด'}]);
   const box=document.getElementById('srcv');
   try{
     let buf=null;
@@ -127,7 +152,7 @@ async function openSource(cardId){
     const pg=await pdf.getPage(page),w=Math.min(860,(b.clientWidth||600)),vp0=pg.getViewport({scale:1}),dpr=window.devicePixelRatio||1;
     const vp=pg.getViewport({scale:w/vp0.width*dpr}),cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;cv.style.width='100%';
     await pg.render({canvasContext:cv.getContext('2d'),viewport:vp,intent:'print'}).promise;
-    b.innerHTML='';b.append(cv);
+    b.innerHTML='';b.append(cv);const st=document.getElementById('srctxt');if(st)st.open=false;
     document.getElementById('srcpg').textContent=`${d.unit||'หน้า'} ${page} / ${pdf.numPages}${page===(+c.page||1)?' (หน้าที่อ้างอิง)':''}`;
   };
   document.getElementById('srcnav').hidden=false;

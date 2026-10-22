@@ -1,6 +1,23 @@
 /* practice.js — หน้าทำข้อสอบ สอบจริง (Mock) กันโกง ประวัติสอบ */
 /* ---------- round ---------- */
 function subj(){return SUBJ.find(s=>s.id===P.subject)||SUBJ[0]}
+/* ---------- เตรียมชุดถัดไปไว้ล่วงหน้า ----------
+   ระหว่างทำข้อสอบชุดนี้ ระบบสร้างชุดถัดไป (วิชา ระดับ จำนวนข้อเดียวกัน) ไว้เบื้องหลัง กด สร้างโจทย์ชุดใหม่ แล้วได้ทันที
+   ทำเฉพาะวิชาที่ต้องใช้ AI · เปลี่ยนวิชา/ระดับ/จำนวนข้อ ชุดที่เตรียมไว้จะไม่ถูกใช้ */
+let PREFETCH=null;
+const pfKey=(s,level,n)=>`${s.id}|${level}|${n}`;
+function prefetchNext(){
+  const s=subj();if(!activeAI()||!R||R.subject!==s.id||(!s.ai&&!cardMixCount(s,P.count)))return;
+  const key=pfKey(s,lvOf(s.id),P.count);if(PREFETCH&&PREFETCH.key===key)return;
+  const ctl=new AbortController(),pf={key,ctl,items:null,err:null};
+  pf.p=makeItems(s,lvOf(s.id),P.count,{signal:ctl.signal,weak:(P.weak[s.id]||[]).slice(-5)}).then(it=>{pf.items=it}).catch(e=>{pf.err=e});
+  if(PREFETCH)PREFETCH.ctl.abort();PREFETCH=pf;
+}
+async function takePrefetch(s,level,n){
+  const pf=PREFETCH;if(!pf||pf.key!==pfKey(s,level,n))return null;
+  PREFETCH=null;await pf.p;
+  return pf.items&&pf.items.length?pf.items.filter(q=>!qMastered(q)):null;
+}
 async function start(go){
   if(genCtl){genCtl.abort();genCtl=null}
   const s=subj(),level=lvOf(s.id),n=P.count;
@@ -13,7 +30,8 @@ async function start(go){
   render();
   const my=R;genCtl=new AbortController();
   try{
-    const items=await makeItems(s,level,n,{signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
+    const pre=await takePrefetch(s,level,n);
+    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,n,{signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
     if(R!==my)return;
     if(!items.length){R.status='error';R.err='ได้โจทย์ที่ใช้ไม่ได้ ลองสร้างชุดใหม่อีกครั้ง';render();return}
     R.items=items;R.status='play';R.t0=Date.now();render();
@@ -160,7 +178,7 @@ function render(){
    ${choicesHTML(q,pick,locked)}
    ${locked?explainHTML(q,pick)+askHTML('cur',q,pick):''}
    <div class="navrow"><span class="src">${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null?'disabled':''}>${R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
-  el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{R.picks[R.i]=+b.dataset.j;render();const nb=document.getElementById('next');if(nb&&R.mode==='now')nb.focus({preventScroll:true})});
+  el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{R.picks[R.i]=+b.dataset.j;render();if(R.picks.filter(x=>x!=null).length>=Math.ceil(R.items.length/2))prefetchNext();const nb=document.getElementById('next');if(nb&&R.mode==='now')nb.focus({preventScroll:true})});
   if(locked)wireAsk('cur',q,pick);
   document.getElementById('next').onclick=()=>{if(R.i+1<n){R.i++;render();el.scrollIntoView({block:'start',behavior:'smooth'})}else finish()};
 }

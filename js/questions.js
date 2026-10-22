@@ -280,7 +280,8 @@ async function makeNew(s,level,n,o,pool){
 }
 async function cardPrompt(slots,level,weak){
   const cs=[...new Map(slots.filter(s=>s.card).map(s=>[s.card.id,s.card])).values()];
-  const figIds=canVision()?[...new Set(cs.flatMap(c=>(c.figs||[]).filter(okFig)))].slice(0,10):[];
+  const picSub=slots.some(x=>(SUBJ.find(y=>y.name===x.topic)||{}).figOnly);
+  const figIds=canVision()&&picSub?[...new Set(cs.flatMap(c=>(c.figs||[]).filter(okFig)))].slice(0,10):[];
   const images=[],sent=[];for(const id of figIds){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
   const text=cardPromptText(slots,level,weak,cs,sent);
   return images.length?{text,images}:text;

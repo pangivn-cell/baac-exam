@@ -48,27 +48,31 @@ function normTurns(input){
 async function httpFail(res){
   let msg='';try{msg=await res.text()}catch(e){}
   const bad=res.status===401||res.status===403||(res.status===400&&/API[_ ]?key/i.test(msg));
-  if(/credit balance|insufficient_quota|billing|payment required/i.test(msg)||res.status===402)throw{code:'no_credit',message:msg.slice(0,300)};
+  if(/credit balance|insufficient_quota|payment required/i.test(msg)||res.status===402)throw{code:'no_credit',message:msg.slice(0,300)};
   if(res.status===429&&/quota|RESOURCE_EXHAUSTED|exceeded your current/i.test(msg))throw{code:'quota',message:msg.slice(0,300)};
   throw{code:bad?'bad_key':res.status===404?'bad_model':res.status===429?'rate_limited':(res.status>=500||/overloaded|high demand|UNAVAILABLE/i.test(msg))?'overloaded':'upstream_error',message:msg.slice(0,300)};
 }
-const GEMINI_FALLBACK=['gemini-flash-latest','gemini-2.5-flash','gemini-flash-lite-latest','gemini-2.5-flash-lite'];
+const GEMINI_FALLBACK=['gemini-flash-latest','gemini-flash-lite-latest','gemini-3.8-flash','gemini-3.5-flash-lite'];
+/* โมเดลที่ Google เลิกให้ใช้แล้ว (ตอบ 404) จำไว้ ไม่ต้องลองซ้ำทุกครั้ง */
+const DEAD_MODELS=new Set();
 let LAST_MODEL='';
 const sleep=(ms,signal)=>new Promise((ok,no)=>{const t=setTimeout(ok,ms);if(signal)signal.addEventListener('abort',()=>{clearTimeout(t);no({code:'cancelled'})},{once:true})});
 async function keyCall(prov,input,json,signal){
-  const models=prov==='gemini'?[AIP.gemini.model,...GEMINI_FALLBACK.filter(m=>m!==AIP.gemini.model)]:[AIP[prov].model];
-  let lastErr;
+  const models=(prov==='gemini'?[AIP.gemini.model,...GEMINI_FALLBACK.filter(m=>m!==AIP.gemini.model)]:[AIP[prov].model]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
+  let lastErr,keyErr;
   for(const model of models){
     for(let attempt=0;attempt<3;attempt++){
       try{const t=await keyCallOnce(prov,model,input,json,signal);LAST_MODEL=model;return t}
       catch(e){lastErr=e;if(e&&typeof e==='object'){e.prov=prov;e.model=model}
+        if(e.code==='bad_model'&&prov==='gemini'&&model!==AIP.gemini.model)DEAD_MODELS.add(prov+':'+model);
+        if(e.code!=='bad_model')keyErr=keyErr||e;
         if(e.code==='overloaded'||e.code==='network'&&attempt===0){await sleep(1500*(attempt+1),signal);continue}
         if(e.code==='bad_model'||((e.code==='rate_limited'||e.code==='quota')&&prov==='gemini'))break;
         throw e;
       }
     }
   }
-  throw lastErr;
+  throw keyErr||lastErr||{code:'bad_model'};
 }
 /* Claude API: ใช้ SDK ทางการของ Anthropic (โหลดจาก CDN ครั้งแรกที่ใช้) key อยู่ในเบราว์เซอร์ของผู้ใช้เอง */
 const ANTH_SDK='https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.132.0/+esm';

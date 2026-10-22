@@ -202,7 +202,6 @@ function render(){
    <div class="navrow"><span class="src">${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null||wait?'disabled':''}>${wait?'กำลังสร้างข้อถัดไป...':R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
   el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{R.picks[R.i]=+b.dataset.j;render();if(R.picks.filter(x=>x!=null).length>=Math.ceil(R.items.length/2))prefetchNext();const nb=document.getElementById('next');if(nb&&R.mode==='now')nb.focus({preventScroll:true})});
   if(locked)wireAsk('cur',q,pick);
-  if(locked&&q.card&&typeof prefetchSource==='function')setTimeout(()=>prefetchSource(q.card),800);
   document.getElementById('next').onclick=()=>{if(R.more&&R.i+1>=R.items.length)return;if(R.i+1<R.items.length){R.i++;render();el.scrollIntoView({block:'start',behavior:'smooth'})}else finish()};
 }
 function finish(){

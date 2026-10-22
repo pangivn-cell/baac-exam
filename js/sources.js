@@ -164,8 +164,26 @@ async function openSource(cardId){
   document.getElementById('srcnext').onclick=()=>{page++;draw()};
   await draw();
 }
-document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-src]');if(b){e.preventDefault();openSource(b.dataset.src)}});
-const srcBtn=q=>{const c=q&&q.card&&CARDS.find(x=>x.id===q.card);const d=c&&docOf(c);return c&&d?`<button class="ghost srcbtn" type="button" data-src="${esc(c.id)}">📂 เปิดต้นฉบับ${c.page?` ${esc(d.unit||'หน้า')} ${esc(String(c.page))}`:''}</button>`:''};
+/* ปุ่มเปิดต้นฉบับ: เปิดไฟล์ใน Google Drive ตรงในแท็บใหม่ทันที (ไม่ต้องรอดึงไฟล์มาแสดงในเว็บ)
+   ไฟล์ในเครื่องตัวเอง: เปิด PDF ในแท็บใหม่ไปที่หน้าที่อ้างอิง · หาไฟล์ไม่เจอ: แสดงข้อความต้นฉบับที่เก็บไว้แทน */
+async function openSourceDirect(cardId){
+  const c=CARDS.find(x=>x.id===cardId),d=c&&docOf(c);if(!c||!d){toast('ไม่พบที่มาของข้อนี้','bad');return}
+  const page=Math.max(1,+c.page||1);
+  /* เปิดแท็บไว้ก่อนตอนที่ยังอยู่ในจังหวะคลิก (กันเบราว์เซอร์บล็อกป๊อปอัป) แล้วค่อยใส่ที่อยู่ */
+  const w=window.open('about:blank','_blank');
+  const fail=()=>{if(w)w.close();openSource(cardId)};
+  try{
+    if(!d.central){const f=await kbGet('files',d.id);
+      if(f&&f.buf&&w){w.location=URL.createObjectURL(new Blob([f.buf],{type:'application/pdf'}))+'#page='+page;return}}
+    if(typeof ME==='undefined'||!ME){if(w)w.close();toast('เข้าสู่ระบบก่อน จึงจะเปิดไฟล์ต้นฉบับได้','bad');return}
+    if(!SRC.ready)await loadSrcIndex();
+    const s=srcFor(d);if(!s||!w)return fail();
+    w.location=driveView(s.id);
+    toast(`เปิดไฟล์ใน Google Drive แล้ว · ส่วนที่อ้างอิงอยู่${d.unit||'หน้า'} ${page}`);
+  }catch(e){fail()}
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-src]');if(b){e.preventDefault();openSourceDirect(b.dataset.src)}});
+const srcBtn=q=>{const c=q&&q.card&&CARDS.find(x=>x.id===q.card);const d=c&&docOf(c);return c&&d?`<button class="ghost srcbtn" type="button" data-src="${esc(c.id)}">📂 เปิดต้นฉบับ${d.central?' ใน Google Drive':''}${c.page?` (${esc(d.unit||'หน้า')} ${esc(String(c.page))})`:''}</button>`:''};
 
 /* ---------- ส่วนของผู้ตรวจ/แอดมิน ในหน้า ข้อมูลในคลังกลาง ---------- */
 async function saveSrcDirs(dirs){

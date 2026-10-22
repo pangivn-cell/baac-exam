@@ -29,7 +29,7 @@ async function cloudInit(){
         if(s.exists())ME.role=s.data().role||'user';
         else await f.fs.setDoc(fsDoc('users',u.uid),{name:ME.name,email:ME.email,role:'user',createdAt:f.fs.serverTimestamp()});
       }catch(e){}
-      renderAcct();renderSide();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();pullAIP();setTimeout(()=>poolCleanup(),8000);
+      renderAcct();renderSide();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();pullAIP();setTimeout(()=>{if(typeof loadSrcIndex==='function'&&!SRC.ready)loadSrcIndex()},3000);setTimeout(()=>poolCleanup(),8000);
     });
     f.au.onAuthStateChanged(f.auth,()=>setTimeout(onboard,600));
     await syncCentral();

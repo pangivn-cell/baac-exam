@@ -75,6 +75,15 @@ service cloud.firestore {
       allow delete: if isReviewer();
     }
 
+    // อันดับแบบใหม่: ทำชุดผ่าน = 1 คะแนน (pass) เพิ่มได้ครั้งละไม่เกิน 5
+    match /rank2/{period}/u/{uid} {
+      allow read: if true;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.pass is number && request.resource.data.pass >= 0 && request.resource.data.pass <= 5;
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.pass >= resource.data.pass && request.resource.data.pass <= resource.data.pass + 5;
+    }
+
     // รายงานเฉลยผิด
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';

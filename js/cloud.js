@@ -39,10 +39,10 @@ function refreshCloudViews(){if(VIEW==='kb')renderKB();else if(VIEW==='review')r
 function renderAcct(){
   const el=document.getElementById('acct');if(!el)return;
   const rv=document.getElementById('vreview');if(rv)rv.hidden=!isReviewerMe();
-  const pts=P.pts||0,lv=lvlFromPts(pts);
+  const pts=P.pass||0,lv=myLevel();
   if(ME){
     el.innerHTML=`<div class="acard"><div class="av" aria-hidden="true">${esc((ME.name||'?').trim().slice(0,1).toUpperCase())}</div><div class="ainfo"><button class="aname" id="rename" title="แตะเพื่อเปลี่ยนชื่อที่แสดงในอันดับ">${esc(ME.name)}</button>
-      <span class="src">ระดับผู้สอบ ${lv} · ${nf(pts)} คะแนน${ME.role!=='user'?` · <b>${ME.role==='admin'?'แอดมิน':'ผู้ตรวจ'}</b>`:''}</span></div></div><button class="logout" id="logout">ออกจากระบบ</button>`;
+      <span class="src">ระดับ ${lv} · ${nf(pts)} คะแนน (อีก ${levelInfo(pts).left} ขึ้นระดับ ${lv+1})${ME.role!=='user'?` · <b>${ME.role==='admin'?'แอดมิน':'ผู้ตรวจ'}</b>`:''}</span></div></div><button class="logout" id="logout">ออกจากระบบ</button>`;
     document.getElementById('logout').onclick=async()=>{if(await modal('<p class="mt">ออกจากระบบ?</p><p class="src">คะแนนที่ทำต่อจากนี้จะเก็บในเครื่องก่อน แล้วขึ้นอันดับเมื่อเข้าสู่ระบบอีกครั้ง</p>',[{t:'ยกเลิก'},{t:'ออกจากระบบ',cls:'primary'}])!==1)return;
       await FB.au.signOut(FB.auth);if(VIEW==='review')setView('kb')};
     document.getElementById('rename').onclick=renameMe;
@@ -151,8 +151,8 @@ async function syncCentral(force){
     for(const s of snap.docs){const p=s.data();max=Math.max(max,p.updatedAt?p.updatedAt.toMillis():0);await applyPack(s.id,p)}
     try{localStorage.setItem(SYNC_KEY,String(max))}catch(e){}
     CLOUD.ok=true;CLOUD.err='';CLOUD.last=Date.now();
-    rebuildCloudIndex();
-    if(snap.size){syncDocSubjects();renderSide();toast(`อัปเดตคลังกลางแล้ว ${snap.size} ชุด`)}
+    rebuildCloudIndex();syncDocSubjects();renderSide();
+    if(snap.size){toast(`อัปเดตคลังกลางแล้ว ${snap.size} ชุด`)}
   }catch(e){CLOUD.ok=false;CLOUD.err=CLOUD.err||'ซิงก์คลังกลางไม่สำเร็จ'}
   finally{CLOUD.syncing=false;if(VIEW==='kb')renderKB()}
 }
@@ -413,6 +413,7 @@ function wireSubjAdmin(el){
    ลบบัตรความรู้และข้อสอบที่เป็นหัวข้อนี้ออกจากทุกชุดในคลังกลาง (ชุดที่ไม่เหลืออะไรถูกเอาออกทั้งชุด) และในเครื่องนี้
    แล้วเอาวิชาออกจากเมนูของทุกคน · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ */
 async function deleteSubject(id){
+  if(String(id).startsWith('doc_'))return deleteDocSubject(id);
   const s=SUBJ.find(x=>x.id===id);if(!s||!isReviewerMe())return;
   const name=s.name,cards=CARDS.filter(c=>c.topic===name),packIds=[...new Set(cards.filter(c=>String(c.docId).startsWith('c_')).map(c=>c.docId.slice(2)))];
   const nq=cards.filter(c=>c.type==='q').length,nk=cards.length-nq;

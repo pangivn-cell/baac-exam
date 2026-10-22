@@ -1,49 +1,45 @@
 /* views.js — คะแนน อันดับ หน้าต้อนรับ หน้าแรก สอบถาม AI เมนูมือถือ และเริ่มระบบ (ต้องโหลดเป็นไฟล์สุดท้าย) */
 /* ---------- คะแนน · ระดับผู้สอบ (ไม่จำกัด) · แรงกิ้ง ---------- */
-const lvlFromPts=p=>Math.floor(Math.sqrt(Math.max(0,p)/25))+1;
+const lvlFromPts=p=>levelInfo(p).lv;
 function periodKeys(d=new Date()){
   const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())),day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);
   const ys=new Date(Date.UTC(t.getUTCFullYear(),0,1)),wk=Math.ceil(((t-ys)/864e5+1)/7);
   return{all:'all',week:`w${t.getUTCFullYear()}-${String(wk).padStart(2,'0')}`,month:`m${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
 }
-function roundPoints(items,picks,level){return Math.min(1000,items.reduce((a,q,j)=>a+(picks[j]===q.answer?Math.max(1,level):0),0))}
-async function awardPoints(pts){
-  if(!(pts>0))return;
-  P.pts=(P.pts||0)+pts;P.unsynced=(P.unsynced||0)+pts;save();renderAcct();
-  flushPoints();
-}
+/* ทำชุดผ่าน = 1 คะแนน ส่งขึ้นอันดับ (rank2) ครั้งละไม่เกิน 5 */
+function awardPass(){P.pass=(P.pass||0)+1;P.unsyncedPass=(P.unsyncedPass||0)+1;save();renderAcct();flushPoints()}
 async function flushPoints(){
-  if(!ME||!(P.unsynced>0)||flushPoints.busy)return;flushPoints.busy=true;
+  if(!ME||!(P.unsyncedPass>0)||flushPoints.busy)return;flushPoints.busy=true;
   try{const f=await fb(),K=periodKeys();
-    while(P.unsynced>0){const chunk=Math.min(1000,P.unsynced);
+    while(P.unsyncedPass>0){const chunk=Math.min(5,P.unsyncedPass);
       for(const per of [K.all,K.week,K.month])
-        await f.fs.setDoc(fsDoc('rank',per,'u',ME.uid),{name:ME.name,pts:f.fs.increment(chunk),rounds:f.fs.increment(1),lvl:lvlFromPts(P.pts),updatedAt:f.fs.serverTimestamp()},{merge:true});
-      P.unsynced-=chunk;save();}
-  }catch(e){}finally{flushPoints.busy=false}
+        await f.fs.setDoc(fsDoc('rank2',per,'u',ME.uid),{name:ME.name,pass:f.fs.increment(chunk),rounds:f.fs.increment(chunk),lvl:myLevel(),updatedAt:f.fs.serverTimestamp()},{merge:true});
+      P.unsyncedPass-=chunk;save();}
+  }catch(e){console.warn('rank',e&&e.code||e)}finally{flushPoints.busy=false}
 }
 async function loadMyPoints(){
-  if(!ME)return;try{const f=await fb(),s=await f.fs.getDoc(fsDoc('rank','all','u',ME.uid));
-    if(s.exists()){const cp=s.data().pts||0;if(cp+(P.unsynced||0)>(P.pts||0)){P.pts=cp+(P.unsynced||0);save()}}renderAcct();}catch(e){}
+  if(!ME)return;try{const f=await fb(),s=await f.fs.getDoc(fsDoc('rank2','all','u',ME.uid));
+    if(s.exists()){const cp=s.data().pass||0;if(cp+(P.unsyncedPass||0)>(P.pass||0)){P.pass=cp+(P.unsyncedPass||0);save()}}renderAcct();if(VIEW==='home')renderHome()}catch(e){}
 }
 var RK={tab:'week'};
 async function renderRank(){
   if(VIEW!=='rank')return;
-  head('อันดับผู้สอบ','คะแนนได้จากข้อที่ตอบถูก ข้อละเท่ากับระดับของวิชานั้น (สอบจริงข้อละ 3) · ระดับผู้สอบเพิ่มได้ไม่จำกัด');
+  head('อันดับผู้สอบ',`ทำชุดข้อสอบผ่าน (ได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป) = 1 คะแนน · ระดับ 2 ที่ 5 คะแนน แล้วแต่ละระดับต้องเก็บเพิ่มอีก 2 (5, 7, 9 …) ไม่จำกัดระดับ`);
   const el=document.getElementById('sheet'),K=periodKeys(),per={week:K.week,month:K.month,all:K.all}[RK.tab];
   const tab=(v,t)=>`<button data-rk="${v}" aria-pressed="${RK.tab===v}">${t}</button>`;
   el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(3,1fr)">${tab('week','สัปดาห์นี้')}${tab('month','เดือนนี้')}${tab('all','ตลอดกาล')}</div>
-    <div class="tiles"><div class="tile">คะแนนสะสมของฉัน<b>${nf(P.pts||0)}</b></div><div class="tile">ระดับผู้สอบ<b>${lvlFromPts(P.pts||0)}</b></div><div class="tile">อีกกี่คะแนนขึ้นระดับ<b>${nf(25*lvlFromPts(P.pts||0)**2-(P.pts||0))}</b></div></div>
+    <div class="tiles"><div class="tile">คะแนนสะสมของฉัน<b>${nf(P.pass||0)}</b></div><div class="tile">ระดับผู้สอบ<b>${myLevel()}</b></div><div class="tile">อีกกี่คะแนนขึ้นระดับ<b>${nf(levelInfo(P.pass).left)}</b></div></div>
     ${ME?'':'<p class="catnote warn">ยังไม่ได้เข้าสู่ระบบ คะแนนเก็บไว้ในเครื่องนี้ก่อน เข้าสู่ระบบแล้วคะแนนจะขึ้นอันดับให้อัตโนมัติ</p>'}
     <div id="rkbody"><div class="state"><div class="spin"></div></div></div>`;
   el.querySelectorAll('[data-rk]').forEach(b=>b.onclick=()=>{RK.tab=b.dataset.rk;renderRank()});
   const body=document.getElementById('rkbody');
   try{const f=await fb();await flushPoints();
-    const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'rank',per,'u'),f.fs.orderBy('pts','desc'),f.fs.limit(10)));
+    const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'rank2',per,'u'),f.fs.orderBy('pass','desc'),f.fs.limit(10)));
     const rows=snap.docs.map((s,i)=>({i:i+1,uid:s.id,...s.data()}));let mine=rows.find(r=>ME&&r.uid===ME.uid);
-    if(ME&&!mine){const s=await f.fs.getDoc(fsDoc('rank',per,'u',ME.uid));if(s.exists())mine={i:'-',uid:ME.uid,...s.data(),out:true}}
+    if(ME&&!mine){const s=await f.fs.getDoc(fsDoc('rank2',per,'u',ME.uid));if(s.exists())mine={i:'-',uid:ME.uid,...s.data(),out:true}}
     const medal=i=>i===1?'🥇':i===2?'🥈':i===3?'🥉':i;
-    body.innerHTML=rows.length?`<div class="hlist">${rows.map(r=>`<div class="hrow rk${ME&&r.uid===ME.uid?' me':''}"><div class="rkn">${medal(r.i)}</div><div class="t"><b>${esc(r.name||'ผู้สอบ')}</b><span class="src">ระดับผู้สอบ ${r.lvl||1} · ${r.rounds||0} ชุด</span></div><div class="hp">${nf(r.pts||0)}<small>คะแนน</small></div></div>`).join('')}
-      ${mine&&mine.out?`<p class="src" style="text-align:center">…</p><div class="hrow rk me"><div class="rkn">-</div><div class="t"><b>${esc(mine.name)} (ฉัน)</b><span class="src">ยังไม่ติด 10 อันดับแรก</span></div><div class="hp">${nf(mine.pts||0)}<small>คะแนน</small></div></div>`:''}</div>`
+    body.innerHTML=rows.length?`<div class="hlist">${rows.map(r=>`<div class="hrow rk${ME&&r.uid===ME.uid?' me':''}"><div class="rkn">${medal(r.i)}</div><div class="t"><b>${esc(r.name||'ผู้สอบ')}</b><span class="src">ระดับผู้สอบ ${r.lvl||1}</span></div><div class="hp">${nf(r.pass||0)}<small>คะแนน</small></div></div>`).join('')}
+      ${mine&&mine.out?`<p class="src" style="text-align:center">…</p><div class="hrow rk me"><div class="rkn">-</div><div class="t"><b>${esc(mine.name)} (ฉัน)</b><span class="src">ยังไม่ติด 10 อันดับแรก</span></div><div class="hp">${nf(mine.pass||0)}<small>คะแนน</small></div></div>`:''}</div>`
       :'<p class="src" style="text-align:center">ยังไม่มีใครเก็บคะแนนในช่วงนี้ เริ่มทำข้อสอบเพื่อขึ้นอันดับแรก</p>';
   }catch(e){body.innerHTML='<p class="kerr">โหลดอันดับไม่ได้ ตรวจอินเทอร์เน็ต</p>'}
 }
@@ -52,7 +48,7 @@ async function renameMe(){
   if(await modal(`<p class="mt">ชื่อที่แสดงในอันดับ</p><input class="tx" id="nm" maxlength="40" value="${esc(ME.name)}">`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
   const v=document.getElementById('nm').value.trim().slice(0,40);if(!v)return;
   try{const f=await fb();await f.fs.updateDoc(fsDoc('users',ME.uid),{name:v});ME.name=v;const K=periodKeys();
-    for(const per of [K.all,K.week,K.month])await f.fs.setDoc(fsDoc('rank',per,'u',ME.uid),{name:v},{merge:true}).catch(()=>{});
+    for(const per of [K.all,K.week,K.month])await f.fs.setDoc(fsDoc('rank2',per,'u',ME.uid),{name:v},{merge:true}).catch(()=>{});
     renderAcct();toast('เปลี่ยนชื่อแล้ว')}catch(e){toast('เปลี่ยนชื่อไม่สำเร็จ','bad')}
 }
 
@@ -109,11 +105,11 @@ function renderWelcome(){
 }
 let HOME_PICK=false;
 function aiTag(s){return s&&s.ai?`<span class="aitag" title="วิชานี้ใช้ AI สร้างโจทย์ ต้องใส่ AI key" aria-label="ใช้ AI">AI</span>`:''}
-function subjBtns(list){return list.map(s=>`<button class="hsub" data-hs="${s.id}"><span class="hsn">${esc(s.name)}${aiTag(s)}</span><span class="lv">ระดับ ${lvOf(s.id)}</span></button>`).join('')}
+function subjBtns(list){return list.map(s=>`<button class="hsub" data-hs="${s.id}"><span class="hsn">${esc(s.name)}${aiTag(s)}</span></button>`).join('')}
 function renderHome(){
   if(VIEW!=='home')return;
-  const pts=P.pts||0,last=SUBJ.find(s=>s.id===P.subject);
-  head(ME?`สวัสดี ${ME.name}`:'หน้าแรก',ME?`ระดับผู้สอบ ${lvlFromPts(pts)} · ${nf(pts)} คะแนน`:'เลือกสิ่งที่อยากทำ');
+  const last=SUBJ.find(s=>s.id===P.subject);
+  head(ME?`สวัสดี ${ME.name}`:'หน้าแรก',ME?`ระดับผู้สอบ ${myLevel()} · ${nf(P.pass||0)} คะแนน · อีก ${levelInfo(P.pass).left} คะแนนขึ้นระดับ ${myLevel()+1}`:'เลือกสิ่งที่อยากทำ');
   const el=document.getElementById('sheet'),gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
   el.innerHTML=`${!activeAI()?`<div class="hban"><b>ยังไม่ได้ใส่ AI key</b><span>วิชาภาษาไทย อังกฤษ ${SPEC_LABEL} และการถาม AI ต้องใช้ key (Gemini ใช้ฟรี)</span><button class="ghost" id="hkey">ตั้งค่าตอนนี้</button></div>`:''}
     ${!ME&&CLOUD.ok!==false?`<div class="hban"><b>ยังไม่ได้เข้าสู่ระบบ</b><span>คะแนนจะเก็บแค่ในเครื่องนี้ และยังไม่ขึ้นอันดับ</span><button class="ghost" id="hlog">เข้าสู่ระบบ</button></div>`:''}
@@ -128,7 +124,7 @@ function renderHome(){
     <div class="hpick" id="hpick" ${HOME_PICK?'':'hidden'}>
       <div class="hopt"><label for="hcount">จำนวนข้อ</label><select id="hcount">${[5,10,20,50,100].map(v=>`<option value="${v}"${P.count===v?' selected':''}>${v} ข้อ</option>`).join('')}</select>
         <span class="fl">การเฉลย</span><div class="seg" role="group"><button data-hm="now" aria-pressed="${P.mode==='now'}">ทันที</button><button data-hm="end" aria-pressed="${P.mode==='end'}">ตอนท้าย</button></div></div>
-      ${last?`<button class="primary" id="hlast">ทำต่อ: ${esc(last.name)} (ระดับ ${lvOf(last.id)})</button>`:''}
+      ${last?`<button class="primary" id="hlast">ทำต่อ: ${esc(last.name)}</button>`:''}
       <p class="src">ป้าย <span class="aitag">AI</span> = วิชาที่ใช้ AI สร้างโจทย์ ต้องใส่ AI key ก่อน · วิชาที่ไม่มีป้าย ระบบสร้างโจทย์เองได้ทันที</p>
       <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="hsubs">${subjBtns(gen)}</div>
       <p class="lbl">${SPEC_LABEL}</p><input class="tx" type="search" id="hq" placeholder="ค้นหาหัวข้อ เช่น หนี้, PDPA" aria-label="ค้นหาหัวข้อ"><div class="hsubs" id="hspec">${subjBtns(spec)}</div>
@@ -318,7 +314,7 @@ document.getElementById('newq').onclick=async()=>{
   if(done&&await modal('<p class="mt">สร้างโจทย์ชุดใหม่?</p><p class="src">ชุดที่กำลังทำอยู่จะถูกยกเลิก และไม่นับคะแนน</p>',[{t:'ทำชุดเดิมต่อ'},{t:'สร้างชุดใหม่',cls:'primary'}])!==1)return;
   start(true);window.scrollTo({top:0,behavior:'smooth'});
 };
-document.getElementById('resetlv').onclick=()=>{P.levels[P.subject]=1;P.weak[P.subject]=[];save();start(true)};
+{const rl=document.getElementById('resetlv');if(rl)rl.remove()}
 if(![5,10,20,50,100].includes(P.count)){P.count=10;save()}
 renderSide();
 start();

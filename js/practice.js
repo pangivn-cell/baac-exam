@@ -165,7 +165,7 @@ function wireAsk(id,q,pick){
 var SIDE_OPEN=null;
 function renderSide(){
   if(!SIDE_OPEN)SIDE_OPEN=Object.assign({gen:false,spec:false},P.sideOpen||{});
-  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span>${aiTag(s)}<span class="lv">ระดับ ${lvOf(s.id)}</span>${typeof isReviewerMe==='function'&&isReviewerMe()&&s.id!=='specall'&&!String(s.id).startsWith('doc_')?`<span class="sdelx" role="button" tabindex="0" data-sdelside="${esc(s.id)}" title="ลบวิชานี้และข้อมูลทั้งหมด" aria-label="ลบวิชา ${esc(s.name)}">🗑</span>`:''}</button>`;
+  const btn=(s,f)=>`<button class="subj" data-s="${s.id}" aria-current="${VIEW==='practice'&&s.id===P.subject}" title="${esc(s.name)}"${f?` data-f="${esc((s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase())}"`:''}><span class="sn">${esc(s.name)}</span>${aiTag(s)}${typeof isReviewerMe==='function'&&s.id!=='specall'&&(s.doc?(isReviewerMe()||!(DOCS.find(x=>x.id===s.doc)||{}).central):isReviewerMe())?`<span class="sdelx" role="button" tabindex="0" data-sdelside="${esc(s.id)}" title="ลบวิชานี้และข้อมูลทั้งหมด" aria-label="ลบวิชา ${esc(s.name)}">🗑</span>`:''}</button>`;
   const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
   const grp=(g,label,list,extra)=>`<div class="sgrp"><button class="ghead" data-g="${g}" aria-expanded="${!!SIDE_OPEN[g]}"><span class="gl">${label}</span><span class="gc">${list.length}</span><span class="caret" aria-hidden="true">▾</span></button>
     <div class="gbody" ${SIDE_OPEN[g]?'':'hidden'}>${extra||''}<div class="slist">${list.map(x=>btn(x,g==='spec')).join('')}</div>${g==='spec'?'<p class="src ddnone" hidden>ไม่พบหัวข้อที่ค้นหา</p>':''}</div></div>`;
@@ -181,7 +181,7 @@ function renderSide(){
   document.getElementById('mode-now').setAttribute('aria-pressed',P.mode==='now');
   document.getElementById('mode-end').setAttribute('aria-pressed',P.mode==='end');
   if(VIEW!=='practice')return;
-  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`${SPEC_LABEL} · ${s.name}`:s.name;document.getElementById('desc').textContent=`${s.ai&&!/AI/.test(subjDesc(s))?'ใช้ AI สร้างโจทย์ · ':''}${subjDesc(s)} · ระดับ ${lvOf(s.id)}`;
+  const s=subj();document.getElementById('title').textContent=s.group==='spec'?`${SPEC_LABEL} · ${s.name}`:s.name;document.getElementById('desc').textContent=`${s.ai&&!/AI/.test(subjDesc(s))?'ใช้ AI สร้างโจทย์ · ':''}${subjDesc(s)} · ระดับรวม ${myLevel()}`;
 }
 function render(){
   if(VIEW!=='practice')return;
@@ -206,11 +206,11 @@ function render(){
 }
 function finish(){
   const n=R.items.length,score=R.items.filter((q,j)=>R.picks[j]===q.answer).length,pct=n?score/n:0;
-  const before=R.level;let after=before;if(pct>=.8)after=before+1;else if(pct<.5)after=Math.max(1,before-1);
-  P.levels[R.subject]=after;
+  const before=myLevel(),passed=pct>=PASS_PCT;
   const wrong=R.items.filter((q,j)=>R.picks[j]!==q.answer).map(q=>qLabel(q).replace(/\s+/g,' ').slice(0,90));
   P.weak[R.subject]=[...(P.weak[R.subject]||[]),...wrong].slice(-5);if(!wrong.length)P.weak[R.subject]=[];
-  save();Object.assign(R,{status:'done',score,pct,after});recordCards(R.items,R.picks);logQs(R.items,R.picks);awardPoints(roundPoints(R.items,R.picks,before));
+  if(passed)awardPass();
+  save();Object.assign(R,{status:'done',score,pct,passed,before,after:myLevel()});recordCards(R.items,R.picks);logQs(R.items,R.picks);
   const sn=(SUBJ.find(s=>s.id===R.subject)||subj()).name,t0=R.t0||Date.now();
   addHist({at:t0,kind:'practice',title:`ฝึก · ${sn}`,n,score,pct,used:(Date.now()-t0)/1000,groups:[{name:sn,ok:score,n}],viol:0,auto:''});
   render();
@@ -224,7 +224,7 @@ function verdict(p){
 }
 function renderDone(el){
   const n=R.items.length,v=verdict(R.pct);
-  const lvTxt=R.after>R.level?`รอบหน้าขึ้นเป็นระดับ ${R.after}`:R.after<R.level?`รอบหน้าลดเป็นระดับ ${R.after}`:`รอบหน้ายังอยู่ระดับ ${R.after}`;
+  const li=levelInfo(P.pass),lvTxt=R.passed?(R.after>R.before?`ผ่าน! +1 คะแนน 🎉 ขึ้นเป็นระดับ ${R.after}`:`ผ่าน! +1 คะแนน (รวม ${P.pass}) · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`):`ยังไม่ผ่าน (ต้องได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป จึงได้ 1 คะแนน) · ระดับ ${li.lv} · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`;
   el.innerHTML=fx(`<div class="result">
     <div class="sticker ${v.c}" role="img" aria-label="${esc(v.t)}">${v.s}</div>
     <p class="big">${R.score} / ${n}</p>
@@ -398,7 +398,7 @@ function submitMock(reason){
   const end=Math.min(Date.now(),M.endAt),n=M.items.length,score=M.items.filter((q,j)=>M.picks[j]===q.answer).length;
   const groups=groupStats(M.items,M.picks,q=>q.subName);
   Object.assign(M,{status:'done',endedAt:end,used:(end-M.startAt)/1000,score,pct:n?score/n:0,auto:reason||'',groups,away:false});
-  recordCards(M.items,M.picks);logQs(M.items,M.picks);awardPoints(roundPoints(M.items,M.picks,3));
+  recordCards(M.items,M.picks);logQs(M.items,M.picks);if(M.pct>=PASS_PCT)awardPass();
   addHist({at:M.startAt,kind:'mock',title:`สอบจริง · ${M.catName}`,n,score,pct:M.pct,used:M.used,limit:M.mins*60,groups,viol:M.viol.length,auto:M.auto});
   saveM();
   if(VIEW!=='mock')setView('mock');else renderMock();

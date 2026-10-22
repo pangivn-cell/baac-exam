@@ -1,8 +1,50 @@
 /* kb.js — คลังความรู้: อ่านไฟล์ ประมวลผลด้วย AI อัปโหลด หน้าคลังความรู้ */
 /* ---------- subjects & descriptions ---------- */
+/* วิชาจากไฟล์: ชื่อเดียวกันแสดงในเมนูแค่วิชาเดียว (เช่น อัปโหลดไฟล์เดิมซ้ำ หรือมีทั้งในเครื่องและในคลังกลาง) ใช้ชุดในคลังกลางก่อน */
+const docBase=d=>d.name.replace(/\.[^.]+$/,'').trim();
+const docKey=d=>docBase(d).toLowerCase().replace(/\s+/g,' ');
 function syncDocSubjects(){
   for(let i=SUBJ.length-1;i>=0;i--)if(SUBJ[i].doc)SUBJ.splice(i,1);
-  for(const d of DOCS)if(d.show)SUBJ.push({id:'doc_'+d.id,name:d.name.replace(/\.[^.]+$/,''),desc:'',ai:true,group:d.group||'spec',doc:d.id});
+  const seen=new Set(SUBJ.map(s=>String(s.name).trim().toLowerCase().replace(/\s+/g,' ')));
+  const hid=typeof HIDE!=='undefined'?HIDE:new Set();
+  for(const d of [...DOCS].sort((a,b)=>(b.central?1:0)-(a.central?1:0))){
+    if(!d.show||hid.has(d.id)||seen.has(docKey(d)))continue;seen.add(docKey(d));
+    SUBJ.push({id:'doc_'+d.id,name:docBase(d),desc:'',ai:true,group:d.group||'spec',doc:d.id});
+  }
+}
+/* ลบวิชาจากไฟล์ (ปุ่ม 🗑 ในเมนู): เลือกได้ว่าลบเฉพาะชุดที่ซ้ำ หรือลบวิชานี้ทั้งหมด
+   ชุดในเครื่องนี้ลบได้เสมอ · ชุดในคลังกลางเฉพาะผู้ตรวจ/แอดมินลบได้ (คนอื่นจะซ่อนจากเมนูของตัวเองแทน) */
+async function delLocalDoc(id){
+  const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);
+  try{await kbDelMany('docs',[id]);await kbDelMany('files',[id]);await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(id).map(f=>f.id));
+  DOCS=DOCS.filter(x=>x.id!==id);CARDS=CARDS.filter(c=>c.docId!==id);
+}
+async function deleteDocSubject(sid){
+  const s=SUBJ.find(x=>x.id===sid),main=s&&DOCS.find(d=>d.id===s.doc);if(!main)return;
+  const rev=typeof isReviewerMe==='function'&&isReviewerMe(),key=docKey(main);
+  const all=[main,...DOCS.filter(d=>d!==main&&docKey(d)===key)],dups=all.slice(1);
+  const nOf=d=>CARDS.filter(c=>c.docId===d.id).length;
+  const row=d=>`<li>${esc(d.name)} · ${d.central?'คลังกลาง':'ในเครื่องนี้'} · ${nOf(d)} รายการ${d.show?'':' · ซ่อนอยู่'}${d===main?' <b>(ชุดที่ใช้ในเมนู)</b>':''}</li>`;
+  const btns=[{t:'ยกเลิก'}];if(dups.length)btns.push({t:`ลบเฉพาะชุดที่ซ้ำ (${dups.length})`});btns.push({t:'ลบวิชานี้ทั้งหมด',cls:'primary'});
+  const p=modal(`<p class="mt">ลบวิชา ${esc(s.name)}?</p>
+    <p>วิชานี้มาจากไฟล์ ${all.length} ชุด${dups.length?' (มีชุดซ้ำ)':''}</p><ul class="src">${all.map(row).join('')}</ul>
+    ${all.some(d=>d.central)&&!rev?'<p class="kwarn">ชุดในคลังกลางลบได้เฉพาะผู้ตรวจ ระบบจะซ่อนจากเมนูของคุณแทน</p>':''}
+    <p class="kwarn">ลบแล้วกู้คืนไม่ได้ · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ</p>
+    <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบถาวร</b></span></label>`,btns);
+  let ok=false;const cb=document.getElementById('sdelok');if(cb)cb.onchange=()=>{ok=cb.checked};
+  const r=await p;if(!r)return;
+  if(!ok){toast('ยังไม่ได้ติ๊ก เข้าใจแล้ว จึงยังไม่ลบ','bad');return}
+  const targets=dups.length&&r===1?dups:all;let n=0,hidden=0;
+  try{
+    for(const d of targets){
+      if(d.central){if(rev){await removePack(d.cloudId);DOCS=DOCS.filter(x=>x!==d);CARDS=CARDS.filter(c=>c.docId!==d.id);try{await kbDelMany('docs',[d.id])}catch(e){}n++}
+        else{d.show=false;await saveDoc(d);hidden++}}
+      else{await delLocalDoc(d.id);n++}
+    }
+  }catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+  if(!SUBJ.some(x=>x.id===P.subject)||targets.some(d=>P.subject==='doc_'+d.id)){P.subject='ineq';save()}
+  if(typeof rebuildCloudIndex==='function')rebuildCloudIndex();syncDocSubjects();renderSide();if(VIEW==='kb')renderKB();
+  toast(`${targets===dups?'ลบชุดที่ซ้ำแล้ว':'ลบวิชาแล้ว'}${n?` ${n} ชุด`:''}${hidden?` · ซ่อน ${hidden} ชุด`:''}`);
 }
 const topicsOf=g=>g==='gen'?GEN_TOPICS:SPEC_TOPICS;
 function subjDesc(s){const nb=bankFor(s).length,bt=nb?` · ข้อสอบจริงในคลัง ${nb} ข้อ`:'';return subjDesc0(s)+bt}
@@ -681,9 +723,7 @@ function renderKB(){
     box.querySelectorAll('[data-conf]').forEach(cb=>cb.querySelectorAll('[data-use]').forEach(b=>b.onclick=async()=>{const c=CARDS.find(x=>x.id===cb.dataset.conf);c.conf.use=b.dataset.use;await saveCards([c]);renderKB();renderSide()}));
     box.querySelector('[data-del]').onclick=async()=>{
       if(await modal(`<p class="mt">ลบเอกสารนี้?</p><p>${esc(d.name)}</p><p class="src">ลบเอกสาร บัตรความรู้ ${CARDS.filter(c=>c.docId===id).length} ใบ และรูปประกอบ ${docFigs(id).length} รูปออกจากเครื่องนี้ กู้คืนไม่ได้</p>`,[{t:'ยกเลิก'},{t:'ลบ',cls:'primary'}])!==1)return;
-      const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);
-      try{await kbDelMany('docs',[id]);await kbDelMany('files',[id]);await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(id).map(f=>f.id));
-      DOCS=DOCS.filter(x=>x.id!==id);CARDS=CARDS.filter(c=>c.docId!==id);syncDocSubjects();
+      await delLocalDoc(id);syncDocSubjects();
       if(P.subject==='doc_'+id){P.subject='ineq';save()}
       renderSide();renderKB();
     };

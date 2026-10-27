@@ -126,6 +126,16 @@ const test = String.raw`(async () => {
     const saved = await p;
     ok('บันทึกบัตรพร้อมรายวิชาใหม่', saved === true && c1.topic === 'NCB' && c1.fact === 'เนื้อหาใหม่', c1.topic);
 
+    // ---------- 2.1) ปุ่มดินสอข้างวิชาในเมนู ----------
+    syncDocSubjects(); renderSide();
+    ok('มีปุ่มแก้ชื่อข้างวิชาในเมนู', !!document.querySelector('[data-srenameside="doc_d1"]'));
+    const rp = renameSideSubject('doc_d1');
+    await pause(150);
+    document.getElementById('srn').value = 'เอกสารระเบียบ (เมนู)';
+    document.querySelector('#dlg .dlgbtns button.primary').click();
+    await rp;
+    ok('แก้ชื่อวิชาในเมนูได้', doc1.label === 'เอกสารระเบียบ (เมนู)' && SUBJ.some(x => x.id === 'doc_d1' && x.name === 'เอกสารระเบียบ (เมนู)'), doc1.label);
+
     // ---------- 3) กันไฟล์ซ้ำ ----------
     // 3.1 ชื่อเดิม + sha เดิม → อัปเดตแค่ตัวเลือก ไม่ประมวลผลซ้ำ
     window.fileSha = async () => 'a'.repeat(64);

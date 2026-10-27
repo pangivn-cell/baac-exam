@@ -440,6 +440,28 @@ async function renameSubject(id,oldName,newName,opt={}){
   for(const d of dch)if(typeof syncPushMeta==='function')syncPushMeta(d);
   if(opt.reload!==false){toast(`เปลี่ยนชื่อวิชาเป็น "${newName}" แล้ว กำลังโหลดใหม่`);setTimeout(()=>location.reload(),900)}
 }
+/* ปุ่มดินสอข้างวิชาในเมนูซ้าย */
+async function renameSideSubject(id){
+  const s=SUBJ.find(x=>x.id===id);if(!s)return;
+  if(s.doc){
+    const d=DOCS.find(x=>x.id===s.doc);if(!d){toast('ไม่พบเอกสารนี้','bad');return}
+    if(await modal(`<p class="mt">แก้ไขชื่อวิชาในเมนู</p><p class="src">ไฟล์: ${esc(d.name)} · ชื่อนี้แสดงเฉพาะเมนูของคุณ (ไฟล์ต้นฉบับไม่เปลี่ยน)</p><label class="lbl" for="srn">ชื่อที่แสดง</label><input class="tx" id="srn" maxlength="60" value="${esc(s.name)}">`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+    const name=((document.getElementById('srn')||{}).value||'').trim();
+    if(!name||name===s.name)return;
+    if(SUBJ.some(x=>x.id!==id&&x.name===name)){toast('มีวิชาชื่อนี้อยู่แล้ว','bad');return}
+    d.label=name;await saveDoc(d);
+    if(typeof syncPushMeta==='function')syncPushMeta(d);
+    syncDocSubjects();renderSide();if(VIEW==='kb')renderKB();
+    toast('เปลี่ยนชื่อวิชาในเมนูแล้ว');
+    return;
+  }
+  if(!isReviewerMe()){toast('เฉพาะผู้ตรวจ/แอดมินเท่านั้นที่เปลี่ยนชื่อวิชานี้ได้','bad');return}
+  if(await modal(`<p class="mt">แก้ไขชื่อวิชา</p><p class="src">ชื่อเดิม: ${esc(s.name)} · บัตรความรู้และเอกสารที่ผูกกับวิชานี้จะถูกย้ายตาม</p><label class="lbl" for="srn">ชื่อใหม่</label><input class="tx" id="srn" maxlength="60" value="${esc(s.name)}">`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+  const name=((document.getElementById('srn')||{}).value||'').trim();
+  if(!name||name===s.name)return;
+  if(SUBJ.some(x=>x.id!==id&&x.name===name)){toast('มีวิชาชื่อนี้อยู่แล้ว','bad');return}
+  try{await renameSubject(id,s.name,name)}catch(e){toast('เปลี่ยนชื่อไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+}
 function wireSubjAdmin(el){
   const sv0=el.querySelector('#ssave');if(!sv0)return;
   const cur=()=>({add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice(),rename:{...(SUBJ_CFG.rename||{})},alias:{...(SUBJ_CFG.alias||{})}});
@@ -504,6 +526,8 @@ async function deleteSubject(id){
 }
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-sdelside]');if(!b)return;e.preventDefault();e.stopPropagation();deleteSubject(b.dataset.sdelside)},true);
 document.addEventListener('keydown',e=>{const b=e.target.closest&&e.target.closest('[data-sdelside]');if(!b||(e.key!=='Enter'&&e.key!==' '))return;e.preventDefault();e.stopPropagation();deleteSubject(b.dataset.sdelside)},true);
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-srenameside]');if(!b)return;e.preventDefault();e.stopPropagation();renameSideSubject(b.dataset.srenameside)},true);
+document.addEventListener('keydown',e=>{const b=e.target.closest&&e.target.closest('[data-srenameside]');if(!b||(e.key!=='Enter'&&e.key!==' '))return;e.preventDefault();e.stopPropagation();renameSideSubject(b.dataset.srenameside)},true);
 /* ---------- เพิ่มวิชาจากไฟล์ที่อัปโหลด: สร้างเมื่อย่อยเสร็จและมีข้อมูลแล้ว ---------- */
 async function addSubjectFromDoc(doc){
   const n=CARDS.filter(c=>c.docId===doc.id).length;

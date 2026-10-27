@@ -72,7 +72,7 @@ function syncDocFromMeta(m){
     summ:Array.isArray(m.summ)?m.summ:[],err:'',prog:'',fileMB:0,pagesParts:m.pagesParts||0,cardsParts:m.cardsParts||0,
     figMeta:figs,stored:m.driveId?'drive':'',at:+m.createdMs||Date.now(),syncAt:Date.now(),
     leaseBy:m.leaseBy||'',leaseAt:+m.leaseAt||0,delCards:Array.isArray(m.delCards)?m.delCards:[],cardsResetAt:+m.cardsResetAt||0,pagesRev:+m.pagesRev||0,cardsRev:+m.cardsRev||0,
-    pagesRemote:(m.pagesParts||0)>0,cardsRemote:(m.cardsParts||0)>0,cardCount:+((m.counts&&m.counts.cards)||0),qCount:+((m.counts&&m.counts.q)||0),
+    label:m.label||'',pagesRemote:(m.pagesParts||0)>0,cardsRemote:(m.cardsParts||0)>0,cardCount:+((m.counts&&m.counts.cards)||0),qCount:+((m.counts&&m.counts.q)||0),
     txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,ownerUid:m.ownerUid||ME.uid,remote:true};
 }
 function syncRememberFigs(doc,figs){
@@ -122,6 +122,7 @@ async function syncMerge(local,m){
   if(m.pagesParts!=null&&local.pagesParts!==m.pagesParts){local.pagesParts=m.pagesParts;ch=true}
   if(m.cardsParts!=null&&local.cardsParts!==m.cardsParts){local.cardsParts=m.cardsParts;ch=true}
   if(m.counts){local.cardCount=+m.counts.cards||0;local.qCount=+m.counts.q||0}
+  if(m.label!=null&&local.label!==m.label){local.label=m.label;ch=true}
   if(m.txtSha&&local.txtSha!==m.txtSha){local.txtSha=m.txtSha;ch=true}
   if(m.dupOf&&local.dupOf!==m.dupOf){local.dupOf=m.dupOf;ch=true}
   if(m.dupSkipped!=null&&local.dupSkipped!==+m.dupSkipped){local.dupSkipped=+m.dupSkipped;ch=true}
@@ -254,7 +255,7 @@ function syncMetaOf(doc){
   return{
     v:1,localId:doc.id,ownerUid:doc.ownerUid||ME.uid,name:doc.name,sha:doc.sha||'',driveId:doc.driveId||'',srcFile:doc.srcFile||'',size:+doc.size||0,
     type:doc.type||'',unit:doc.unit||'หน้า',chars:+doc.chars||0,group:doc.group||'spec',show:doc.show!==false,
-    kind:doc.kind||'kb',topic:doc.topic||'',noShare:!!doc.noShare,stage:doc.stage||'',status:syncStatus(doc),
+    kind:doc.kind||'kb',topic:doc.topic||'',label:doc.label||'',noShare:!!doc.noShare,stage:doc.stage||'',status:syncStatus(doc),
     leaseBy:doc.stage==='ready'?'':(doc.leaseBy||''),leaseAt:doc.stage==='ready'?0:(+doc.leaseAt||0),digDone:+doc.digDone||0,ocrDone:doc.ocrDone||[],
     summ:doc.summ||[],bad:doc.bad||[],figPages:doc.figPages||[],pagesParts:+doc.pagesParts||0,cardsParts:+doc.cardsParts||0,pagesRev:+doc.pagesRev||0,cardsRev:+doc.cardsRev||0,
     figs:(doc.figMeta||[]).map(f=>({id:f.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0})),

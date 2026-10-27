@@ -12,7 +12,7 @@ function syncDocSubjects(){
     if(!docMine(d))continue;
     if(!d.central&&(!d.pages||!d.pages.length)&&!CARDS.some(c=>c.docId===d.id))continue;
     if(!d.show||hid.has(d.id)||seen.has(docKey(d)))continue;seen.add(docKey(d));
-    SUBJ.push({id:'doc_'+d.id,name:docBase(d),desc:'',ai:true,group:d.group||'spec',doc:d.id});
+    SUBJ.push({id:'doc_'+d.id,name:d.label||docBase(d),desc:'',ai:true,group:d.group||'spec',doc:d.id});
   }
 }
 /* ลบวิชาจากไฟล์ (ปุ่ม 🗑 ในเมนู): เลือกได้ว่าลบเฉพาะชุดที่ซ้ำ หรือลบวิชานี้ทั้งหมด

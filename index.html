@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600&family=Sarabun:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="css/app.css?v=2026-10-27d">
+<link rel="stylesheet" href="css/app.css?v=2026-10-27e">
 </head><body>
 
 <header class="mtop" id="mtop"><button class="mbtn" id="mmenu" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="side"><span class="ic" aria-hidden="true">☰</span>เมนู</button><span class="mtitle" id="mtitle">ระบบซ้อมสอบ</span><button class="mav out" id="mav" type="button">เข้าสู่ระบบ</button></header>
@@ -46,7 +46,7 @@
 <input type="file" id="kbfile" hidden multiple accept=".pdf,.docx,.txt,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html">
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-27d';window.APP_VERSION=BUILD;
+const BUILD='2026-10-27e';window.APP_VERSION=BUILD;
 if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
   let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
@@ -54,16 +54,16 @@ if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.no
   location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+location.hash);
 }).catch(()=>{});
 </script>
-<script src="js/core.js?v=2026-10-27d"></script>
-<script src="js/generators.js?v=2026-10-27d"></script>
-<script src="js/ai.js?v=2026-10-27d"></script>
-<script src="js/practice.js?v=2026-10-27d"></script>
-<script src="js/questions.js?v=2026-10-27d"></script>
-<script src="js/kb.js?v=2026-10-27d"></script>
-<script src="js/cloud.js?v=2026-10-27d"></script>
-<script src="js/qpool.js?v=2026-10-27d"></script>
-<script src="js/sources.js?v=2026-10-27d"></script>
-<script src="js/sync.js?v=2026-10-27d"></script>
-<script src="js/visuals.js?v=2026-10-27d"></script>
-<script src="js/views.js?v=2026-10-27d"></script>
+<script src="js/core.js?v=2026-10-27e"></script>
+<script src="js/generators.js?v=2026-10-27e"></script>
+<script src="js/ai.js?v=2026-10-27e"></script>
+<script src="js/practice.js?v=2026-10-27e"></script>
+<script src="js/questions.js?v=2026-10-27e"></script>
+<script src="js/kb.js?v=2026-10-27e"></script>
+<script src="js/cloud.js?v=2026-10-27e"></script>
+<script src="js/qpool.js?v=2026-10-27e"></script>
+<script src="js/sources.js?v=2026-10-27e"></script>
+<script src="js/sync.js?v=2026-10-27e"></script>
+<script src="js/visuals.js?v=2026-10-27e"></script>
+<script src="js/views.js?v=2026-10-27e"></script>
 </body></html>

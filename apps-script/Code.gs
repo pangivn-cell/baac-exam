@@ -31,7 +31,7 @@ function quota_() {
 function doGet(e) {
   try {
     const a = (e && e.parameter && e.parameter.a) || 'quota';
-    if (a === 'list' || a === 'file') verify_(e.parameter.t);
+    if (a === 'list' || a === 'file' || a === 'findsha') verify_(e.parameter.t);
     if (a === 'list') {                      // รายชื่อไฟล์ทั้งหมดในโฟลเดอร์ (รวมโฟลเดอร์ย่อย)
       const files = [], walk = (f, depth) => {
         const it = f.getFiles(); while (it.hasNext()) { const x = it.next(); files.push({ id: x.getId(), name: x.getName(), mimeType: x.getMimeType(), size: x.getSize() }); }
@@ -49,6 +49,18 @@ function doGet(e) {
       if (r.getResponseCode() >= 300) return out_({ ok: false, error: 'อ่านไฟล์ไม่ได้ (' + r.getResponseCode() + ')' });
       const bytes = r.getContent();
       return out_({ ok: true, size: size, off: off, data: Utilities.base64Encode(bytes), mime: f.getMimeType(), name: f.getName() });
+    }
+    if (a === 'findsha') {                 // หาไฟล์เดิมจากลายนิ้วมือ SHA-256 ที่เก็บใน description (กันอัปโหลดซ้ำ)
+      const sha = String(e.parameter.sha || '');
+      if (!sha) return out_({ ok: false, error: 'missing sha' });
+      let found = null;
+      const walk = (f, depth) => {
+        const it = f.getFiles();
+        while (it.hasNext() && !found) { const x = it.next(); if (String(x.getDescription() || '') === 'baac:' + sha) found = { id: x.getId(), name: x.getName(), size: x.getSize(), mimeType: x.getMimeType() }; }
+        if (!found && depth < 5) { const sub = f.getFolders(); while (sub.hasNext() && !found) walk(sub.next(), depth + 1); }
+      };
+      walk(DriveApp.getFolderById(props_().getProperty('FOLDER_ID')), 0);
+      return out_(found ? Object.assign({ ok: true }, found) : { ok: false });
     }
     if (a === 'quota') {
       const folder = DriveApp.getFolderById(props_().getProperty('FOLDER_ID'));
@@ -84,9 +96,17 @@ function doPost(e) {
     verify_(b.idToken);
     const folderId = props_().getProperty('FOLDER_ID'), folder = DriveApp.getFolderById(folderId);
     if (b.a === 'start') {
-      const name = String(b.name || 'file.pdf').slice(0, 200), size = +b.size || 0;
+      const name = String(b.name || 'file.pdf').slice(0, 200), size = +b.size || 0, sha = String(b.sha || '');
+      /* ชื่อซ้ำ: ใช้ไฟล์เดิมเฉพาะเมื่อเป็นไฟล์เดียวกันจริง (sha ตรง) หรือผู้เรียกเวอร์ชันเก่าไม่ส่ง sha มา
+         ไฟล์ที่แก้ไขแล้วแต่ใช้ชื่อเดิมจะได้ไฟล์ใหม่ ไม่ทำให้เนื้อหาที่อ่านได้เป็นของเก่า */
       const same = folder.getFilesByName(name);
-      if (same.hasNext()) { const f = same.next(); return out_({ ok: true, done: true, id: f.getId(), name: name, existed: true }); }
+      let first = null, match = null;
+      while (same.hasNext()) {
+        const f = same.next(); if (!first) first = f;
+        if (sha && String(f.getDescription() || '') === 'baac:' + sha) { match = f; break; }
+      }
+      if (match) return out_({ ok: true, done: true, id: match.getId(), name: name, existed: true });
+      if (first && !sha) return out_({ ok: true, done: true, id: first.getId(), name: name, existed: true });
       const q = quota_();
       if (q.free >= 0 && q.free < size + MARGIN) return out_({ ok: false, full: true, free: q.free });
       const r = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
@@ -106,7 +126,7 @@ function doPost(e) {
       if (code === 308) return out_({ ok: true, next: from + bytes.length });
       if (code === 200 || code === 201) {
         const f = JSON.parse(r.getContentText());
-        try { DriveApp.getFileById(f.id).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (x) {}
+        try { const file = DriveApp.getFileById(f.id); file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); if (b.sha) file.setDescription('baac:' + String(b.sha)); } catch (x) {}
         return out_({ ok: true, done: true, id: f.id, name: f.name });
       }
       return out_({ ok: false, error: 'ส่งไฟล์ไม่สำเร็จ (' + code + '): ' + r.getContentText().slice(0, 200) });

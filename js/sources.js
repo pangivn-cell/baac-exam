@@ -42,7 +42,7 @@ function loadSrcIndex(force){
     try{
       if(!ME){SRC.err='เข้าสู่ระบบเพื่อเปิดไฟล์ต้นฉบับจากคลังกลาง';return}
       const f=await fb(),s=await f.fs.getDoc(fsDoc('config','srcdirs'));
-      SRC.dirs=s.exists()?(s.data().dirs||[]):[];
+      SRC.dirs=s.exists()?(s.data().dirs||[]):[];SRC.dirsAt=Date.now();
       const dk=SRC.dirs.map(d=>d.id).sort().join(',');
       let cache=null;try{cache=JSON.parse(localStorage.getItem(SRC_IDX_KEY)||'null')}catch(e){}
       if(!force&&cache&&cache.dk===dk&&Date.now()-cache.at<12*3600e3){SRC.files=new Map(cache.files);SRC.at=cache.at;SRC.err=cache.err||'';SRC.ready=true;return}
@@ -56,6 +56,14 @@ function loadSrcIndex(force){
     }catch(e){SRC.err=srcErrText(e)}
     finally{SRC.loading=null}
   })();
+}
+/* อ่านเฉพาะรายการโฟลเดอร์จาก config/srcdirs (ไม่สแกนรายชื่อไฟล์) — ใช้ตอนอัปโหลดขึ้น Drive เพื่อเริ่มส่งได้เร็ว
+   loadSrcIndex() จะสแกนไฟล์ทั้งโฟลเดอร์ซึ่งใช้เวลานาน จึงไม่ควรเรียกก่อนอัปโหลดทุกครั้ง */
+async function ensureSrcDirs(force){
+  if(!force&&SRC.dirsAt&&Date.now()-SRC.dirsAt<10*60000)return SRC.dirs;
+  const f=await fb(),s=await f.fs.getDoc(fsDoc('config','srcdirs'));
+  SRC.dirs=s.exists()?(s.data().dirs||[]):[];SRC.dirsAt=Date.now();
+  return SRC.dirs;
 }
 /* ไฟล์ต้นฉบับของเอกสาร/ชุด: ลิงก์ที่ผู้ตรวจตั้งไว้ก่อน แล้วค่อยจับคู่จากชื่อไฟล์ */
 function srcFor(d){
@@ -258,15 +266,15 @@ async function upCall(url,body){
 async function upQuota(d){try{const j=await upCall(d.up+(d.up.includes('?')?'&':'?')+'a=quota');d.quota=j.ok?j:null;d.qerr=j.ok?'':j.error||'';return d.quota}catch(e){d.quota=null;d.qerr='ติดต่อตัวรับไฟล์ไม่ได้';return null}}
 const b64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(blob)});
 const gb=n=>(n/1073741824).toFixed(n>=1073741824*10?0:1)+' GB';
-async function uploadOriginal(name,buf,mime,onProg){
+async function uploadOriginal(name,buf,mime,onProg,sha){
   if(!ME)throw{why:'ต้องเข้าสู่ระบบก่อน'};
-  if(!SRC.ready)await loadSrcIndex();
+  await ensureSrcDirs();
   const ups=SRC.dirs.filter(d=>d.up);if(!ups.length)throw{why:'แอดมินยังไม่ได้ตั้งตัวรับไฟล์ (Apps Script)'};
   const f=await fb(),tok=await f.auth.currentUser.getIdToken(),size=buf.byteLength,blob=new Blob([buf],{type:mime||'application/pdf'});
   for(const d of ups){
     const q=await upQuota(d);if(!q)continue;
     if(q.free>=0&&q.free<size+UP_MARGIN)continue;              /* เต็มหรือเกือบเต็ม ใช้โฟลเดอร์ถัดไป */
-    const s=await withRetry(()=>upCall(d.up,{a:'start',idToken:tok,name,mime:mime||'application/pdf',size}).then(j=>{if(!j.ok&&!j.full&&!j.done)throw{why:j.error};return j}),3).catch(e=>({ok:false,error:e&&e.why||String(e)}));
+    const s=await withRetry(()=>upCall(d.up,{a:'start',idToken:tok,name,mime:mime||'application/pdf',size,sha:sha||''}).then(j=>{if(!j.ok&&!j.full&&!j.done)throw{why:j.error};return j}),3).catch(e=>({ok:false,error:e&&e.why||String(e)}));
     if(s.full)continue;
     if(!s.ok)throw{why:s.error||'เริ่มส่งไฟล์ไม่สำเร็จ'};
     if(s.done)return{id:s.id,dir:d.id};
@@ -274,13 +282,25 @@ async function uploadOriginal(name,buf,mime,onProg){
       onProg&&onProg(off/size);
       const part=blob.slice(off,Math.min(size,off+UP_CHUNK));
       const data=await b64(part);
-      const r=await withRetry(()=>upCall(d.up,{a:'chunk',idToken:tok,session:s.session,offset:off,total:size,mime:mime||'application/pdf',data}).then(j=>{if(!j.ok)throw{why:j.error};return j}),4).catch(e=>({ok:false,error:e&&e.why||String(e)}));
+      const r=await withRetry(()=>upCall(d.up,{a:'chunk',idToken:tok,session:s.session,offset:off,total:size,mime:mime||'application/pdf',data,sha:sha||''}).then(j=>{if(!j.ok)throw{why:j.error};return j}),4).catch(e=>({ok:false,error:e&&e.why||String(e)}));
       if(!r.ok)throw{why:r.error||'ส่งไฟล์ไม่สำเร็จ'};
       if(r.done){onProg&&onProg(1);return{id:r.id,dir:d.id}}
       off=r.next;
     }
   }
   throw{why:'พื้นที่ Google Drive ทุกโฟลเดอร์เต็มหรือติดต่อไม่ได้ ให้แอดมินเพิ่มโฟลเดอร์สำรอง'};
+}
+/* หาไฟล์เดิมบน Google Drive จาก SHA-256 (ตัวรับไฟล์เก็บไว้ใน description) — กันอัปโหลดซ้ำเมื่อประวัติในเบราว์เซอร์หาย */
+async function driveFindSha(sha){
+  if(!sha||!ME)return null;
+  try{await ensureSrcDirs()}catch(e){return null}
+  const ups=SRC.dirs.filter(d=>d.up);if(!ups.length)return null;
+  let t='';try{t=encodeURIComponent(await idTok())}catch(e){return null}
+  for(const d of ups){
+    try{const j=await upCall(`${d.up}${d.up.includes('?')?'&':'?'}a=findsha&sha=${encodeURIComponent(sha)}&t=${t}`);
+      if(j.ok&&j.id)return{id:j.id,name:j.name||'',size:j.size||0,dir:d.id}}catch(e){}
+  }
+  return null;
 }
 /* ไฟล์ต้นฉบับในเครื่องของชุดในคลังกลาง (ชุดที่เครื่องนี้เป็นคนส่ง หรือชื่อไฟล์ตรงกัน) */
 async function localOriginalFor(pack){
@@ -300,7 +320,7 @@ async function uploadMissing(btn){
   for(const [i,p] of packs.entries()){
     const lo=await localOriginalFor(p);if(!lo){skip++;continue}
     if(btn)btn.textContent=`กำลังส่ง ${i+1}/${packs.length}: ${p.name.slice(0,30)}`;
-    try{const r=await uploadOriginal(lo.doc.name,lo.buf,lo.doc.type==='pdf'?'application/pdf':'',x=>{if(btn)btn.textContent=`กำลังส่ง ${i+1}/${packs.length} · ${Math.round(x*100)}%`});await setPackSrc(p,r.id);ok++}
+    try{const r=await uploadOriginal(lo.doc.name,lo.buf,lo.doc.type==='pdf'?'application/pdf':'',x=>{if(btn)btn.textContent=`กำลังส่ง ${i+1}/${packs.length} · ${Math.round(x*100)}%`},lo.doc.sha);await setPackSrc(p,r.id);ok++}
     catch(e){fail=e&&e.why||String(e&&e.code||e);break}
   }
   toast(`ส่งต้นฉบับขึ้น Drive แล้ว ${ok} ชุด${skip?` · ไม่มีไฟล์ในเครื่องนี้ ${skip} ชุด`:''}${fail?` · หยุดเพราะ: ${fail}`:''}`,fail?'bad':'');

@@ -28,16 +28,22 @@ const SPEC=[
 /* รายวิชาที่แอดมินเพิ่ม/ซ่อน (Firestore config/subjects ทุกคนอ่านได้) จำไว้ในเครื่องเพื่อใช้ตั้งแต่ตอนเปิดหน้า
    add: [{id,name,desc,group:'gen'|'spec',kw:[]}]  hide: [id]  ถ้าค่าในฐานข้อมูลเปลี่ยน cloud.js จะเปิดหน้าใหม่ให้ */
 const SUBJ_CFG_KEY='exam-subjects';
-let SUBJ_CFG={add:[],hide:[]};try{SUBJ_CFG={add:[],hide:[],...(JSON.parse(localStorage.getItem(SUBJ_CFG_KEY)||'null')||{})}}catch(e){}
-for(const a of SUBJ_CFG.add||[]){if(!a||!a.id||!a.name)continue;
-  if(a.group==='spec')SPEC.push([a.id,a.name,a.desc||a.name,a.kw&&a.kw.length?a.kw:[a.name]]);else SUBJ.push({id:a.id,name:a.name,desc:a.desc||'โจทย์สร้างโดย AI',ai:true,custom:true})}
+let SUBJ_CFG={add:[],hide:[],rename:{},alias:{}};try{SUBJ_CFG={add:[],hide:[],rename:{},alias:{},...(JSON.parse(localStorage.getItem(SUBJ_CFG_KEY)||'null')||{})}}catch(e){}
+const RN=SUBJ_CFG.rename||{};
+for(const a of SUBJ_CFG.add||[]){if(!a||!a.id||!a.name)continue;const nm=RN[a.id]||a.name;
+  if(a.group==='spec')SPEC.push([a.id,nm,a.desc||nm,[...(a.kw&&a.kw.length?a.kw:[nm]),a.name].filter(Boolean)]);else SUBJ.push({id:a.id,name:nm,desc:a.desc||'โจทย์สร้างโดย AI',ai:true,custom:true,kw:[...(a.kw||[]),a.name].filter(Boolean)})}
 SUBJ.forEach(s=>s.group='gen');
+/* เปลี่ยนชื่อวิชา: ชื่อที่แสดงใช้ rename[id] · ชื่อเดิมยังเก็บไว้เป็นคำค้น */
+for(const s of SUBJ)if(RN[s.id]&&s.name!==RN[s.id]){s.kw=[...(s.kw||[]),s.name];s.name=RN[s.id]}else if(RN[s.id])s.name=RN[s.id];
 SUBJ.push({id:'specall',name:'รวมทุกวิชา',desc:'สุ่มโจทย์จากทุกหัวข้อความรู้เฉพาะตำแหน่ง',ai:true,group:'spec',kw:[]});
+SPEC.forEach(x=>{if(RN[x[0]]){if(!x[3].includes(x[1]))x[3].push(x[1]);x[1]=RN[x[0]]}});
 SPEC.forEach(([id,name,scope,kw])=>SUBJ.push({id,name,desc:scope,ai:true,group:'spec',kw}));
 for(const a of SUBJ_CFG.add||[]){const s=SUBJ.find(x=>x.id===a.id);if(s)s.custom=true}
 /* ซ่อนรายวิชา: เอาออกจากเมนูและการสร้างโจทย์ ข้อมูลในคลังยังอยู่ (เปิดกลับได้) */
 const SUBJ_ALL=SUBJ.map(s=>({id:s.id,name:s.name,group:s.group,custom:!!s.custom}));
 for(const id of SUBJ_CFG.hide||[]){const i=SUBJ.findIndex(s=>s.id===id);if(i>=0)SUBJ.splice(i,1);const j=SPEC.findIndex(x=>x[0]===id);if(j>=0)SPEC.splice(j,1)}
+/* ชื่อวิชาเดิม → ชื่อปัจจุบัน (ใช้แปลงบัตรความรู้เก่าที่เก็บชื่อเดิมไว้) */
+const topicName=t=>((SUBJ_CFG.alias||{})[t]||t);
 const GEN_TOPICS=SUBJ.filter(s=>s.group==='gen').map(s=>s.name);
 const isSpecSub=id=>id==='spec'||id==='specall'||SPEC.some(x=>x[0]===id)||String(id).startsWith('doc_');
 const LEVEL_TXT={1:'ง่ายมาก พื้นฐาน ขั้นตอนเดียว',2:'ง่าย 1–2 ขั้นตอน',3:'ปานกลาง ระดับข้อสอบ ก.พ. ทั่วไป',4:'ยาก หลายขั้นตอน มีตัวลวง',5:'ยากมาก ระดับแข่งขันสูง ตัวลวงแนบเนียน'};
@@ -69,6 +75,8 @@ if(P.pass==null){let h=[];try{h=JSON.parse(localStorage.getItem('exam-history-v1
 
 /* ---------- helpers ---------- */
 const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+/* เอกสารนี้เป็นของบัญชีที่กำลังล็อกอินอยู่หรือไม่ (เอกสารที่ยังไม่เคยซิงก์ = ของเครื่องนี้ ใช้ได้เสมอ) */
+const docMine=d=>!d||!d.ownerUid||typeof ME==='undefined'||!ME||d.ownerUid===ME.uid;
 const fx=h=>h.replace(/≯/g,'<span class="nge">&gt;</span>').replace(/≮/g,'<span class="nge">&lt;</span>');
 const c=(n,L)=>n===1?L:n+L;
 const FR={2:'½',3:'⅓',4:'¼',5:'⅕'};

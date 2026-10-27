@@ -3,6 +3,8 @@
    Everything lives in IndexedDB on this device: docs (text per page), files (original PDF bytes), cards (digested knowledge). */
 var DOCS=[],CARDS=[],DOC_OFF=0,UPQ=[],KB_ERR=false,PROCQ=[],PROC_ID=null;
 const KB_OPEN=new Set(),FIGS=new Map();
+/* PFIG = รูปของคลังส่วนตัวที่อยู่บน Firestore (ยังไม่โหลดไบต์) — ใช้ร่วมกับ FIGS ของเครื่องนี้และ CFIG ของคลังกลาง */
+const PFIG=new Map();
 const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function kbOpen(){return new Promise((ok,no)=>{const r=indexedDB.open('exam-kb',3);
   r.onupgradeneeded=()=>{const db=r.result;for(const s of ['docs','files','cards','images'])if(!db.objectStoreNames.contains(s))db.createObjectStore(s,{keyPath:'id'})};
@@ -22,10 +24,11 @@ async function saveCards(arr){if(arr.length)try{await kbPutMany('cards',arr)}cat
 
 /* ---------- figures: images kept from documents (never dropped — some questions can't be answered without them) ---------- */
 async function saveFigs(arr){for(const f of arr)FIGS.set(f.id,f);if(arr.length)try{await kbPutMany('images',arr.map(({url,...r})=>r))}catch(e){}}
-async function dropFigs(ids){for(const id of ids){const f=FIGS.get(id);if(f&&f.url)URL.revokeObjectURL(f.url);FIGS.delete(id)}if(ids.length)try{await kbDelMany('images',ids)}catch(e){}}
+async function dropFigs(ids){for(const id of ids){const f=FIGS.get(id);if(f&&f.url)URL.revokeObjectURL(f.url);FIGS.delete(id);PFIG.delete(id)}if(ids.length)try{await kbDelMany('images',ids)}catch(e){}}
 const docFigs=id=>[...FIGS.values()].filter(f=>f.docId===id).sort((a,b)=>a.page-b.page||a.at-b.at);
 function figURL(id){const f=FIGS.get(id);if(!f)return '';if(!f.url)f.url=URL.createObjectURL(f.blob);return f.url}
 function figHTML(id,cls){const f=FIGS.get(id);
+  if(!f&&PFIG.has(id)){fetchPersonalFig(id);return `<figure class="${cls||'qfig'}"><img data-pfig="${id}" alt="กำลังโหลดรูปประกอบ" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
   if(!f&&CFIG.has(id)){fetchCloudFig(id);return `<figure class="${cls||'qfig'}"><img data-cfig="${id}" alt="กำลังโหลดรูปประกอบ" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
   if(!f)return `<p class="src">(ไม่พบรูปประกอบ ${esc(id)})</p>`;
   return `<figure class="${cls||'qfig'}"><img src="${figURL(id)}" alt="${esc(f.desc||'รูปประกอบโจทย์')}" loading="lazy" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
@@ -41,7 +44,10 @@ async function cropFig(cv,box){
 }
 /* re-encode any stored image as PNG/JPEG (max 1600px) so every AI provider accepts it */
 async function figForAI(id){
-  if(!FIGS.has(id)&&CFIG.has(id))await fetchCloudFig(id);
+  if(!FIGS.has(id)){
+    if(typeof PFIG!=='undefined'&&PFIG.has(id)){try{await fetchPersonalFig(id)}catch(e){}}
+    else if(CFIG.has(id))await fetchCloudFig(id);
+  }
   const f=FIGS.get(id);if(!f)return null;
   let bmp;try{bmp=await createImageBitmap(f.blob)}catch(e){return null}
   const sc=Math.min(1,1600/Math.max(bmp.width,bmp.height)),cv=document.createElement('canvas');cv.width=Math.round(bmp.width*sc);cv.height=Math.round(bmp.height*sc);
@@ -53,15 +59,15 @@ const SHOWABLE=/^image\/(png|jpe?g|gif|webp|bmp|svg\+xml)$/;
 
 /* ---------- cards: helpers ---------- */
 function activeCards(){
-  const by=new Map(CARDS.map(c=>[c.id,c])),off=new Set();
+  const by=new Map(CARDS.map(c=>[c.id,c])),off=new Set(),docs=new Map(DOCS.map(d=>[d.id,d]));
   for(const c of CARDS)if(c.conf&&by.has(c.conf.other))off.add(c.conf.use==='old'?c.id:c.conf.other);
-  return CARDS.filter(c=>!off.has(c.id)&&c.type!=='q'&&!HIDE.has(c.docId));
+  return CARDS.filter(c=>!off.has(c.id)&&c.type!=='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId)));
 }
 const docOf=c=>DOCS.find(d=>d.id===c.docId);
 function cardCite(c){const d=docOf(c);return d?`${d.name} ${d.unit} ${c.page}`:''}
 function upBy(c){const d=c&&docOf(c);if(!d)return'';return d.central?(d.owner||'ไม่ระบุ'):'คุณ (ไฟล์ในเครื่องนี้)'}
 function cardSrc(c){const d=docOf(c),pg=d&&d.pages.find(p=>p.n===+c.page);
-  const figs=(c.figs||[]).map(id=>FIGS.get(id)).filter(Boolean);
+  const figs=(c.figs||[]).map(id=>FIGS.get(id)||PFIG.get(id)).filter(Boolean);
   return `บัตรความรู้: ${c.title}\n${c.fact}${figs.length?`\nรูปประกอบ: ${figs.map(f=>f.desc||'รูปโจทย์').join(' / ')}${c.ansSrc==='AI'?'\n(เฉลยของรูปนี้ AI ดูจากรูปเอง เอกสารไม่มีเฉลย)':''}`:''}${pg&&pg.text?`\n\nเนื้อหาต้นฉบับ (${cardCite(c)}):\n${pg.text.slice(0,2500)}`:c.src?`\n\nเนื้อหาต้นฉบับ (${cardCite(c)}):\n${c.src}`:''}`}
 function cardScore(c){const s=c.st||{},now=Date.now();
   return (s.w||0)*3-(s.r||0)*1.2+(s.n?0:2.5)+(c.imp||2)*.8+(s.lw&&now-s.lw<3*864e5?2:0)+Math.random()*2.5}
@@ -81,7 +87,8 @@ const JUNK_FIG=/ลายเซ็น|ลายมือชื่อ|เซ็�
 const INFO_FIG=/แผนผัง|แผนภาพ|แผนภูมิ|ตาราง|กราฟ(?!ิก)|กราฟแท่ง|สูตร|สมการ|อินโฟกราฟิก|ขั้นตอน|ผังแสดง|โจทย์|ตัวเลือก|มิติ|พับ|แผนที่|เส้นเวลา|ตัวอย่าง/;
 /* รูปตกแต่งในเอกสารความรู้ (ไอคอน การ์ตูน ภาพประกอบทั่วไป) ไม่มีข้อมูลให้ถาม */
 const DECOR_FIG=/^(ภาพ|รูป)?\s*(ไอคอน|การ์ตูน|ภาพประกอบ|ประกอบ|เครื่องหมาย|ลูกศร|วงเล็บ|ตัวอักษร|ภาพกราฟิกเงา|กราฟิกเงา|ภาพถ่ายกิจกรรม|ภาพถ่ายงาน)|^รูป[^\s]{1,30}$|^รูป\S+(และ\S+)?$/;
-const figDesc=id=>{const f=FIGS.get(id);return f?String(f.desc||'').trim():''};
+const hasFig=id=>FIGS.has(id)||PFIG.has(id);
+const figDesc=id=>{const f=FIGS.get(id)||PFIG.get(id);return f?String(f.desc||'').trim():''};
 const junkFig=id=>{const d=figDesc(id);return!!d&&JUNK_FIG.test(d)&&!INFO_FIG.test(d)};
 const decorFig=id=>{const d=figDesc(id);return!!d&&(/^(ภาพ|รูป)\s*ประกอบ/.test(d)||DECOR_FIG.test(d)&&!INFO_FIG.test(d))};
 /* okFig = ใช้ทำโจทย์จากบัตรความรู้ได้ · okQFig = รูปของข้อสอบที่ดึงมาจากไฟล์ข้อสอบ (รูปง่ายๆ ก็อาจเป็นโจทย์ได้) */
@@ -91,14 +98,14 @@ const textFig=id=>{const d=figDesc(id);return TEXT_FIG.test(d)&&!STRUCT_FIG.test
 /* บัตรความรู้ใช้รูปได้เฉพาะรูปที่มีโครงสร้างที่ต้องดูจึงตอบได้ (แผนผัง ตาราง กราฟ สูตร รูปมิติสัมพันธ์) */
 const STRUCT_FIG=/แผนผัง|แผนภาพ|แผนภูมิ|ตาราง|กราฟ(?!ิก)|กราฟแท่ง|อินโฟกราฟิก|ผังแสดง|ผังขั้นตอน|เส้นเวลา|แผนที่|มิติ|พับ|รูปคลี่|ลูกบาศก์|ลูกเต๋า|รูปทรง|รูปเรขาคณิต|ทิศ/;
 const FORMULA_FIG=/สูตร|สมการ|formula|equation|นิยาม|ความหมายของ/i;
-const okFig=id=>FIGS.has(id)&&!junkFig(id)&&!decorFig(id)&&!textFig(id)&&!FORMULA_FIG.test(figDesc(id))&&STRUCT_FIG.test(figDesc(id));
+const okFig=id=>hasFig(id)&&!junkFig(id)&&!decorFig(id)&&!textFig(id)&&!FORMULA_FIG.test(figDesc(id))&&STRUCT_FIG.test(figDesc(id));
 /* รูปเฉลยคำตอบ: คำตอบที่ถูกอยู่ในรูป แต่ตัวลวงแทบไม่อยู่ (ถ้าเป็นตาราง/กราฟที่ทุกตัวเลือกอยู่ในรูป ต้องอ่านข้อมูลก่อน ไม่นับว่าเฉลย) */
 function figLeaks(q,id){
   const d=nz(figDesc(id)),ch=(q.choices||[]).map(nz);if(!d||q.answer==null||!ch[q.answer]||ch[q.answer].length<2)return false;
   const ans=d.includes(ch[q.answer]),dis=ch.filter((c,j)=>j!==q.answer&&c.length>=2&&d.includes(c)).length;
   return ans&&dis<2;
 }
-const okQFig=id=>FIGS.has(id)&&!junkFig(id);
+const okQFig=id=>hasFig(id)&&!junkFig(id);
 /* แสดงรูปเฉพาะเมื่อโจทย์อ้างถึงรูปจริง หรือตัวเลือกเป็นรูป
    รูปที่เป็นภาพหน้าจอของโจทย์+ตัวเลือก (ถอดเป็นข้อความแล้ว) ไม่แสดง เพราะมักมีเฉลยติดมาในรูป */
 const FIG_REF=/(จาก|ตาม|ดัง|ใน|พิจารณา|ดู)\s*(รูป|ภาพ)(?!แบบ)|(?<![ก-๙])(รูป|ภาพ)(ที่|ต่อไปนี้|ข้าง|ด้าน|ประกอบ|นี้|ใด|\s*\d)|ตาราง|แผนภูมิ|แผนผัง|แผนภาพ|ผังงาน|กราฟ(?!ิก)|แผนที่|ไดอะแกรม|figure|diagram|chart|table|graph|picture/i;
@@ -113,16 +120,16 @@ function withCard(q,doc){
   if(c){q.cite=cardCite(c);q.by=upBy(c);q.srcText=cardSrc(c);if(!q.topic)q.topic=c.topic;
     const sub=SUBJ.find(x=>x.id===q.sub||x.name===c.topic)||{};
     /* บัตรความรู้ (สไลด์/เอกสาร) ไม่แสดงรูปในโจทย์ ยกเว้นวิชาที่ต้องดูรูป เพราะรูปมักมีคำตอบอยู่แล้ว */
-    const figs=(c.figs||[]).filter(c.type==='q'?okQFig:sub.figOnly?(id=>FIGS.has(id)&&!junkFig(id)&&!textFig(id)):()=>false);
+    const figs=(c.figs||[]).filter(c.type==='q'?okQFig:sub.figOnly?(id=>hasFig(id)&&!junkFig(id)&&!textFig(id)):()=>false);
     if(figs.length){q.fig=figs.includes(q.fig)?q.fig:figs[0];q.ansAI=c.ansSrc==='AI'}else q.fig='';}
   else{q.card='';q.fig='';withCite(q,doc)}
   if(q.fig&&(!figNeeded(q)||(c&&c.type!=='q'&&figLeaks(q,q.fig)))){q.fig='';q.ansAI=false}
   if(!q.fig&&q.stem&&!q.svg&&!q.viz)q.stem=String(q.stem).replace(/^\s*(จาก|ตาม|ดู|ดัง)\s*(รูป|ภาพ|ตาราง|แผนภูมิ|แผนภาพ|แผนผัง|กราฟ|อินโฟกราฟิก)(ที่กำหนด(ให้)?|ข้างต้น|ด้านบน|ข้างบน|ต่อไปนี้|นี้|ประกอบ)?\s*[,:]?\s*/,'');
   return q;
 }
-const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>FIGS.has(id)&&!junkFig(id)&&!textFig(id)));
+const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>hasFig(id)&&!junkFig(id)&&!textFig(id)));
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
-const bankItems=()=>CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);
+const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));return CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length)};
 function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.includes(c.topic)):b.filter(c=>c.topic===s.name)}
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
@@ -169,6 +176,8 @@ function qKey(q){
   let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return 'k'+(h>>>0).toString(36)+t.length;
 }
 const qMastered=q=>{if(QLOG_OFF)return false;const e=QLOG[qKey(q)];return!!e&&e.s==='r'};
+/* ลายนิ้วมือบัตรความรู้: ใช้กันบัตรซ้ำเมื่อย่อยไฟล์ซ้ำ/ไฟล์ที่เนื้อหาซ้ำกัน */
+const cardKey=c=>{const n=s=>String(s||'').toLowerCase().replace(/[\s\-_.,:;!?()\[\]{}"'“”]+/g,'');return n(c.topic)+'|'+n(c.title)+'|'+n(c.fact).slice(0,400)};
 function saveQLog(){
   let ks=Object.keys(QLOG);
   if(ks.length>6000){ks.sort((a,b)=>QLOG[a].t-QLOG[b].t);for(const k of ks.slice(0,ks.length-6000))delete QLOG[k]}
@@ -257,13 +266,17 @@ async function makeNew(s,level,n,o,pool){
   return shuffle([...fromPool,...gen]);
 }
 async function makeNew0(s,level,n,o,pool){
-  const weak=o.weak||[],act=activeCards(),doc=s.doc?DOCS.find(d=>d.id===s.doc):null;DOC_OFF=Math.floor(Math.random()*1000);
+  const weak=o.weak||[],doc=s.doc?DOCS.find(d=>d.id===s.doc):null;let act=activeCards();DOC_OFF=Math.floor(Math.random()*1000);
+  /* เอกสารที่เพิ่งดึงมาจากอีกเครื่อง: โหลดบัตรความรู้/ข้อความหน้าให้ครบก่อนสร้างโจทย์ */
+  if(doc&&typeof syncHydrate==='function'){try{await syncHydrate(doc,{cards:true})}catch(e){}act=activeCards()}
   const tag=q=>withCard({...q,sub:s.id,subName:s.name,gen:'ai'},doc),run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
   if(s.figOnly&&!LOCAL[s.id]&&!figCards().some(c=>c.topic===s.name)){if(pool.length)return[];throw{code:'need_figs'}}
   if(s.doc&&doc&&doc.kind==='exam'&&!act.some(c=>c.docId===doc.id))return (await run(k=>genPrompt({name:doc.name,desc:'ข้อสอบแนวเดียวกับตัวอย่าง'},level,k),n)).map(tag);
   if(s.doc){
     if(!doc)throw{code:'no_doc'};
-    const has=act.some(c=>c.docId===doc.id);if(!has&&!docWindows(doc).length)throw{code:'doc_empty'};
+    const has=act.some(c=>c.docId===doc.id);
+    if(!has&&(!doc.pages||!doc.pages.length)&&doc.pagesParts>0&&typeof ensureDocPages==='function'){try{await ensureDocPages(doc)}catch(e){}}
+    if(!has&&!docWindows(doc).length)throw{code:'doc_empty'};
     return (await run(has?cardPF(()=>activeCards().filter(c=>c.docId===doc.id),k=>Array(k).fill(null),level,weak):(k,b)=>docPrompt(doc,level,k,b,weak),n)).map(tag);
   }
   if(s.id==='specall'){const tf=rotTopics();

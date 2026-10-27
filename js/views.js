@@ -233,7 +233,7 @@ async function askAI(text,first){
   STU.turns.push({role:'user',content:first?'ตอบคำถามข้างบน':text});STU.busy=true;STU.ctl=new AbortController();
   try{
     let firstTurn=askRules();
-    if(canVision()){const ids=STU.src.flatMap(c=>c.figs||[]).filter(id=>(FIGS.has(id)||CFIG.has(id))&&!junkFig(id)).slice(0,3),imgs=[];for(const id of ids){const im=await figForAI(id);if(im)imgs.push(im)}
+    if(canVision()){const ids=STU.src.flatMap(c=>c.figs||[]).filter(id=>hasFig(id)&&!junkFig(id)).slice(0,3),imgs=[];for(const id of ids){const im=await figForAI(id);if(im)imgs.push(im)}
       if(imgs.length)firstTurn={text:firstTurn+'\n\nภาพที่แนบคือรูปประกอบจากคลังความรู้ที่เกี่ยวข้อง',images:imgs}}
     const t=await aiText([{role:'user',content:firstTurn},...STU.turns.slice(-8)],{signal:STU.ctl.signal,onText:({text})=>{target.innerHTML=mdLite(text)}});
     target.innerHTML=mdLite(t);STU.turns.push({role:'assistant',content:t});if(first)STU.answer=t;
@@ -241,7 +241,7 @@ async function askAI(text,first){
   finally{STU.busy=false;STU.ctl=null}
 }
 function srcHTML(c,i){
-  const d=docOf(c),figs=(c.figs||[]).filter(id=>(FIGS.has(id)||CFIG.has(id))&&!junkFig(id));
+  const d=docOf(c),figs=(c.figs||[]).filter(id=>hasFig(id)&&!junkFig(id));
   const body=c.type==='q'?`<p style="white-space:pre-wrap"><b>${esc(c.q.stem)}</b></p><ol class="kq">${c.q.choices.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><details><summary>ดูเฉลย</summary><p class="ok">ตอบ ${TH[c.q.answer]}. ${esc(c.q.choices[c.q.answer])}</p></details>`
     :`<p><b>${esc(c.title)}</b></p><p>${esc(c.fact)}</p>`;
   return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))} · อัปโหลดโดย ${esc(upBy(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}

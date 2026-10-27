@@ -8,6 +8,9 @@ function syncDocSubjects(){
   const seen=new Set(SUBJ.map(s=>String(s.name).trim().toLowerCase().replace(/\s+/g,' ')));
   const hid=typeof HIDE!=='undefined'?HIDE:new Set();
   for(const d of [...DOCS].sort((a,b)=>(b.central?1:0)-(a.central?1:0))){
+    /* ไฟล์ที่ยังไม่มีทั้งเนื้อหาและบัตรความรู้ (เช่น เพิ่งอัปโหลดขึ้น Drive) ยังไม่ต้องแสดงเป็นวิชา */
+    if(!docMine(d))continue;
+    if(!d.central&&(!d.pages||!d.pages.length)&&!CARDS.some(c=>c.docId===d.id))continue;
     if(!d.show||hid.has(d.id)||seen.has(docKey(d)))continue;seen.add(docKey(d));
     SUBJ.push({id:'doc_'+d.id,name:docBase(d),desc:'',ai:true,group:d.group||'spec',doc:d.id});
   }
@@ -15,9 +18,11 @@ function syncDocSubjects(){
 /* ลบวิชาจากไฟล์ (ปุ่ม 🗑 ในเมนู): เลือกได้ว่าลบเฉพาะชุดที่ซ้ำ หรือลบวิชานี้ทั้งหมด
    ชุดในเครื่องนี้ลบได้เสมอ · ชุดในคลังกลางเฉพาะผู้ตรวจ/แอดมินลบได้ (คนอื่นจะซ่อนจากเมนูของตัวเองแทน) */
 async function delLocalDoc(id){
+  const gone=DOCS.find(x=>x.id===id);
   const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);
   try{await kbDelMany('docs',[id]);await kbDelMany('files',[id]);await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(id).map(f=>f.id));
   DOCS=DOCS.filter(x=>x.id!==id);CARDS=CARDS.filter(c=>c.docId!==id);
+  if(gone&&!gone.central&&typeof syncDeleteDoc==='function')syncDeleteDoc(gone);
 }
 async function deleteDocSubject(sid){
   const s=SUBJ.find(x=>x.id===sid),main=s&&DOCS.find(d=>d.id===s.doc);if(!main)return;
@@ -256,11 +261,16 @@ async function readHTML(buf){
   const pages=sectionize((doc.body?doc.body.textContent:'').split(/\n/));
   return{unit:'ส่วนที่',pages,figs:placeFigs(pages,figs),figSkipped:skipped};
 }
+const extOf=n=>((String(n||'').match(/\.([^.]+)$/)||[])[1]||'').toLowerCase();
+const mimeOf=n=>{const e=extOf(n);return e==='pdf'?'application/pdf':e==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':e==='txt'?'text/plain':(e==='html'||e==='htm')?'text/html':''};
 async function readFile(file,onP){
-  const ext=((file.name.match(/\.([^.]+)$/)||[])[1]||'').toLowerCase();
-  if(file.size>MAX_MB*1024*1024)throw new Error(`ไฟล์ใหญ่เกิน ${MAX_MB} MB ลองแยกไฟล์เป็นหลายส่วน (เช่น ทีละบท) แล้วอัปโหลดทีละไฟล์`);
+  return readBuffer(file.name,await file.arrayBuffer(),onP,file.size);
+}
+/* อ่านไฟล์จากไบต์ (ไม่ต้องเป็น File) — ใช้ทั้งตอนเลือกไฟล์ในเครื่องและตอนดึงไฟล์กลับจาก Google Drive */
+async function readBuffer(name,buf,onP,size){
+  const ext=extOf(name),bytes=size||buf.byteLength||0;
+  if(bytes>MAX_MB*1024*1024)throw new Error(`ไฟล์ใหญ่เกิน ${MAX_MB} MB ลองแยกไฟล์เป็นหลายส่วน (เช่น ทีละบท) แล้วอัปโหลดทีละไฟล์`);
   if(ext==='doc')throw new Error('ไฟล์ .doc รุ่นเก่ายังไม่รองรับ ให้เปิดใน Word แล้วบันทึกเป็น .docx');
-  const buf=await file.arrayBuffer();
   const r=ext==='pdf'?await readPDF(buf,onP):ext==='docx'?await readDOCX(buf):ext==='txt'?readTXT(buf):(ext==='html'||ext==='htm')?await readHTML(buf):null;
   if(!r)throw new Error('ยังไม่รองรับไฟล์ชนิดนี้ (รองรับ PDF, DOCX, TXT, HTML)');
   const chars=r.pages.reduce((a,p)=>a+p.text.length,0);
@@ -270,7 +280,7 @@ async function readFile(file,onP){
 
 /* ---------- processing pipeline: ocr → digest → embed → conflict → ready (resumable) ---------- */
 const visionTodo=d=>[...new Set([...(d.bad||[]),...(d.figPages||[])])].filter(n=>!(d.ocrDone||[]).includes(n)).sort((a,b)=>a-b);
-const STAGE_TXT={ocr:'รอ AI อ่านหน้าที่ข้อความเพี้ยนและหน้าที่มีรูป',digest:'รอ AI ย่อยความรู้',embed:'รอทำดัชนีค้นหาตามความหมาย',conflict:'รอเทียบกับเอกสารเดิม',ready:'พร้อมใช้'};
+const STAGE_TXT={queued:'อยู่ใน Google Drive แล้ว · รอเริ่มย่อย',read:'รออ่านไฟล์จาก Google Drive',ocr:'รอ AI อ่านหน้าที่ข้อความเพี้ยนและหน้าที่มีรูป',digest:'รอ AI ย่อยความรู้',embed:'รอทำดัชนีค้นหาตามความหมาย',conflict:'รอเทียบกับเอกสารเดิม',ready:'พร้อมใช้'};
 function estCalls(d){
   const ocr=d.stage==='ocr'?Math.ceil(visionTodo(d).length/4):0;
   const dig=['ocr','digest'].includes(d.stage)?Math.max(1,docWindows(d,10000).length-(d.digDone||0)):0;
@@ -282,11 +292,71 @@ async function runQueue(){
   while(PROCQ.length){const id=PROCQ.shift(),doc=DOCS.find(d=>d.id===id);if(!doc)continue;PROC_ID=doc.id;try{await processDoc(doc)}finally{PROC_ID=null}}
 }
 const setProg=(doc,t)=>{doc.prog=t;const e=document.querySelector(`[data-prog="${doc.id}"]`);if(e)e.textContent=t;else renderKB()};
+/* ---------- ไฟล์ที่อัปโหลดขึ้น Google Drive ก่อน ----------
+   ตอนเลือกไฟล์จะส่งต้นฉบับขึ้น Drive ทันที แล้วสร้างเอกสารสถานะ queued (ยังไม่อ่าน/ยังไม่ย่อย)
+   พอถึงคิวประมวลผลจึงดึงไฟล์กลับมาอ่าน ทำให้ผู้ใช้ไม่ต้องรอ AI ตอนอัปโหลด และปิดหน้าไปได้
+   ไบต์ที่เพิ่งอัปโหลดในแท็บนี้ยังอยู่ในหน่วยความจำ → ใช้ตัวนั้นเลย ไม่ดาวน์โหลดซ้ำ · เก็บไว้ไม่เกิน 2 ไฟล์ */
+const DOCBUF=new Map();let DOCBUF_BYTES=0;
+function dropBuf(id){const b=DOCBUF.get(id);if(b){DOCBUF.delete(id);DOCBUF_BYTES-=b.byteLength||0}}
+/* เก็บไบต์ที่เพิ่งอัปโหลดไว้ให้คิวใช้ต่อ ไม่ต้องดาวน์โหลดซ้ำ · จำกัด 2 ไฟล์/256 MB กันหน่วยความจำบวม
+   ถ้าถูกทิ้งไปก่อนถึงคิว ระบบจะดึงจาก Drive กลับมาแทน (ทำงานถูกเหมือนเดิม) */
+function keepBuf(id,buf){
+  dropBuf(id);DOCBUF.set(id,buf);DOCBUF_BYTES+=buf.byteLength||0;
+  while(DOCBUF.size>2||DOCBUF_BYTES>256*1048576){const k=DOCBUF.keys().next().value;if(k===id)break;dropBuf(k)}
+}
+async function docBuf(doc){
+  if(DOCBUF.has(doc.id))return DOCBUF.get(doc.id);
+  const f=await kbGet('files',doc.id);if(f&&f.buf)return f.buf;
+  const id=doc.driveId||doc.srcFile;
+  if(!id)throw{code:'no_file'};
+  if(typeof ME==='undefined'||!ME)throw{code:'drive',why:'ต้องเข้าสู่ระบบก่อน จึงจะดึงไฟล์ต้นฉบับจาก Google Drive ได้'};
+  try{await ensureSrcDirs()}catch(e){}
+  try{return await srcBytes({id,name:doc.name,size:doc.size||0,up:''})}
+  catch(e){throw{code:'drive',why:'ดึงไฟล์จาก Google Drive ไม่ได้: '+(e&&(e.message||e.why)||'ตรวจว่าไฟล์ยังอยู่และยังแชร์ให้ทุกคนที่มีลิงก์ดูได้')}}
+}
+/* ดึงจาก Drive (หรือใช้ไบต์ที่เพิ่งอัปโหลด) แล้วอ่านข้อความ/รูป เหมือนตอนเลือกไฟล์ในเครื่อง */
+async function readDriveDoc(doc){
+  setProg(doc,'กำลังดึงไฟล์จาก Google Drive');
+  const buf=await docBuf(doc);
+  setProg(doc,'กำลังอ่านไฟล์');
+  const r=await readBuffer(doc.name,buf,(i,n)=>setProg(doc,`อ่านแล้ว ${i} จาก ${n} หน้า`),buf.byteLength);
+  Object.assign(doc,{type:r.ext,unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],figPages:r.figPages||[],readAt:Date.now(),pagesRemote:false});
+  doc.txtSha=await textShaOf(r.pages);
+  if(doc.txtSha){
+    const dup=DOCS.find(d=>d!==doc&&docMine(d)&&d.txtSha===doc.txtSha);
+    if(dup){doc.dupOf=dup.id;doc.stage='ready';doc.digDone=1;doc.err='';doc.warn='';await saveDoc(doc);syncDocSubjects();if(typeof syncPushMeta==='function')syncPushMeta(doc);return}
+  }
+  if(doc.kindAuto!==false)doc.kind=detectKind(r.pages,doc.name);
+  if(r.figs&&r.figs.length)await saveFigs(r.figs.map(x=>({...x,docId:doc.id})));
+  doc.stage=(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest';
+  await saveDoc(doc);syncDocSubjects();
+  /* ส่งหน้าขึ้นคลาวด์ให้เสร็จก่อนเริ่มย่อย เพื่อให้อีกเครื่องรับงานต่อได้ทันทีถ้าเครื่องนี้ปิด */
+  if(typeof syncPushPages==='function'){try{await syncPushPages(doc)}catch(e){}}
+  if(typeof syncPushMeta==='function')syncPushMeta(doc);
+}
 async function processDoc(doc){
   doc.err='';
   if(!activeAI()){doc.err='ตั้งค่า AI ในแถบซ้ายก่อน แล้วกด ประมวลผลต่อ';await saveDoc(doc);renderKB();return}
+  /* จองงานข้ามเครื่อง: ถ้าเครื่องอื่นกำลังทำ หรือทำเสร็จแล้ว ให้ข้าม ไม่เสียเครดิต AI ซ้ำ */
+  let leaseTimer=null;
+  if(typeof syncClaim==='function'){
+    const cl=await Promise.race([syncClaim(doc),new Promise(r=>setTimeout(()=>r({ok:true}),4000))]);
+    if(!cl.ok){
+      doc.err=cl.ready?'ไฟล์นี้ประมวลผลเสร็จบนอีกเครื่องแล้ว · กำลังโหลดผลลัพธ์':'กำลังประมวลผลที่เครื่องอื่น · รอสักครู่แล้วลองใหม่';
+      await saveDoc(doc);renderKB();
+      if(cl.ready)setTimeout(()=>syncPull().catch(()=>{}),300);
+      return;
+    }
+    doc.reprocess=false;
+    leaseTimer=setInterval(()=>syncLease(doc),60000);
+    syncPushMeta(doc);
+  }
   setProg(doc,'กำลังเริ่ม...');
   try{
+    if((!doc.pages||!doc.pages.length)&&doc.pagesParts>0&&typeof ensureDocPages==='function')await ensureDocPages(doc);
+    if((doc.driveId||doc.srcFile)&&(!doc.pages||!doc.pages.length))await readDriveDoc(doc);
+    if(doc.dupOf){toast(`${doc.name} มีเนื้อหาเดียวกับเอกสารเดิม · ข้ามการประมวลผลซ้ำ`);return}
+    if(doc.stage==='queued')doc.stage='digest';
     if(doc.stage==='ocr'){if(canVision())await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
     if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
@@ -299,16 +369,20 @@ async function processDoc(doc){
   }catch(e){
     const code=e&&e.code;
     doc.errCode=code||'';
-    doc.err=code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+(e&&e.model?` [${AINAME[e.prov]||e.prov} · โมเดล ${e.model}]`:'')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)';
+    doc.err=code==='drive'?((e&&e.why)||'ดึงไฟล์จาก Google Drive ไม่ได้')+' · กด ประมวลผลต่อ เพื่อลองใหม่':code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+(e&&e.model?` [${AINAME[e.prov]||e.prov} · โมเดล ${e.model}]`:'')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)';
     await saveDoc(doc);
-  }finally{doc.prog='';renderKB();renderSide()}
+  }finally{
+    if(leaseTimer)clearInterval(leaseTimer);
+    dropBuf(doc.id);doc.prog='';renderKB();renderSide();
+    if(typeof syncPushDoc==='function')(async()=>{try{await syncPushDoc(doc,{force:false})}catch(e){}await syncRelease(doc)})();
+  }
 }
 /* AI looks at page images: re-reads text where the text layer is broken, and finds figures (boxes) to crop and keep */
 async function ocrDoc(doc){
   doc.ocrDone=doc.ocrDone||[];
   const todo=visionTodo(doc);if(!todo.length)return;
-  const f=await kbGet('files',doc.id);if(!f)throw{code:'no_file'};
-  const pdf=await openPDF(f.buf),bad=new Set(doc.bad||[]);let fail=0;
+  const buf=await docBuf(doc);if(!buf)throw{code:'no_file'};
+  const pdf=await openPDF(buf),bad=new Set(doc.bad||[]);let fail=0;
   for(let i=0;i<todo.length;i+=4){
     const nums=todo.slice(i,i+4);setProg(doc,`AI กำลังอ่านภาพหน้าเอกสาร (ข้อความเพี้ยนหรือมีรูป) ${Math.min(i+4,todo.length)} จาก ${todo.length} หน้า`);
     const imgs=[];for(const n of nums)imgs.push(await pageImage(pdf,n));
@@ -341,6 +415,8 @@ async function ocrDoc(doc){
       await saveFigs(newFigs);doc.ocrDone.push(n);
     }
     doc.pages.sort((a,b)=>a.n-b.n);doc.chars=doc.pages.reduce((a,p)=>a+p.text.length,0);await saveDoc(doc);
+    /* ส่งข้อความหน้าเป็นระยะ (ทุก ~20 หน้า) ไม่ใช่ทุกชุด 4 หน้า กันการอัปโหลดซ้ำบ่อยเกินไป */
+    if(typeof syncQueue==='function'&&(i===0||i%20===0||i+4>=todo.length))syncQueue(doc,{pages:true,figs:true});
   }
   doc.warn=fail?`AI อ่านภาพไม่ได้ ${fail} หน้า (ใช้ข้อความที่ดึงได้แทน)`:'';
 }
@@ -390,10 +466,14 @@ async function digestDoc(doc){
         return{id:newId(),docId:doc.id,title:String(c.title||c.fact).slice(0,120),topic:doc.topic||(topicsOf(doc.group).includes(c.topic)?c.topic:'อื่นๆ'),kind:String(c.kind||'ข้อเท็จจริง'),
           fact:c.fact.trim(),page:pages.includes(+c.page)?+c.page:(figs.length?FIGS.get(figs[0]).page:pages[0]),imp:Math.max(1,Math.min(3,Math.round(+c.importance||2))),at:Date.now(),st:{},
           figs,ansSrc:figs.length?(String(c.answerSource||'').includes('เอกสาร')?'doc':'AI'):''}});
-      CARDS.push(...arr);await saveCards(arr);
+      const seen=new Set(CARDS.map(cardKey)),keep=[];
+      for(const c of arr){const k=cardKey(c);if(seen.has(k))continue;seen.add(k);keep.push(c)}
+      if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
+      CARDS.push(...keep);await saveCards(keep);
       if(bi===0&&r&&r.summary)doc.summ[i]=String(r.summary);
     }
     doc.digDone=i+1;await saveDoc(doc);
+    if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
 }
 /* exam files: pull every multiple-choice question out as-is (answer key may sit elsewhere in the file, so it rides along) */
@@ -436,8 +516,12 @@ async function extractDoc(doc){
       return{id:newId(),docId:doc.id,type:'q',no:String(q.no||''),title:q.stem.trim().slice(0,90),topic:doc.topic||(topicsOf(doc.group).includes(q.topic)?q.topic:'อื่นๆ'),kind:'ข้อสอบ',
         fact:`${q.stem.trim()}\nตัวเลือก: ${choices.join(' | ')}${ans>=0?`\nตอบ: ${choices[ans]}`:''}`,page:pages.includes(+q.page)?+q.page:pages[0],imp:2,at:Date.now(),st:{},
         figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps,viz:cleanViz(q.viz)}}});
-    CARDS.push(...arr);await saveCards(arr);
+    const seen=new Set(CARDS.filter(c=>c.type==='q'&&c.q).map(c=>qKey(c.q))),keep=[];
+    for(const c of arr){const k=qKey(c.q);if(seen.has(k))continue;seen.add(k);keep.push(c)}
+    if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
+    CARDS.push(...keep);await saveCards(keep);
     doc.digDone=i+1;await saveDoc(doc);
+    if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
 }
 async function findConflicts(doc){
@@ -522,6 +606,11 @@ const readSubjOpt=()=>{const v=(document.getElementById('usub')||{}).value||'';i
 const readDocOpt=()=>({noShare:!!(document.getElementById('unoshare')||{}).checked,kind:(document.querySelector('#dlg input[name="uk"]:checked')||{}).value||'kb',group:(document.querySelector('#dlg input[name="ug"]:checked')||{}).value||'spec',show:((document.querySelector('#dlg input[name="us"]:checked')||{}).value)==='show'});
 /* ลายนิ้วมือไฟล์ SHA-256 */
 async function fileSha(buf){try{const h=await crypto.subtle.digest('SHA-256',buf instanceof ArrayBuffer?buf:buf.buffer||buf);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('')}catch(e){return ''}}
+/* ลายนิ้วมือเนื้อหา: ไฟล์เดียวกันแต่บันทึกใหม่/เปลี่ยนชื่อ จะได้ค่าเดียวกัน (ตัดช่องว่างซ้ำ) */
+async function textShaOf(pages){
+  const txt=(pages||[]).map(p=>String(p.text||'').replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');
+  return txt?await fileSha(new TextEncoder().encode(txt)):'';
+}
 /* ชุดในคลังกลางที่เป็นไฟล์เดียวกัน: ลายนิ้วมือตรง หรือ (ชุดเก่าที่ยังไม่มีลายนิ้วมือ) ชื่อไฟล์ตรงกัน */
 function centralDupOf(sha,name){
   const packs=DOCS.filter(d=>d.central);
@@ -534,43 +623,102 @@ async function attachToCentral(pack,name,buf,job){
   if(!buf||!isReviewerMe()){toast(`${name} มีในคลังกลางแล้ว (${pack.name}) ไม่ต้องประมวลผลซ้ำ`);return}
   const j={name,msg:'มีในคลังกลางแล้ว · กำลังส่งไฟล์ต้นฉบับขึ้น Google Drive...'};UPQ.push(j);renderKB();
   try{
-    const r=await withRetry(()=>uploadOriginal(name,buf,/\.pdf$/i.test(name)?'application/pdf':'',x=>{j.msg=`มีในคลังกลางแล้ว · ส่งต้นฉบับขึ้น Drive ${Math.round(x*100)}%`;const e=document.querySelector(`[data-job="${UPQ.indexOf(j)}"]`);if(e)e.textContent=j.msg}));
+    const sha=await fileSha(buf);
+    const r=await withRetry(()=>uploadOriginal(name,buf,/\.pdf$/i.test(name)?'application/pdf':'',x=>{j.msg=`มีในคลังกลางแล้ว · ส่งต้นฉบับขึ้น Drive ${Math.round(x*100)}%`;const e=document.querySelector(`[data-job="${UPQ.indexOf(j)}"]`);if(e)e.textContent=j.msg},sha));
     await setPackSrc(pack,r.id);UPQ.splice(UPQ.indexOf(j),1);toast(`ผูกต้นฉบับ ${name} กับชุด ${pack.name} แล้ว`);
   }catch(e){j.err=`มีในคลังกลางแล้ว แต่ส่งต้นฉบับขึ้น Drive ไม่สำเร็จ: ${e&&e.why||e&&e.message||e}`}
 }
 async function handleFiles(files,opt){
   files=[...files];if(!files.length)return;
   if(VIEW!=='kb')setView('kb');
+  let driveOK=false;
   if(!opt){
-    if(await modal(`<p class="mt">อัปโหลด ${files.length} ไฟล์</p><p class="src">${esc(files.map(f=>f.name).join(', ')).slice(0,200)}</p>${subjPickHTML('')}${docOptHTML(P.upGroup||'spec',!!P.upShow,P.upKind||'kb')}`,[{t:'ยกเลิก'},{t:'อัปโหลด',cls:'primary'}])!==1)return;
-    opt={...readDocOpt(),...readSubjOpt()};P.upGroup=opt.group;P.upShow=opt.show;P.upKind=opt.kind;save();
+    if(ME){try{await ensureSrcDirs();driveOK=SRC.dirs.some(d=>d.up)}catch(e){}}
+    const df=driveOK&&P.upFirst!==false;
+    if(await modal(`<p class="mt">อัปโหลด ${files.length} ไฟล์</p><p class="src">${esc(files.map(f=>f.name).join(', ')).slice(0,200)}</p>
+      ${driveOK?`<fieldset class="ufs"><legend>วิธีอัปโหลด</legend><label class="rad"><input type="checkbox" id="udrivefirst"${df?' checked':''}><span><b>อัปโหลดขึ้น Google Drive ก่อน แล้วค่อยย่อยทีหลัง</b><span class="src">ไฟล์ขึ้น Drive ทันที ระบบย่อยให้เบื้องหลัง ปิดหน้านี้ได้ ไม่ต้องรอ · กลับมาเปิดเว็บอีกครั้ง (เครื่องเดิม) ระบบทำต่อจาก Drive ให้เอง</span></span></label><p class="src">ถ้าไม่ติ๊ก ระบบจะอ่านและย่อยในเครื่องนี้ก่อนเหมือนเดิม (ต้องเปิดหน้านี้ไว้จนเสร็จ)</p></fieldset>`:''}
+      ${subjPickHTML('')}${docOptHTML(P.upGroup||'spec',!!P.upShow,P.upKind||'kb')}`,[{t:'ยกเลิก'},{t:'อัปโหลด',cls:'primary'}])!==1)return;
+    opt={...readDocOpt(),...readSubjOpt()};
+    P.upGroup=opt.group;P.upShow=opt.show;P.upKind=opt.kind;
+    if(driveOK){opt.driveFirst=!!(document.getElementById('udrivefirst')||{}).checked;P.upFirst=opt.driveFirst}
+    save();
   }
+  const wantDrive=opt.driveFirst===true;
   for(const f of files){
-    const job={name:f.name,msg:'กำลังอ่านไฟล์...'};UPQ.push(job);renderKB();
+    const job={name:f.name,msg:wantDrive?'กำลังเตรียมไฟล์...':'กำลังอ่านไฟล์...'};UPQ.push(job);renderKB();
+    const say=m=>{job.msg=m;const e=document.querySelector(`[data-job="${UPQ.indexOf(job)}"]`);if(e)e.textContent=m};
     try{
-      const r=await readFile(f,(i,n)=>{job.msg=`อ่านแล้ว ${i} จาก ${n} หน้า`;const e=document.querySelector(`[data-job="${UPQ.indexOf(job)}"]`);if(e)e.textContent=job.msg});
+      const ext=extOf(f.name);
+      if(ext==='doc')throw new Error('ไฟล์ .doc รุ่นเก่ายังไม่รองรับ ให้เปิดใน Word แล้วบันทึกเป็น .docx');
+      if(!['pdf','docx','txt','html','htm'].includes(ext))throw new Error('ยังไม่รองรับไฟล์ชนิดนี้ (รองรับ PDF, DOCX, TXT, HTML)');
+      if(f.size>MAX_MB*1024*1024)throw new Error(`ไฟล์ใหญ่เกิน ${MAX_MB} MB ลองแยกไฟล์เป็นหลายส่วน (เช่น ทีละบท) แล้วอัปโหลดทีละไฟล์`);
+      const buf=await f.arrayBuffer(),sha=await fileSha(buf);
       const old=DOCS.find(d=>d.name===f.name&&!d.central);
+      /* อัปโหลดไฟล์เดิม (ชื่อเดิม + เนื้อหาเดิม): อัปเดตแค่การตั้งค่า ไม่ประมวลผลซ้ำ */
+      if(old&&old.sha&&old.sha===sha){
+        Object.assign(old,{group:opt.group,show:opt.show,noShare:!!opt.noShare,topic:opt.topic||old.topic,newSubj:opt.newSubj||old.newSubj,topicDesc:opt.topicDesc||old.topicDesc});
+        await saveDoc(old);syncDocSubjects();if(typeof syncPushMeta==='function')syncPushMeta(old);
+        UPQ.splice(UPQ.indexOf(job),1);
+        toast(`${f.name} มีอยู่ในเครื่องแล้วและเนื้อหาเหมือนเดิม · ${old.stage==='ready'?'ไม่ประมวลผลซ้ำ':'ทำต่อจากจุดเดิม'}`);
+        if(old.stage!=='ready'&&activeAI())queueDoc(old.id);
+        renderKB();continue;
+      }
       /* ไฟล์ซ้ำ: เทียบลายนิ้วมือไฟล์ (เนื้อไฟล์เหมือนกันแม้ชื่อต่าง) กับไฟล์ในเครื่องและชุดในคลังกลาง */
-      const sha=await fileSha(r.buf||new TextEncoder().encode(r.pages.map(p=>p.text).join('\n')));
       const dupLocal=DOCS.find(d=>!d.central&&d.sha===sha&&d!==old);
       if(dupLocal){UPQ.splice(UPQ.indexOf(job),1);toast(`${f.name} ซ้ำกับไฟล์ที่มีอยู่แล้ว (${dupLocal.name}) ข้ามให้`);renderKB();continue}
       const dupCentral=centralDupOf(sha,f.name);
-      if(dupCentral){UPQ.splice(UPQ.indexOf(job),1);await attachToCentral(dupCentral,f.name,r.buf,job);renderKB();continue}
-      if(old){const ids=CARDS.filter(c=>c.docId===old.id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==old.id);try{await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(old.id).map(f=>f.id));DOCS.splice(DOCS.indexOf(old),1)}
-      const doc={id:old?old.id:newId(),name:f.name,sha,kindAuto:true,topic:opt.topic||'',newSubj:!!opt.newSubj,topicDesc:opt.topicDesc||'',type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:detectKind(r.pages,f.name),noShare:!!opt.noShare,
-        figPages:r.figPages||[],stage:(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest',ocrDone:[],digDone:0,summ:[],err:'',
-        warn:r.figSkipped?`มีรูป ${r.figSkipped} รูปที่ระบบแสดงไม่ได้ (เช่น EMF/WMF หรือรูปที่ลิงก์ไว้นอกไฟล์) ถ้าเป็นรูปโจทย์ แนะนำบันทึกเอกสารเป็น PDF แล้วอัปโหลดใหม่`:''};
-      if(r.figs&&r.figs.length)await saveFigs(r.figs.map(f=>({...f,docId:doc.id})));
-      if(r.buf){
-        try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist()}catch(e){}
-        try{await kbPutMany('files',[{id:doc.id,buf:r.buf}]);doc.fileMB=Math.round(r.buf.byteLength/104857.6)/10}
-        catch(e){ /* not enough browser storage for the original: keep the text, skip reading page images */
-          if(doc.stage==='ocr'){doc.stage='digest';doc.bad=[];doc.figPages=[]}
-          doc.warn=(doc.warn?doc.warn+' · ':'')+'พื้นที่เก็บข้อมูลในเบราว์เซอร์ไม่พอเก็บไฟล์ต้นฉบับ จึงใช้ได้เฉพาะข้อความที่ดึงได้ (AI อ่านภาพหน้าและตัดรูปจาก PDF ไม่ได้) ลองแยกไฟล์เป็นส่วนเล็กลง'}
+      if(dupCentral){UPQ.splice(UPQ.indexOf(job),1);await attachToCentral(dupCentral,f.name,buf,job);renderKB();continue}
+      /* มีไฟล์เดียวกันอยู่ในบัญชีแล้ว (เช่น อัปโหลดจากอีกเครื่อง) → ใช้ของเดิม ไม่ส่ง/ย่อยซ้ำ */
+      if(ME&&typeof syncRemoteBySha==='function'){
+        /* เช็กไฟล์ซ้ำในบัญชีแบบไม่ให้การอัปโหลดรอ Firestore นานเกิน 2.5 วิ (เน็ตช้า/ออฟไลต์) */
+        const rdup=await Promise.race([syncRemoteBySha(sha).catch(()=>null),new Promise(r=>setTimeout(()=>r(null),2500))]);
+        if(rdup&&!rdup.deleted){UPQ.splice(UPQ.indexOf(job),1);toast(`${f.name} อยู่ในบัญชีแล้ว · ใช้ไฟล์เดิม (ไม่ต้องประมวลผลซ้ำ)`);await syncAdopt(rdup);renderKB();continue}
       }
-      await saveDoc(doc);DOCS.push(doc);syncDocSubjects();
-      UPQ.splice(UPQ.indexOf(job),1);
-      if(activeAI())queueDoc(doc.id);
+      /* 1) ส่งต้นฉบับขึ้น Drive ก่อน — ไม่ต้องรอ AI จึงปิดหน้าได้ทันทีหลังส่งเสร็จ
+             ถ้าส่งไม่ได้ (ยังไม่ตั้ง Drive/พื้นที่เต็ม/เน็ตหลุด) จะถอยไปอ่านในเครื่องแทน ไม่ให้งานหลุด */
+      let up=null;
+      if(wantDrive){
+        /* มีไฟล์เนื้อหาเดียวกันบน Drive แล้ว → ใช้ไฟล์เดิม ไม่สร้างซ้ำ */
+        let hit=null;
+        if(ME&&typeof driveFindSha==='function')hit=await Promise.race([driveFindSha(sha).catch(()=>null),new Promise(r=>setTimeout(()=>r(null),2500))]);
+        if(hit){up={id:hit.id,dir:hit.dir};toast(`ไฟล์นี้อยู่ใน Google Drive แล้ว (${hit.name||f.name}) · ใช้ไฟล์เดิม ไม่สร้างซ้ำ`)}
+        else try{up=await uploadOriginal(f.name,buf,mimeOf(f.name),x=>say(`ส่งขึ้น Google Drive ${Math.round(x*100)}%`),sha)}
+        catch(e){toast(`ส่งขึ้น Google Drive ไม่ได้ (${e&&e.why||'ตรวจการตั้งค่า Drive'}) · ระบบจะอ่านและย่อยในเครื่องนี้แทน`,'bad')}
+      }
+      if(old){if(old.sha&&old.sha!==sha&&typeof syncDeleteDoc==='function')syncDeleteDoc(old);const ids=CARDS.filter(c=>c.docId===old.id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==old.id);try{await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(old.id).map(f=>f.id));try{await kbDelMany('files',[old.id])}catch(e){}dropBuf(old.id);DOCS.splice(DOCS.indexOf(old),1)}
+      if(up){
+        const doc={id:old?old.id:newId(),name:f.name,sha,kindAuto:true,topic:opt.topic||'',newSubj:!!opt.newSubj,topicDesc:opt.topicDesc||'',type:ext,size:f.size,at:Date.now(),unit:'หน้า',pages:[],chars:0,bad:[],
+          group:opt.group,show:opt.show,kind:'kb',noShare:!!opt.noShare,figPages:[],stage:'queued',ocrDone:[],digDone:0,summ:[],err:'',cardsResetAt:Date.now(),delCards:[],
+          ownerUid:ME?ME.uid:'',driveId:up.id,driveDir:up.dir||'',srcFile:up.id,stored:'drive'};
+        if(activeAI())keepBuf(doc.id,buf);
+        await saveDoc(doc);DOCS.push(doc);syncDocSubjects();
+        UPQ.splice(UPQ.indexOf(job),1);
+        toast(`${f.name} อยู่บน Google Drive แล้ว · ระบบจะย่อยให้เบื้องหลัง ปิดหน้านี้ได้`);
+        if(typeof syncPushMeta==='function')syncPushMeta(doc);
+        if(activeAI())queueDoc(doc.id);
+      }else{
+        /* 2) อ่าน/ย่อยในเครื่อง (วิธีเดิม หรือกรณีส่งขึ้น Drive ไม่สำเร็จ) */
+        const r=await readBuffer(f.name,buf,(i,n)=>say(`อ่านแล้ว ${i} จาก ${n} หน้า`),f.size);
+        const txtSha=await textShaOf(r.pages);
+        const dupText=txtSha?DOCS.find(d=>d!==old&&d.txtSha===txtSha):null;
+        if(dupText){UPQ.splice(UPQ.indexOf(job),1);toast(`${f.name} มีเนื้อหาเดียวกับ "${dupText.name}" · ข้ามไฟล์ซ้ำ`,'bad');renderKB();continue}
+        const doc={id:old?old.id:newId(),name:f.name,sha,txtSha,kindAuto:true,topic:opt.topic||'',newSubj:!!opt.newSubj,topicDesc:opt.topicDesc||'',type:r.ext,size:f.size,at:Date.now(),unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],group:opt.group,show:opt.show,kind:detectKind(r.pages,f.name),noShare:!!opt.noShare,
+          figPages:r.figPages||[],stage:(r.bad&&r.bad.length)||(r.figPages&&r.figPages.length)?'ocr':'digest',ocrDone:[],digDone:0,summ:[],err:'',cardsResetAt:Date.now(),delCards:[],ownerUid:ME?ME.uid:'',
+          warn:r.figSkipped?`มีรูป ${r.figSkipped} รูปที่ระบบแสดงไม่ได้ (เช่น EMF/WMF หรือรูปที่ลิงก์ไว้นอกไฟล์) ถ้าเป็นรูปโจทย์ แนะนำบันทึกเอกสารเป็น PDF แล้วอัปโหลดใหม่`:''};
+        if(r.figs&&r.figs.length)await saveFigs(r.figs.map(f=>({...f,docId:doc.id})));
+        if(r.buf){
+          try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist()}catch(e){}
+          try{await kbPutMany('files',[{id:doc.id,buf:r.buf}]);doc.fileMB=Math.round(r.buf.byteLength/104857.6)/10}
+          catch(e){ /* not enough browser storage for the original: keep the text, skip reading page images */
+            if(doc.stage==='ocr'){doc.stage='digest';doc.bad=[];doc.figPages=[]}
+            doc.warn=(doc.warn?doc.warn+' · ':'')+'พื้นที่เก็บข้อมูลในเบราว์เซอร์ไม่พอเก็บไฟล์ต้นฉบับ จึงใช้ได้เฉพาะข้อความที่ดึงได้ (AI อ่านภาพหน้าและตัดรูปจาก PDF ไม่ได้) ลองแยกไฟล์เป็นส่วนเล็กลง'}
+        }
+        await saveDoc(doc);DOCS.push(doc);syncDocSubjects();
+        UPQ.splice(UPQ.indexOf(job),1);
+        if(typeof syncPushPages==='function'){try{await syncPushPages(doc)}catch(e){}}
+        if(typeof syncPushMeta==='function')syncPushMeta(doc);
+        if(activeAI())queueDoc(doc.id);
+      }
     }catch(e){job.err=(e&&e.message)||String(e)}
     renderSide();renderKB();
   }
@@ -582,17 +730,19 @@ const det=(key,summary,body,cls)=>`<details class="${cls||'kprev'}" data-k="${ke
 function cardsHTML(d){
   const cs=CARDS.filter(c=>c.docId===d.id),by={};for(const c of cs)(by[c.topic]=by[c.topic]||[]).push(c);
   return Object.entries(by).sort((a,b)=>b[1].length-a[1].length).map(([t,list])=>`<p class="lbl" style="margin-top:8px">${esc(t)} · ${list.length} ${d.kind==='exam'?'ข้อ':'ใบ'}</p>`+list.map(c=>{const s=c.st||{};
-    if(c.type==='q')return `<div class="kc" data-c="${c.id}"><p><b>${c.no?`ข้อ ${esc(c.no)} · `:''}</b><span class="src">${d.unit} ${c.page}</span></p><p style="white-space:pre-wrap">${esc(c.q.stem)}</p>${(c.figs||[]).filter(id=>FIGS.has(id)).map(id=>figHTML(id,'kthumb')).join('')}
+    if(c.type==='q')return `<div class="kc" data-c="${c.id}"><p><b>${c.no?`ข้อ ${esc(c.no)} · `:''}</b><span class="src">${d.unit} ${c.page}</span></p><p style="white-space:pre-wrap">${esc(c.q.stem)}</p>${(c.figs||[]).filter(id=>hasFig(id)).map(id=>figHTML(id,'kthumb')).join('')}
       <ol class="kq">${c.q.choices.map((x,j)=>`<li${j===c.q.answer?' class="ok"':''}>${esc(x)}${j===c.q.answer?' ✓':''}</li>`).join('')}</ol>
       ${c.q.answer<0?'<p class="kerr">ยังไม่มีเฉลย ข้อนี้จะยังไม่ถูกนำไปใช้ กด แก้ เพื่อใส่เฉลย</p>':c.ansSrc==='AI'?'<p class="kwarn">เอกสารไม่มีเฉลย AI แก้โจทย์เอง ตรวจได้ แก้ได้ที่ปุ่ม แก้</p>':'<p class="src">เฉลยจากเอกสาร</p>'}
       <p class="src">${s.n?`ถามแล้ว ${s.n} ครั้ง ผิด ${s.w||0}`:'ยังไม่เคยออกข้อสอบ'}</p>
       <div class="kcb"><button class="ghost" data-edit>แก้</button><button class="ghost" data-cdel>ลบ</button></div></div>`;
-    return `<div class="kc" data-c="${c.id}"><p><b>${esc(c.title)}</b> <span class="src">· ${esc(c.kind)} · ${d.unit} ${c.page}${'★'.repeat(c.imp||0)}</span></p><p>${esc(c.fact)}</p>${(c.figs||[]).filter(id=>FIGS.has(id)).map(id=>figHTML(id,'kthumb')).join('')}${c.ansSrc==='AI'?'<p class="kwarn">เฉลยข้อนี้ AI ดูจากรูปเอง (เอกสารไม่มีเฉลย) ตรวจได้ แก้ได้ที่ปุ่ม แก้</p>':''}
+    return `<div class="kc" data-c="${c.id}"><p><b>${esc(c.title)}</b> <span class="src">· ${esc(c.kind)} · ${d.unit} ${c.page}${'★'.repeat(c.imp||0)}</span></p><p>${esc(c.fact)}</p>${(c.figs||[]).filter(id=>hasFig(id)).map(id=>figHTML(id,'kthumb')).join('')}${c.ansSrc==='AI'?'<p class="kwarn">เฉลยข้อนี้ AI ดูจากรูปเอง (เอกสารไม่มีเฉลย) ตรวจได้ แก้ได้ที่ปุ่ม แก้</p>':''}
       <p class="src">${s.n?`ถามแล้ว ${s.n} ครั้ง ผิด ${s.w||0}`:'ยังไม่เคยออกข้อสอบ'}${c.emb?'':' · ยังไม่มีดัชนีความหมาย'}</p>
       <div class="kcb"><button class="ghost" data-edit>แก้</button><button class="ghost" data-cdel>ลบ</button></div></div>`}).join('')).join('');
 }
 function figsHTML(d){
-  return docFigs(d.id).map(f=>`<div class="kfig">${figHTML(f.id,'kthumb')}<p class="src">${d.unit} ${f.page}${f.desc?` · ${esc(f.desc)}`:''} · ใช้ในบัตร ${CARDS.filter(c=>(c.figs||[]).includes(f.id)).length} ใบ</p></div>`).join('');
+  const local=docFigs(d.id),localIds=new Set(local.map(f=>f.id));
+  const remote=(d.figMeta||[]).filter(f=>!localIds.has(f.id));
+  return [...local,...remote].sort((a,b)=>(+a.page||1)-(+b.page||1)).map(f=>`<div class="kfig">${figHTML(f.id,'kthumb')}<p class="src">${d.unit} ${f.page||1}${f.desc?` · ${esc(f.desc)}`:''} · ใช้ในบัตร ${CARDS.filter(c=>(c.figs||[]).includes(f.id)).length} ใบ</p></div>`).join('');
 }
 function confHTML(d){
   const list=CARDS.filter(c=>c.docId===d.id&&c.conf&&CARDS.some(o=>o.id===c.conf.other));if(!list.length)return '';
@@ -607,8 +757,8 @@ const baseName=n=>String(n||'').replace(/ \(ส่วนที่ \d+\)$/,'').tr
 const sameInCentral=d=>DOCS.some(x=>x.central&&baseName(x.name)===baseName(d.name));
 /* ปุ่ม ประมวลผลต่อทั้งหมด: ไฟล์ที่ยังไม่เสร็จหรือผิดพลาด (ไม่รวมที่กำลังทำ) + ไฟล์ที่ส่งเข้าคลังกลางไม่สำเร็จ */
 function runAllList(){
-  const busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
-  return DOCS.filter(d=>!d.central&&!busy(d)&&(d.stage!=='ready'||d.shareErr));
+  const busy=d=>PROC_ID===d.id||PROCQ.includes(d.id)||(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d));
+  return DOCS.filter(d=>!d.central&&docMine(d)&&!busy(d)&&(d.stage!=='ready'||d.shareErr));
 }
 function runAll(){
   const list=runAllList();let n=0;
@@ -621,25 +771,29 @@ function runAll(){
 }
 function renderKB(){
   if(VIEW!=='kb')return;
-  head('คลังความรู้','อัปโหลดไฟล์ได้ 2 ประเภท: เนื้อหา (AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่) และข้อสอบ/ตัวอย่างโจทย์ (ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่าง) · เก็บไว้ในเครื่องนี้');
+  head('คลังความรู้','อัปโหลดไฟล์ได้ 2 ประเภท: เนื้อหา (AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่) และข้อสอบ/ตัวอย่างโจทย์ (ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่าง) · อัปโหลดขึ้น Google Drive ก่อนแล้วค่อยย่อยทีหลังได้');
   const el=document.getElementById('sheet'),ai=activeAI(),nCards=activeCards().length,nBank=bankItems().length;
-  const docBox=d=>{const tp=docTopics(d),busy=PROC_ID===d.id||PROCQ.includes(d.id),nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',unit=ex?'ข้อ':'ใบ',lab=ex?'ข้อสอบ':'บัตรความรู้',summ=(d.summ||[]).filter(Boolean);
+  const docBox=d=>{const tp=docTopics(d),busy=PROC_ID===d.id||PROCQ.includes(d.id),localN=CARDS.filter(c=>c.docId===d.id).length,nc=d.cardsRemote?Math.max(localN,+d.cardCount||0):localN,ex=d.kind==='exam',unit=ex?'ข้อ':'ใบ',lab=ex?'ข้อสอบ':'บัตรความรู้',summ=(d.summ||[]).filter(Boolean),figN=docFigs(d.id).length||(d.figMeta||[]).length,rb=typeof docBusyElsewhere==='function'&&docBusyElsewhere(d);
       return `<div class="kdoc" data-id="${d.id}">
-      <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร ${docFigs(d.id).length?` · รูปประกอบ ${docFigs(d.id).length} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap" title="${d.kindAuto?'ระบบตรวจประเภทไฟล์ให้อัตโนมัติ เปลี่ยนได้ที่ ตั้งค่าประเภท/กลุ่ม/การแสดง':''}">${ex?'ข้อสอบ':'เนื้อหา'}${d.kindAuto?' (ตรวจอัตโนมัติ)':''} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
-      <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||''}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''} · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}</p>
+      <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length?`${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร`:(nc?`${lab} ${nc} ${unit}`:'ยังไม่ได้อ่านเนื้อหา')}${d.stored==='drive'?` · ☁ อยู่บน Google Drive${d.size?` (${(d.size/1048576).toFixed(1)} MB)`:''}`:''}${figN?` · รูปประกอบ ${figN} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.syncAt?' · ☁ ซิงก์แล้ว':''}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap" title="${d.kindAuto?'ระบบตรวจประเภทไฟล์ให้อัตโนมัติ เปลี่ยนได้ที่ ตั้งค่าประเภท/กลุ่ม/การแสดง':''}">${ex?'ข้อสอบ':'เนื้อหา'}${d.kindAuto?' (ตรวจอัตโนมัติ)':''} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
+      <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||d.stage||'รอประมวลผล'}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''}${['queued','read','ready'].includes(d.stage)?'':` · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}`}</p>
+      ${d.stage==='queued'&&!busy?`<p class="src">${rb?'☁ รอคิวอยู่บนคลาวด์':'อัปโหลดขึ้น Google Drive เรียบร้อยแล้ว ปิดหน้านี้ได้'} · กลับมาเปิดเว็บอีกครั้ง (เครื่องเดิม) ระบบจะย่อยต่อให้เอง${ai?'':' (ต้องตั้งค่า AI ก่อน)'}</p>`:''}
+      ${rb?`<p class="src">☁ กำลังประมวลผลที่เครื่องอื่น${d.leaseAt?` (เริ่ม ${fmtDate(d.leaseAt)})`:''} · เครื่องนั้นปิดไปแล้วรอ 3 นาทีจะรับงานต่อได้</p>`:''}
       ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
-      ${d.stage==='ready'&&!busy&&!nc&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
+      ${d.stage==='ready'&&!busy&&!nc&&!d.dupOf&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
       ${tp.length?`<div class="tags">${tp.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
       ${d.warn?`<p class="kwarn">${esc(d.warn)}</p>`:''}
+      ${d.dupOf?`<p class="src">ซ้ำกับ "${esc((DOCS.find(x=>x.id===d.dupOf)||{}).name||'เอกสารเดิม')}" · ไม่ประมวลผลซ้ำ</p>`:''}
+      ${d.dupSkipped?`<p class="src">ข้ามบัตร/ข้อสอบซ้ำ ${d.dupSkipped} รายการ</p>`:''}
       ${confHTML(d)}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${lab} (${nc} ${unit}) · ดู แก้ หรือลบได้`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
-      ${docFigs(d.id).length?det('f'+d.id,`รูปประกอบ (${docFigs(d.id).length} รูป)`,`<div class="kfigs">${KB_OPEN.has('f'+d.id)?figsHTML(d):''}</div>`):''}
+      ${figN?det('f'+d.id,`รูปประกอบ (${figN} รูป)`,`<div class="kfigs">${KB_OPEN.has('f'+d.id)?figsHTML(d):''}</div>`):''}
       ${det('p'+d.id,'ดูข้อความที่ระบบอ่านได้',`<pre>${esc(previewText(d))}</pre>`)}
-      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากเอกสารนี้</button>':''}<button class="ghost" data-opt ${busy?'disabled':''}>ตั้งค่าประเภท/กลุ่ม/การแสดง</button>
-        ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai?'':'disabled'}>${d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
-        ${!busy&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
+      <div class="btnrow" style="justify-content:flex-start">${d.show&&nc?'<button class="primary" data-go>ทำข้อสอบจากเอกสารนี้</button>':''}<button class="ghost" data-opt ${busy?'disabled':''}>ตั้งค่าประเภท/กลุ่ม/การแสดง</button>
+        ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai&&!rb?'':'disabled'}>${d.stage==='queued'?'เริ่มย่อยตอนนี้':d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
+        ${!busy&&d.stage!=='queued'&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
         <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
       ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
@@ -650,8 +804,8 @@ function renderKB(){
      หน้าหลักเหลือเฉพาะไฟล์ที่กำลังประมวลผล ยังไม่เสร็จ ผิดพลาด ส่งไม่สำเร็จ หรือผู้ตรวจไม่ผ่าน */
   const isBusy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
   const isDone=d=>d.stage==='ready'&&!isBusy(d)&&!d.err&&!d.prog&&!d.shareErr&&d.subStatus!=='rejected';
-  const mine=DOCS.filter(d=>!d.central).slice().reverse(),doing=mine.filter(d=>!isDone(d)),done=mine.filter(isDone);
-  const empty=done.filter(d=>!CARDS.some(c=>c.docId===d.id)&&!sameInCentral(d)).length;KB_DONE_N=done.length;
+  const mine=DOCS.filter(d=>!d.central&&docMine(d)).slice().reverse(),doing=mine.filter(d=>!isDone(d)),done=mine.filter(isDone);
+  const empty=done.filter(d=>!d.cardCount&&!CARDS.some(c=>c.docId===d.id)&&!sameInCentral(d)).length;KB_DONE_N=done.length;
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
@@ -668,7 +822,8 @@ function renderKB(){
     document.getElementById('kbback').onclick=()=>{KB_TAB='main';renderKB();window.scrollTo({top:0})};
   }else{
   el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
-      <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB (ไฟล์ใหญ่ใช้เวลาอ่านนานขึ้น) · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p></div>
+      <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p>
+      ${ME&&SRC.dirs.some(d=>d.up)?'<p class="src">☁ อัปโหลดขึ้น Google Drive ก่อน แล้วระบบค่อยย่อยให้เบื้องหลัง — ปิดหน้าระหว่างรอได้</p>':''}</div>
     ${!ai?'<p class="catnote warn">อัปโหลดได้เลย แต่การอ่าน PDF ด้วย AI ย่อยความรู้ และสร้างข้อสอบ ต้องตั้งค่า AI ก่อน (แถบซ้าย)</p>':!canVision()?'<p class="catnote warn">AI ที่ใช้อยู่อ่านภาพ PDF และทำดัชนีความหมายไม่ได้ ใช้ Gemini, OpenAI, Claude API หรือ Meta key</p>':!canEmbed()?'<p class="catnote">AI ที่ใช้อยู่ทำดัชนีค้นหาตามความหมายไม่ได้ (มีเฉพาะ Gemini/OpenAI) ระบบค้นด้วยคำแทน ใช้งานอื่นได้ครบ</p>':''}
     ${KB_ERR?'<p class="catnote warn">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บเอกสารถาวร เอกสารจะหายเมื่อปิดหน้า</p>':''}
     <p class="catnote" id="kbstore"></p>
@@ -680,6 +835,7 @@ function renderKB(){
     ${doing.map(docBox).join('')}
     ${!doing.length&&done.length?'<p class="src" style="text-align:center;margin:0">ไม่มีไฟล์ที่กำลังประมวลผลหรือมีปัญหา · ไฟล์ที่เสร็จแล้วดูได้ที่ปุ่ม 📁 ประวัติการอัปโหลด</p>':''}
     `;
+  if(ME&&!SRC.dirsAt&&!SRC.loading)ensureSrcDirs().then(()=>{if(VIEW==='kb'&&KB_TAB==='main')renderKB()}).catch(()=>{});
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
   const ra=document.getElementById('runall');if(ra)ra.onclick=runAll;
   const kas=document.getElementById('kbaiset');if(kas)kas.onclick=()=>{const a=document.getElementById('aiset');if(a){a.open=true;if(isPhone())setMenu(true);a.scrollIntoView({behavior:'smooth'})}};
@@ -693,7 +849,14 @@ function renderKB(){
     const was=KB_OPEN.has(x.dataset.k);if(x.open)KB_OPEN.add(x.dataset.k);else KB_OPEN.delete(x.dataset.k);
     if(x.dataset.k==='hist'){if(was!==x.open)renderKB();return}
     const box=x.querySelector('.kcards');if(x.open&&box&&!box.innerHTML){const d=DOCS.find(z=>'c'+z.id===x.dataset.k);if(d){box.innerHTML=cardsHTML(d);wireCards(box)}}
-    const fb=x.querySelector('.kfigs');if(x.open&&fb&&!fb.innerHTML){const d=DOCS.find(z=>'f'+z.id===x.dataset.k);if(d)fb.innerHTML=figsHTML(d)}}));
+    const fb=x.querySelector('.kfigs');if(x.open&&fb&&!fb.innerHTML){const d=DOCS.find(z=>'f'+z.id===x.dataset.k);if(d)fb.innerHTML=figsHTML(d)}
+    /* ข้อความหน้าอยู่บนคลาวด์: ดึงเมื่อกดดู ไม่ต้องโหลดทุกไฟล์ตอนเปิดหน้า */
+    if(x.open&&x.dataset.k.charAt(0)==='p'){const d=DOCS.find(z=>'p'+z.id===x.dataset.k);
+      if(d&&(!d.pages||!d.pages.length)&&d.pagesParts>0&&typeof ensureDocPages==='function'){
+        const pre=x.querySelector('pre');if(pre)pre.textContent='กำลังโหลดข้อความจากคลาวด์...';
+        ensureDocPages(d).then(()=>{const q=x.querySelector('pre');if(q)q.textContent=previewText(d)}).catch(()=>{});
+      }}
+  }));
   el.querySelectorAll('.kcards').forEach(wireCards);
   el.querySelectorAll('.kdoc[data-id]').forEach(box=>{
     const id=box.dataset.id,d=DOCS.find(x=>x.id===id);
@@ -705,8 +868,10 @@ function renderKB(){
       const o=readDocOpt(),regroup=o.group!==(d.group||'spec')||o.kind!==(d.kind||'kb');
       if(o.kind!==(d.kind||'kb'))d.kindAuto=false;d.show=o.show;d.group=o.group;d.kind=o.kind;const shareNow=d.noShare&&!o.noShare;d.noShare=o.noShare;if(shareNow)setTimeout(()=>autoShare(d),50);
       if(regroup&&(nc||d.digDone)){const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==id);try{await kbDelMany('cards',ids)}catch(e){}
-        Object.assign(d,{digDone:0,summ:[],stage:d.stage==='ocr'?'ocr':'digest',err:''})}
+        Object.assign(d,{digDone:0,summ:[],stage:d.stage==='ocr'?'ocr':'digest',err:'',reprocess:true,cardsResetAt:Date.now(),delCards:[],dupSkipped:0,dupOf:''})}
       await saveDoc(d);syncDocSubjects();if(!d.show&&P.subject==='doc_'+id){P.subject='ineq';save()}
+      if(typeof syncPushMeta==='function')syncPushMeta(d);
+      if(regroup&&typeof syncPushCards==='function')syncPushCards(d,true);
       if(regroup&&activeAI())queueDoc(id);renderSide();renderKB();
     };
     const run=box.querySelector('[data-run]');if(run)run.onclick=()=>{d.err='';queueDoc(id);renderKB()};
@@ -718,7 +883,12 @@ function renderKB(){
       if(await modal(`<p class="mt">ให้ AI อ่านทุกหน้าใหม่?</p><p>${esc(d.name)} · ${d.pages.length} หน้า</p><p class="src">ใช้เมื่อข้อความที่อ่านได้ยังผิดเยอะ ระบบจะอ่านใหม่จากภาพทุกหน้าและย่อยความรู้ใหม่ บัตรความรู้เดิมของไฟล์นี้จะถูกแทนที่ ใช้ AI ประมาณ ${Math.ceil(d.pages.length/4)+Math.ceil(d.chars/10000)+2} ครั้ง</p>`,[{t:'ยกเลิก'},{t:'อ่านใหม่',cls:'primary'}])!==1)return;
       const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==id);try{await kbDelMany('cards',ids)}catch(e){}
       await dropFigs(docFigs(id).map(f=>f.id));d.pages.forEach(p=>{p.text=p.text.replace(/\n?\[รูป F[a-z0-9]+\][^\n]*/g,'')});
-      Object.assign(d,{bad:d.pages.map(p=>p.n),ocrDone:[],digDone:0,summ:[],stage:'ocr',err:'',warn:''});await saveDoc(d);queueDoc(id);renderKB();
+      Object.assign(d,{bad:d.pages.map(p=>p.n),ocrDone:[],digDone:0,summ:[],stage:'ocr',err:'',warn:'',reprocess:true,figMeta:[],cardsResetAt:Date.now(),delCards:[],dupSkipped:0,dupOf:''});
+      await saveDoc(d);
+      if(typeof syncPushCards==='function')syncPushCards(d,true);
+      if(typeof syncClearFigs==='function')syncClearFigs(d);
+      if(typeof syncPushMeta==='function')syncPushMeta(d);
+      queueDoc(id);renderKB();
     };
     box.querySelectorAll('[data-conf]').forEach(cb=>cb.querySelectorAll('[data-use]').forEach(b=>b.onclick=async()=>{const c=CARDS.find(x=>x.id===cb.dataset.conf);c.conf.use=b.dataset.use;await saveCards([c]);renderKB();renderSide()}));
     box.querySelector('[data-del]').onclick=async()=>{
@@ -736,6 +906,7 @@ function cloudBoxHTML(){
   return `<div class="cloudbox"><p><b>☁ คลังกลาง</b> · ${packs.length} ชุด · บัตรความรู้ ${nk} ใบ · ข้อสอบ ${nq} ข้อ</p>
     <p class="src">${CLOUD.ok===false?esc(CLOUD.err):CLOUD.syncing?'กำลังซิงก์...':CLOUD.last?`ซิงก์ล่าสุด ${fmtDate(CLOUD.last)} · ทุกคนที่เปิดเว็บได้ข้อมูลชุดเดียวกันนี้`:'กำลังเชื่อมต่อ...'}</p>
     <p class="src">${ME?'เอกสารที่ประมวลผลเสร็จแล้วจะส่งเข้าคลังกลางให้อัตโนมัติ (ผู้ตรวจอนุมัติก่อน)':'เข้าสู่ระบบ (แถบซ้าย) เพื่อส่งเอกสารเข้าคลังกลางให้ทุกคนใช้'}</p>
+    <p class="src">${ME?(typeof SYNC!=='undefined'&&SYNC.err?`☁ คลังส่วนตัว: <span class="kerr">${esc(SYNC.err)}</span>`:`☁ คลังส่วนตัว (ซิงก์ข้ามเครื่อง): ${SYNC.pushN?`กำลังส่ง ${SYNC.pushN} ไฟล์...`:(SYNC.last?`ซิงก์ล่าสุด ${fmtDate(SYNC.last)} · ${SYNC.meta.size} ไฟล์ในบัญชี`:'กำลังซิงก์...')}`):'เข้าสู่ระบบเพื่อซิงก์คิวและผลลัพธ์ข้ามเครื่อง'}</p>
     <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
 }
 function centralListHTML(){
@@ -748,7 +919,7 @@ function centralListHTML(){
       <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button></div>${packSrcHTML(d)}</div>`}).join('');
 }
 function wireCloudKB(el){
-  const s=document.getElementById('cloudsync');if(s)s.onclick=()=>syncCentral();
+  const s=document.getElementById('cloudsync');if(s)s.onclick=()=>{syncCentral();if(typeof syncPull==='function')syncPull().catch(()=>{})};
   const g=document.getElementById('gorev');if(g)g.onclick=()=>setView('review');
   wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);wireSubjAdmin(el);
   const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
@@ -763,7 +934,7 @@ async function showStorage(){
   const el=document.getElementById('kbstore');if(!el||!navigator.storage||!navigator.storage.estimate)return;
   try{
     const {usage=0,quota=0}=await navigator.storage.estimate(),mb=x=>x>=1073741824?(x/1073741824).toFixed(1)+' GB':Math.round(x/1048576)+' MB';
-    const files=DOCS.reduce((a,d)=>a+(d.fileMB||0),0),pct=quota?usage/quota:0;
+    const files=DOCS.reduce((a,d)=>a+(d.stored==='drive'?0:(d.fileMB||0)),0),pct=quota?usage/quota:0;
     el.className='catnote'+(pct>.8?' warn':'');
     el.textContent=`พื้นที่เก็บในเบราว์เซอร์นี้: ใช้ไป ${mb(usage)} จากที่ใช้ได้ประมาณ ${mb(quota)}${files?` · เป็นไฟล์ PDF ต้นฉบับ ${Math.round(files)} MB (ลบได้หลังประมวลผลเสร็จ)`:''}${pct>.8?' · ใกล้เต็มแล้ว ลบไฟล์ต้นฉบับหรือเอกสารที่ไม่ใช้':''}`;
   }catch(e){}
@@ -775,18 +946,28 @@ function wireCards(box){
     if(ed)ed.onclick=async()=>{
       if(!(await editCardDialog(c)))return;
       if(central)try{await editCloudCard(c.docId.slice(2),c.id,c.type==='q'?{q:c.q,fact:c.fact,title:c.title,ansSrc:c.ansSrc}:{fact:c.fact,title:c.title});toast('แก้ในคลังกลางแล้ว')}catch(e){toast('แก้ในคลังกลางไม่สำเร็จ','bad')}
+      const dc=DOCS.find(x=>x.id===c.docId);if(!central&&dc&&typeof syncPushCards==='function')syncPushCards(dc,true);
       renderKB();renderSide();
     };
     if(del)del.onclick=async()=>{
       if(central){toast('ชุดในคลังกลาง เอาออกได้จากหน้า ตรวจอนุมัติ','bad');return}
       if(await modal(`<p class="mt">ลบบัตรนี้?</p><p>${esc(c.title)}</p>`,[{t:'ยกเลิก'},{t:'ลบ',cls:'primary'}])!==1)return;
-      CARDS=CARDS.filter(x=>x.id!==c.id);try{await kbDelMany('cards',[c.id])}catch(e){}renderKB();renderSide();
+      CARDS=CARDS.filter(x=>x.id!==c.id);try{await kbDelMany('cards',[c.id])}catch(e){}
+      const dc=DOCS.find(x=>x.id===c.docId);
+      if(dc){dc.delCards=[...(dc.delCards||[]),c.id].slice(-1000);await saveDoc(dc);if(typeof syncPushCards==='function')syncPushCards(dc,true)}
+      renderKB();renderSide();
     };
   });
 }
 document.getElementById('kbfile').onchange=e=>{const f=[...e.target.files];e.target.value='';handleFiles(f)};
 onAppReady(async()=>{
   try{DOCS=(await kbAll('docs'))||[];CARDS=(await kbAll('cards'))||[];for(const f of (await kbAll('images'))||[])FIGS.set(f.id,f)}catch(e){DOCS=[];CARDS=[];KB_ERR=true}
+  /* แปลงชื่อวิชาเดิมเป็นชื่อปัจจุบัน (หลังแอดมินเปลี่ยนชื่อ) */
+  const chc=[];for(const c of CARDS){const t=topicName(c.topic);if(t!==c.topic){c.topic=t;chc.push(c)}}
+  if(chc.length)await saveCards(chc);
+  for(const d of DOCS){if(d.topic){const t=topicName(d.topic);if(t!==d.topic){d.topic=t;await saveDoc(d)}}}
+  let qch=false;try{for(const e of Object.values(QLOG)){if(!e||!e.q||!e.q.topic)continue;const t=topicName(e.q.topic);if(t!==e.q.topic){e.q.topic=t;qch=true}}}catch(e){}
+  if(qch)saveQLog();
   for(const d of DOCS){if(!d.stage)d.stage='digest';if(!d.group)d.group='spec';if(d.show==null)d.show=true;d.prog=''}
   syncDocSubjects();renderSide();
   if(FIGS.size){if(VIEW==='practice'&&R&&R.status!=='loading')render();if(VIEW==='mock')renderMock()}
@@ -811,9 +992,11 @@ let retryBusy=false;
 async function autoRetry(){
   if(retryBusy||document.hidden)return;retryBusy=true;
   try{
-    const now=Date.now(),mine=DOCS.filter(d=>!d.central),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
+    const now=Date.now(),mine=DOCS.filter(d=>!d.central&&docMine(d)),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
     for(const d of mine){
       if(busy(d)||d.stage==='ready'||!activeAI())continue;
+      if(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d))continue;
+      if((!d.pages||!d.pages.length)&&(d.driveId||d.srcFile)&&!ME)continue;   /* ต้องล็อกอินก่อนดึงไฟล์จาก Drive มาอ่าน */
       if(!d.err){queueDoc(d.id);continue}                                    /* ค้างกลางทาง */
       if(noRetry(d.errCode))continue;
       if(!d.nextTry){retryLater(d,d.errCode);await saveDoc(d);continue}
@@ -828,8 +1011,8 @@ async function autoRetry(){
       }else if(d.srcErr&&d.subId&&d.subStatus==='pending'&&!d.srcFile){         /* ต้นฉบับยังไม่ขึ้น Drive */
         if(!d.nextTry){retryLater(d);await saveDoc(d);continue}
         if(now>=d.nextTry){
-          try{const fo=await kbGet('files',d.id);if(!fo||!fo.buf){d.srcErr='';await saveDoc(d);continue}
-            const r=await withRetry(()=>uploadOriginal(d.name,fo.buf,d.type==='pdf'?'application/pdf':''));
+          try{const fo=await docBuf(d).catch(()=>null);if(!fo){d.srcErr='';await saveDoc(d);continue}
+            const r=await withRetry(()=>uploadOriginal(d.name,fo,d.type==='pdf'?'application/pdf':'',null,d.sha));
             const f=await fb();for(const pid of d.subParts||[d.subId])await f.fs.updateDoc(fsDoc('subs',pid),{srcFile:r.id,updatedAt:f.fs.serverTimestamp()});
             Object.assign(d,{srcFile:r.id,srcErr:'',tries:0,nextTry:0});await saveDoc(d);
           }catch(e){d.srcErr=e&&e.why||'ส่งไฟล์ต้นฉบับขึ้น Drive ไม่สำเร็จ';retryLater(d);await saveDoc(d)}

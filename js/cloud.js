@@ -23,13 +23,15 @@ async function cloudInit(){
   try{
     const f=await fb();
     f.au.onAuthStateChanged(f.auth,async u=>{
-      if(!u){ME=null;renderAcct();refreshCloudViews();if(VIEW==='rank')renderRank();return}
+      if(!u){ME=null;if(typeof syncStop==='function')syncStop();renderAcct();refreshCloudViews();if(VIEW==='rank')renderRank();return}
       ME={uid:u.uid,name:u.displayName||(u.email||'').split('@')[0]||'ผู้ใช้',email:u.email||'',role:'user'};
       try{const s=await f.fs.getDoc(fsDoc('users',u.uid));
         if(s.exists())ME.role=s.data().role||'user';
         else await f.fs.setDoc(fsDoc('users',u.uid),{name:ME.name,email:ME.email,role:'user',createdAt:f.fs.serverTimestamp()});
       }catch(e){}
       renderAcct();renderSide();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();pullAIP();setTimeout(()=>{if(typeof loadSrcIndex==='function'&&!SRC.ready)loadSrcIndex()},3000);setTimeout(()=>poolCleanup(),8000);
+      /* ซิงก์คิว/คลังส่วนตัวข้ามเครื่อง (ต้องเผยแพร่กฎใน firestore.rules) */
+      setTimeout(()=>{if(typeof syncStart==='function'){syncStart();if(typeof syncFlushDeletes==='function')syncFlushDeletes().catch(()=>{})}},600);
     });
     f.au.onAuthStateChanged(f.auth,()=>setTimeout(onboard,600));
     await syncCentral();
@@ -137,9 +139,9 @@ async function applyPack(id,p){
   CARDS=CARDS.filter(c=>c.docId!==docId);try{await kbDelMany('cards',ids)}catch(e){}
   if(p.deleted){if(old){DOCS.splice(DOCS.indexOf(old),1);try{await kbDelMany('docs',[docId])}catch(e){}}return}
   const d={id:docId,central:true,cloudId:id,name:p.title+(p.parts>1?` (ส่วนที่ ${p.part})`:''),type:'pack',size:0,at:p.approvedAtMs||Date.now(),unit:p.unit||'หน้า',
-    pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],sha:p.sha||'',owner:p.ownerName||'',srcFile:p.srcFile||'',figPages:[],bad:[],warn:'',err:''};
+    pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],sha:p.sha||'',txtSha:p.txtSha||'',owner:p.ownerName||'',srcFile:p.srcFile||'',figPages:[],bad:[],warn:'',err:''};
   if(old)DOCS.splice(DOCS.indexOf(old),1);DOCS.push(d);await saveDoc(d);
-  const cs=(p.cards||[]).map(c=>({...c,docId,st:st[c.id]||{},at:c.at||Date.now()}));
+  const cs=(p.cards||[]).map(c=>({...c,topic:topicName(c.topic),docId,st:st[c.id]||{},at:c.at||Date.now()}));
   CARDS.push(...cs);await saveCards(cs);
 }
 async function syncCentral(force){
@@ -204,8 +206,8 @@ async function submitDoc(d,opt={}){
     cards.forEach(c=>{c.figs=c.figs.filter(x=>sent.includes(x))});
     /* ไฟล์ต้นฉบับ: ส่งขึ้น Google Drive ของแอดมิน (โฟลเดอร์แรกที่ยังมีที่ว่าง) ถ้าส่งไม่ได้ก็ส่งเข้าคลังต่อได้ */
     let srcFile=d.srcFile||'';
-    if(!srcFile&&typeof uploadOriginal==='function'){try{const fo=await kbGet('files',d.id);if(fo&&fo.buf){step='ต้นฉบับ';
-      const r=await uploadOriginal(d.name,fo.buf,d.type==='pdf'?'application/pdf':'',x=>setProg(d,`กำลังส่งไฟล์ต้นฉบับขึ้น Google Drive ${Math.round(x*100)}%`));srcFile=d.srcFile=r.id;d.srcErr=''}}
+    if(!srcFile&&typeof uploadOriginal==='function'){try{const fo=await docBuf(d).catch(()=>null);if(fo){step='ต้นฉบับ';
+      const r=await uploadOriginal(d.name,fo,d.type==='pdf'?'application/pdf':'',x=>setProg(d,`กำลังส่งไฟล์ต้นฉบับขึ้น Google Drive ${Math.round(x*100)}%`),d.sha);srcFile=d.srcFile=r.id;d.srcErr=''}}
       catch(e){d.srcErr=e&&e.why||'ส่งไฟล์ต้นฉบับขึ้น Drive ไม่สำเร็จ'}}
     step='ข้อมูล';
     /* keep each document under the 1 MB Firestore limit */
@@ -213,7 +215,7 @@ async function submitDoc(d,opt={}){
     const ids=[];
     for(const [i,cs] of parts.entries()){
       const pid=i?`${id}_${i+1}`:id;ids.push(pid);
-      await f.fs.setDoc(fsDoc('subs',pid),{title:d.name,sha:d.sha||'',kind:d.kind||'kb',group:d.group||'spec',show:!!d.show,unit:d.unit,summ:(d.summ||[]).filter(Boolean).slice(0,20),
+      await f.fs.setDoc(fsDoc('subs',pid),{title:d.name,sha:d.sha||'',txtSha:d.txtSha||'',kind:d.kind||'kb',group:d.group||'spec',show:!!d.show,unit:d.unit,summ:(d.summ||[]).filter(Boolean).slice(0,20),
         cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,srcFile,ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
         createdAt:f.fs.serverTimestamp(),updatedAt:f.fs.serverTimestamp()});
     }
@@ -323,7 +325,7 @@ async function renderReview(){
         box.querySelector('[data-close]').onclick=async()=>{await f.fs.updateDoc(fsDoc('reports',r.id),{status:'dismissed',by:ME.name});renderReview()};
         box.querySelector('[data-fix]').onclick=async()=>{const c=CARDS.find(x=>x.id===r.cardId);if(!c){toast('ไม่พบบัตรนี้ในเครื่อง ลองซิงก์ก่อน','bad');return}
           const ok=await editCardDialog(c);if(!ok)return;
-          try{await editCloudCard(r.packId,c.id,c.type==='q'?{q:c.q,fact:c.fact,title:c.title,ansSrc:c.ansSrc}:{fact:c.fact,title:c.title});
+          try{await editCloudCard(r.packId,c.id,c.type==='q'?{q:c.q,fact:c.fact,title:c.title,ansSrc:c.ansSrc,topic:c.topic}:{fact:c.fact,title:c.title,topic:c.topic});
             await f.fs.updateDoc(fsDoc('reports',r.id),{status:'resolved',by:ME.name});toast('แก้ในคลังกลางแล้ว ทุกคนจะได้ฉบับแก้ตอนซิงก์');await syncCentral()}catch(e){toast('แก้ไม่สำเร็จ: '+(e.code||e.message),'bad')}
           renderReview()};
       });
@@ -344,21 +346,28 @@ async function renderReview(){
 }
 /* edit a card or bank question in place (used by the knowledge base list and by the report fixer); true when saved */
 async function editCardDialog(c){
+  /* เลือกรายวิชา/หัวข้อของบัตรได้เอง (วิชามาตรฐาน วิชาที่แอดมินเพิ่ม และหัวข้อเดิมของบัตร) */
+  const topicSel=()=>{
+    const names=[...new Set([...SUBJ.filter(s=>!String(s.id).startsWith('doc_')&&s.id!=='specall').map(s=>s.name),c.topic].filter(Boolean))];
+    return `<label class="lbl" for="ce-tp">รายวิชา/หัวข้อ</label><select id="ce-tp" class="cetx">${names.map(t=>`<option value="${esc(t)}"${t===c.topic?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+  };
   if(c.type==='q'){
-    if(await modal(`<p class="mt">แก้ข้อสอบ</p><label class="lbl" for="ce-s">โจทย์</label><textarea id="ce-s" rows="4" class="cetx">${esc(c.q.stem)}</textarea>
+    if(await modal(`<p class="mt">แก้ข้อสอบ</p>${topicSel()}<label class="lbl" for="ce-s">โจทย์</label><textarea id="ce-s" rows="4" class="cetx">${esc(c.q.stem)}</textarea>
       <label class="lbl" for="ce-c">ตัวเลือก (บรรทัดละ 1 ตัวเลือก)</label><textarea id="ce-c" rows="4" class="cetx">${esc(c.q.choices.join('\n'))}</textarea>
       <label class="lbl" for="ce-a">ข้อที่ถูก</label><select id="ce-a"><option value="-1">ยังไม่รู้</option>${c.q.choices.map((x,j)=>`<option value="${j}"${j===c.q.answer?' selected':''}>${TH[j]||j+1}. ${esc(x).slice(0,40)}</option>`).join('')}</select>
       <label class="lbl" for="ce-e">คำอธิบาย (บรรทัดละ 1 ขั้น)</label><textarea id="ce-e" rows="3" class="cetx">${esc((c.q.steps||[]).join('\n'))}</textarea>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return false;
     const st=document.getElementById('ce-s').value.trim(),ch=document.getElementById('ce-c').value.split('\n').map(x=>x.trim()).filter(Boolean),a=+document.getElementById('ce-a').value;
     if(!st||ch.length<2)return false;
     c.q={stem:st,choices:ch,answer:a<ch.length?a:-1,steps:document.getElementById('ce-e').value.split('\n').map(x=>x.trim()).filter(Boolean)};
+    c.topic=(document.getElementById('ce-tp')||{}).value||c.topic;
     if(c.q.answer>=0)c.ansSrc='doc';c.title=st.slice(0,90);c.fact=`${st}\nตัวเลือก: ${ch.join(' | ')}${c.q.answer>=0?`\nตอบ: ${ch[c.q.answer]}`:''}`;
   }else{
-    if(await modal(`<p class="mt">แก้บัตรความรู้</p><label class="lbl" for="ce-t">หัวเรื่อง</label><input class="tx" id="ce-t" value="${esc(c.title)}"><label class="lbl" for="ce-f">ความรู้</label><textarea id="ce-f" rows="5" class="cetx">${esc(c.fact)}</textarea>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return false;
+    if(await modal(`<p class="mt">แก้บัตรความรู้</p>${topicSel()}<label class="lbl" for="ce-t">หัวเรื่อง</label><input class="tx" id="ce-t" value="${esc(c.title)}"><label class="lbl" for="ce-f">ความรู้</label><textarea id="ce-f" rows="5" class="cetx">${esc(c.fact)}</textarea>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return false;
     const t=document.getElementById('ce-t').value.trim(),f=document.getElementById('ce-f').value.trim();if(!f)return false;
     c.title=t||c.title;c.fact=f;
+    c.topic=(document.getElementById('ce-tp')||{}).value||c.topic;
   }
-  c.emb=null;c.em='';await saveCards([c]);if(canEmbed())embedCards([c]).catch(()=>{});
+  c.emb=null;c.em='';c.editedAt=Date.now();await saveCards([c]);if(canEmbed())embedCards([c]).catch(()=>{});
   return true;
 }
 function previewCard(c){
@@ -369,18 +378,18 @@ function previewCard(c){
 /* ---------- รายวิชา: เพิ่ม / ซ่อน (แอดมิน/ผู้ตรวจ) ใช้กับทุกคน ---------- */
 async function syncSubjects(){
   try{const f=await fb(),snap=await f.fs.getDoc(fsDoc('config','subjects'));
-    const cfg=snap.exists()?{add:snap.data().add||[],hide:snap.data().hide||[]}:{add:[],hide:[]};
-    const now=JSON.stringify(cfg),was=JSON.stringify({add:SUBJ_CFG.add||[],hide:SUBJ_CFG.hide||[]});
+    const cfg=snap.exists()?{add:snap.data().add||[],hide:snap.data().hide||[],rename:snap.data().rename||{},alias:snap.data().alias||{}}:{add:[],hide:[],rename:{},alias:{}};
+    const now=JSON.stringify(cfg),was=JSON.stringify({add:SUBJ_CFG.add||[],hide:SUBJ_CFG.hide||[],rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}});
     if(now===was)return;
     try{localStorage.setItem(SUBJ_CFG_KEY,now)}catch(e){}
     if(!(M&&M.status==='run')&&!(R&&R.status==='loading'))location.reload();
   }catch(e){}
 }
-onAppReady(()=>setTimeout(syncSubjects,1500));
+onAppReady(()=>{setTimeout(syncSubjects,1500);setInterval(syncSubjects,300000)});
 function subjAdminHTML(){
   if(!isReviewerMe())return '';
   const hide=new Set(SUBJ_CFG.hide||[]),grp=g=>SUBJ_ALL.filter(s=>s.group===g&&s.id!=='specall');
-  const row=s=>`<label class="srow"><input type="checkbox" data-sshow="${esc(s.id)}" ${hide.has(s.id)?'':'checked'}> ${esc(s.name)}${s.custom?' <span class="tag">เพิ่มเอง</span>':''}${s.custom?` <button class="linkbtn" type="button" data-sdel="${esc(s.id)}">ลบ</button>`:''}</label>`;
+  const row=s=>`<label class="srow"><input type="checkbox" data-sshow="${esc(s.id)}" ${hide.has(s.id)?'':'checked'}> ${esc(s.name)}${s.custom?' <span class="tag">เพิ่มเอง</span>':''} <button class="linkbtn" type="button" data-srename="${esc(s.id)}">เปลี่ยนชื่อ</button>${s.custom?` <button class="linkbtn" type="button" data-sdel="${esc(s.id)}">ลบ</button>`:''}</label>`;
   return `<div class="cloudbox"><p><b>📚 จัดการรายวิชา</b> · ใช้กับทุกคน</p>
     <p class="src">เอาเครื่องหมายถูกออก = ซ่อนวิชานั้นจากเมนูและการสร้างโจทย์ (ข้อมูลในคลังยังอยู่ เปิดกลับได้) · วิชาที่เพิ่มเองใช้ AI สร้างโจทย์ วิชาเฉพาะตำแหน่งจะใช้บัตรความรู้ในคลังที่ตรงหัวข้อด้วย</p>
     <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="sgrid">${grp('gen').map(row).join('')}</div>
@@ -389,18 +398,66 @@ function subjAdminHTML(){
     <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="ssave" disabled>บันทึกการแสดง/ซ่อน</button></div></div>`;
 }
 async function saveSubjCfg(cfg){
-  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,updatedAt:f.fs.serverTimestamp(),by:ME.name});
-  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify({add:cfg.add,hide:cfg.hide}))}catch(e){}
+  const next={add:cfg.add??SUBJ_CFG.add??[],hide:cfg.hide??SUBJ_CFG.hide??[],rename:cfg.rename??SUBJ_CFG.rename??{},alias:cfg.alias??SUBJ_CFG.alias??{}};
+  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{...next,updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify(next))}catch(e){}
   toast('บันทึกรายวิชาแล้ว กำลังเปิดหน้าใหม่');setTimeout(()=>location.reload(),700);
+}
+/* เปลี่ยนชื่อรายวิชา: แก้ config + alias แล้วย้าย topic ของบัตร/เอกสาร/คลังกลาง/งานรอตรวจให้ตรงกัน
+   เครื่องอื่นและผู้ใช้อื่นจะแปลงชื่อเดิมเป็นชื่อใหม่ตอนโหลดผ่าน alias */
+async function renameSubject(id,oldName,newName,opt={}){
+  if(!isReviewerMe())throw new Error('ต้องเป็นผู้ตรวจหรือแอดมิน');
+  const f=await fb();
+  const cfg={add:(SUBJ_CFG.add||[]).map(a=>a.id===id?{...a,name:newName}:a),hide:(SUBJ_CFG.hide||[]).slice(),
+    rename:{...(SUBJ_CFG.rename||{})},alias:{...(SUBJ_CFG.alias||{})}};
+  for(const k of Object.keys(cfg.alias))if(cfg.alias[k]===oldName)cfg.alias[k]=newName;
+  cfg.alias[oldName]=newName;cfg.rename[id]=newName;
+  /* เขียน config + alias ก่อน ถ้าขั้นตอนย้ายข้อมูลพลาด เครื่องอื่นยังแปลงชื่อเดิมได้ */
+  await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,rename:cfg.rename,alias:cfg.alias,updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify({add:cfg.add,hide:cfg.hide,rename:cfg.rename,alias:cfg.alias}))}catch(e){}
+  SUBJ_CFG.add=cfg.add;SUBJ_CFG.rename={...cfg.rename};SUBJ_CFG.alias={...cfg.alias};
+  /* เก็บรายการ pack ในคลังกลางที่ต้องแก้ก่อนเปลี่ยน topic ในเครื่อง */
+  const centralPacks=new Set(),changed=[];
+  for(const c of CARDS)if(c.topic===oldName){if(String(c.docId).startsWith('c_'))centralPacks.add(c.docId.slice(2));c.topic=newName;changed.push(c)}
+  if(changed.length)await saveCards(changed);
+  const touchedDocs=new Set(changed.filter(c=>!String(c.docId).startsWith('c_')).map(c=>c.docId));
+  const dch=[];
+  for(const d of DOCS)if(d.topic===oldName){d.topic=newName;dch.push(d)}
+  for(const d of dch)await saveDoc(d);
+  /* คลังกลางที่อนุมัติแล้ว + งานรออนุมัติ */
+  for(const pid of centralPacks){
+    try{const s=await f.fs.getDoc(fsDoc('kb',pid));if(!s.exists())continue;
+      const cards=(s.data().cards||[]).map(c=>c.topic===oldName?{...c,topic:newName}:c);
+      await f.fs.updateDoc(fsDoc('kb',pid),{cards,updatedAt:f.fs.serverTimestamp()});
+    }catch(e){console.warn('rename kb',pid,e)}
+  }
+  try{const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'subs'),f.fs.where('status','==','pending')));
+    for(const s of snap.docs){const raw=s.data().cards||[];if(!raw.some(c=>c.topic===oldName))continue;
+      await f.fs.updateDoc(s.ref,{cards:raw.map(c=>c.topic===oldName?{...c,topic:newName}:c),updatedAt:f.fs.serverTimestamp()})}
+  }catch(e){console.warn('rename subs',e)}
+  /* คลังส่วนตัวในเครื่องนี้ */
+  for(const did of touchedDocs){const d=DOCS.find(x=>x.id===did);if(d&&typeof syncPushCards==='function')syncPushCards(d,true)}
+  for(const d of dch)if(typeof syncPushMeta==='function')syncPushMeta(d);
+  if(opt.reload!==false){toast(`เปลี่ยนชื่อวิชาเป็น "${newName}" แล้ว กำลังโหลดใหม่`);setTimeout(()=>location.reload(),900)}
 }
 function wireSubjAdmin(el){
   const sv0=el.querySelector('#ssave');if(!sv0)return;
-  const cur=()=>({add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice()});
+  const cur=()=>({add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice(),rename:{...(SUBJ_CFG.rename||{})},alias:{...(SUBJ_CFG.alias||{})}});
   const sv=el.querySelector('#ssave');
   el.querySelectorAll('[data-sshow]').forEach(c=>c.onchange=()=>{sv.disabled=false});
   sv.onclick=async()=>{const cfg=cur();cfg.hide=[...el.querySelectorAll('[data-sshow]')].filter(c=>!c.checked).map(c=>c.dataset.sshow);
     if(cfg.hide.length>=SUBJ_ALL.length-1){toast('ต้องเหลืออย่างน้อย 1 วิชา','bad');return}
     try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}};
+  el.querySelectorAll('[data-srename]').forEach(b=>b.onclick=async e=>{
+    e.preventDefault();e.stopPropagation();
+    const id=b.dataset.srename,s=SUBJ_ALL.find(x=>x.id===id);if(!s)return;
+    if(await modal(`<p class="mt">เปลี่ยนชื่อรายวิชา</p><p class="src">ชื่อเดิม: ${esc(s.name)} · บัตรความรู้และเอกสารที่ผูกกับวิชานี้จะถูกย้ายตาม</p><label class="lbl" for="srn">ชื่อใหม่</label><input class="tx" id="srn" maxlength="60" value="${esc(s.name)}">`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
+    const name=(document.getElementById('srn')||{}).value?.trim()||'';
+    if(!name||name===s.name)return;
+    if(SUBJ_ALL.some(x=>x.id!==id&&x.name===name)){toast('มีรายวิชาชื่อนี้อยู่แล้ว','bad');return}
+    b.disabled=true;
+    try{await renameSubject(id,s.name,name)}catch(e){b.disabled=false;toast('เปลี่ยนชื่อไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+  });
   el.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.sdel,s=SUBJ_ALL.find(x=>x.id===id);if(!s)return;
     if(await modal(`<p class="mt">ลบวิชา ${esc(s.name)}?</p><p class="src">บัตรความรู้และข้อสอบในคลังที่เป็นหัวข้อนี้ยังอยู่ แต่จะไม่มีวิชานี้ในเมนู ถ้าแค่ไม่อยากให้เห็นชั่วคราว ให้เอาเครื่องหมายถูกออกแทน</p>`,[{t:'ยกเลิก'},{t:'ลบวิชา',cls:'primary'}])!==1)return;
@@ -433,7 +490,14 @@ async function deleteSubject(id){
       if(!left.length)await removePack(pid);
       else await f.fs.updateDoc(fsDoc('kb',pid),{cards:left,count:left.length,figIds:[...new Set(left.flatMap(c=>c.figs||[]))],updatedAt:f.fs.serverTimestamp()});
     }
-    const ids=cards.map(c=>c.id);CARDS=CARDS.filter(c=>c.topic!==name);try{await kbDelMany('cards',ids)}catch(e){}
+    const ids=cards.map(c=>c.id),touched=[...new Set(cards.filter(c=>!String(c.docId).startsWith('c_')).map(c=>c.docId))];
+    CARDS=CARDS.filter(c=>c.topic!==name);try{await kbDelMany('cards',ids)}catch(e){}
+    for(const did of touched){const dd=DOCS.find(x=>x.id===did);if(!dd)continue;
+      const rm=new Set(cards.filter(c=>c.docId===did).map(c=>c.id));
+      dd.delCards=[...new Set([...(dd.delCards||[]),...rm])].slice(-1000);await saveDoc(dd);
+      if(typeof syncPushMeta==='function')syncPushMeta(dd);
+      if(typeof syncPushCards==='function')syncPushCards(dd,true);
+    }
     const custom=(SUBJ_CFG.add||[]).some(a=>a.id===id);
     await saveSubjCfg({add:(SUBJ_CFG.add||[]).filter(a=>a.id!==id),hide:custom?(SUBJ_CFG.hide||[]).filter(x=>x!==id):[...new Set([...(SUBJ_CFG.hide||[]),id])]});
   }catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
@@ -450,8 +514,8 @@ async function addSubjectFromDoc(doc){
   const old=SUBJ_ALL.find(s=>s.name===doc.topic);
   const cfg=old?{add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).filter(x=>x!==old.id)}
     :{add:[...(SUBJ_CFG.add||[]),{id:'u'+newId(),name:doc.topic,group:doc.group||'spec',desc:doc.topicDesc||doc.topic,kw:[doc.topic]}],hide:(SUBJ_CFG.hide||[]).slice()};
-  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,updatedAt:f.fs.serverTimestamp(),by:ME.name});
-  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify(cfg))}catch(e){}
+  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{},updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify({...cfg,rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}}))}catch(e){}
   toast(`เพิ่มวิชา "${doc.topic}" แล้ว (มีข้อมูล ${n} รายการ) · หน้าเว็บจะเปิดใหม่เมื่อประมวลผลไฟล์อื่นเสร็จ`);
   const wait=()=>{if(PROC_ID||PROCQ.length||(M&&M.status==='run'))return setTimeout(wait,5000);location.reload()};setTimeout(wait,2500);
 }

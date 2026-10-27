@@ -496,13 +496,21 @@ async function deleteSubject(id){
   const s=SUBJ.find(x=>x.id===id);if(!s||!isReviewerMe())return;
   const name=s.name,cards=CARDS.filter(c=>c.topic===name),packIds=[...new Set(cards.filter(c=>String(c.docId).startsWith('c_')).map(c=>c.docId.slice(2)))];
   const nq=cards.filter(c=>c.type==='q').length,nk=cards.length-nq;
-  const p=modal(`<p class="mt">ลบวิชา ${esc(name)} และข้อมูลทั้งหมด?</p>
-    <p>จะลบบัตรความรู้ <b>${nk}</b> ใบ และข้อสอบ <b>${nq}</b> ข้อ ที่อยู่ในวิชานี้${packIds.length?` (จากคลังกลาง ${packIds.length} ชุด ทุกคนจะไม่เห็นอีก)`:''} แล้วเอาวิชานี้ออกจากเมนูของทุกคน</p>
-    <p class="kwarn">ลบแล้วกู้คืนไม่ได้ · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ ถ้าแค่ไม่อยากให้เห็นชั่วคราว ให้ซ่อนในกล่อง จัดการรายวิชา แทน</p>
-    <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบวิชาและข้อมูลถาวร</b></span></label>`,[{t:'ยกเลิก'},{t:'ลบวิชาและข้อมูล',cls:'primary'}]);
+  const p=modal(`<p class="mt">ลบวิชา ${esc(name)}?</p>
+    <p>วิชานี้มีบัตรความรู้ <b>${nk}</b> ใบ และข้อสอบ <b>${nq}</b> ข้อ${packIds.length?` · อยู่ในคลังกลาง ${packIds.length} ชุด`:''}</p>
+    <p class="src"><b>ลบแค่รายวิชา</b> = เอาออกจากเมนูของทุกคน แต่เก็บบัตร/ข้อสอบและไฟล์ต้นฉบับไว้ครบ (เปิดกลับได้ที่ จัดการรายวิชา)<br><b>ลบวิชาและข้อมูล</b> = ลบบัตร/ข้อสอบทั้งหมดในวิชานี้${packIds.length?' รวมในคลังกลาง':''} (กู้คืนไม่ได้)</p>
+    <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบข้อมูลถาวร</b><span class="src">ติ๊กเฉพาะเมื่อเลือก ลบวิชาและข้อมูล</span></span></label>`,[{t:'ยกเลิก'},{t:'ลบแค่รายวิชา',cls:'primary'},{t:'ลบวิชาและข้อมูล'}]);
   let ok=false;const cb=document.getElementById('sdelok');if(cb)cb.onchange=()=>{ok=cb.checked};
-  if(await p!==1)return;
-  if(!ok){toast('ยังไม่ได้ติ๊ก เข้าใจแล้ว จึงยังไม่ลบ','bad');return}
+  const r=await p;if(!r)return;
+  if(r===1){
+    /* เก็บข้อมูลทั้งหมด: แค่ซ่อนวิชาออกจากเมนู (เปิดกลับได้ใน จัดการรายวิชา) */
+    try{
+      if(P.subject===id){P.subject='ineq';save()}
+      await saveSubjCfg({add:(SUBJ_CFG.add||[]).slice(),hide:[...new Set([...(SUBJ_CFG.hide||[]),id])],rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}});
+    }catch(e){toast('ซ่อนวิชาไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+    return;
+  }
+  if(!ok){toast('ยังไม่ได้ติ๊ก เข้าใจแล้ว จึงยังไม่ลบข้อมูล','bad');return}
   toast(`กำลังลบวิชา ${name}...`);
   try{
     const f=await fb();

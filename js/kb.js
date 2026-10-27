@@ -30,16 +30,24 @@ async function deleteDocSubject(sid){
   const all=[main,...DOCS.filter(d=>d!==main&&docKey(d)===key)],dups=all.slice(1);
   const nOf=d=>CARDS.filter(c=>c.docId===d.id).length;
   const row=d=>`<li>${esc(d.name)} · ${d.central?'คลังกลาง':'ในเครื่องนี้'} · ${nOf(d)} รายการ${d.show?'':' · ซ่อนอยู่'}${d===main?' <b>(ชุดที่ใช้ในเมนู)</b>':''}</li>`;
-  const btns=[{t:'ยกเลิก'}];if(dups.length)btns.push({t:`ลบเฉพาะชุดที่ซ้ำ (${dups.length})`});btns.push({t:'ลบวิชานี้ทั้งหมด',cls:'primary'});
+  const btns=[{t:'ยกเลิก'},{t:'ซ่อนวิชานี้ (เก็บข้อมูล)',cls:'primary'}];if(dups.length)btns.push({t:`ลบเฉพาะชุดที่ซ้ำ (${dups.length})`});btns.push({t:'ลบวิชานี้ทั้งหมด'});
   const p=modal(`<p class="mt">ลบวิชา ${esc(s.name)}?</p>
     <p>วิชานี้มาจากไฟล์ ${all.length} ชุด${dups.length?' (มีชุดซ้ำ)':''}</p><ul class="src">${all.map(row).join('')}</ul>
     ${all.some(d=>d.central)&&!rev?'<p class="kwarn">ชุดในคลังกลางลบได้เฉพาะผู้ตรวจ ระบบจะซ่อนจากเมนูของคุณแทน</p>':''}
-    <p class="kwarn">ลบแล้วกู้คืนไม่ได้ · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ</p>
-    <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบถาวร</b></span></label>`,btns);
+    <p class="src"><b>ซ่อนวิชานี้</b> = เอาออกจากเมนู แต่เก็บเอกสาร/บัตรไว้ครบ (เปิดกลับได้)<br><b>ลบ...</b> = ลบชุด/ข้อมูล (กู้คืนไม่ได้ · ไฟล์ใน Google Drive ไม่ถูกลบ)</p>
+    <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบถาวร</b><span class="src">ติ๊กเฉพาะเมื่อเลือก ลบ</span></span></label>`,btns);
   let ok=false;const cb=document.getElementById('sdelok');if(cb)cb.onchange=()=>{ok=cb.checked};
   const r=await p;if(!r)return;
+  if(r===1){
+    /* ซ่อนวิชานี้: เก็บเอกสารและบัตรทั้งหมด */
+    for(const d of all){d.show=false;await saveDoc(d);if(!d.central&&typeof syncPushMeta==='function')syncPushMeta(d)}
+    if(all.some(d=>P.subject==='doc_'+d.id)){P.subject='ineq';save()}
+    syncDocSubjects();renderSide();if(VIEW==='kb')renderKB();
+    toast('ซ่อนวิชานี้แล้ว · เอกสารและบัตรยังอยู่ครบ');
+    return;
+  }
   if(!ok){toast('ยังไม่ได้ติ๊ก เข้าใจแล้ว จึงยังไม่ลบ','bad');return}
-  const targets=dups.length&&r===1?dups:all;let n=0,hidden=0;
+  const targets=dups.length&&r===2?dups:all;let n=0,hidden=0;
   try{
     for(const d of targets){
       if(d.central){if(rev){await removePack(d.cloudId);DOCS=DOCS.filter(x=>x!==d);CARDS=CARDS.filter(c=>c.docId!==d.id);try{await kbDelMany('docs',[d.id])}catch(e){}n++}

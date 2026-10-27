@@ -136,6 +136,24 @@ const test = String.raw`(async () => {
     await rp;
     ok('แก้ชื่อวิชาในเมนูได้', doc1.label === 'เอกสารระเบียบ (เมนู)' && SUBJ.some(x => x.id === 'doc_d1' && x.name === 'เอกสารระเบียบ (เมนู)'), doc1.label);
 
+    // ---------- 2.2) ลบแค่รายวิชา แต่เก็บข้อมูล ----------
+    const delc = { id: 'delc', docId: 'd1', type: 'kb', title: 'บัตรลบ', fact: 'x', topic: 'สินเชื่อ', kind: 'นิยาม', imp: 2, at: 2 };
+    CARDS.push(delc); await saveCards([delc]);
+    const beforeN = CARDS.length;
+    let hiddenCfg = null; const realSave = saveSubjCfg;
+    window.saveSubjCfg = async cfg => { hiddenCfg = cfg; };
+    const dp = deleteSubject('credit'); await pause(150);
+    document.querySelectorAll('#dlg .dlgbtns button')[1].click();
+    await dp; window.saveSubjCfg = realSave;
+    ok('ลบแค่รายวิชาเก็บบัตรไว้', !!hiddenCfg && hiddenCfg.hide.includes('credit') && CARDS.length === beforeN && DOCS.some(d => d.id === 'd1'), CARDS.length);
+
+    // ---------- 2.3) ซ่อนวิชาที่มาจากไฟล์ แต่เก็บเอกสาร/บัตร ----------
+    syncDocSubjects();
+    const dh = deleteDocSubject('doc_d1'); await pause(150);
+    document.querySelectorAll('#dlg .dlgbtns button')[1].click();
+    await dh;
+    ok('ซ่อนวิชาไฟล์แล้วเก็บเอกสารไว้', doc1.show === false && DOCS.some(d => d.id === 'd1') && CARDS.length === beforeN, doc1.show);
+
     // ---------- 3) กันไฟล์ซ้ำ ----------
     // 3.1 ชื่อเดิม + sha เดิม → อัปเดตแค่ตัวเลือก ไม่ประมวลผลซ้ำ
     window.fileSha = async () => 'a'.repeat(64);

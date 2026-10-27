@@ -907,7 +907,7 @@ function cloudBoxHTML(){
     <p class="src">${CLOUD.ok===false?esc(CLOUD.err):CLOUD.syncing?'กำลังซิงก์...':CLOUD.last?`ซิงก์ล่าสุด ${fmtDate(CLOUD.last)} · ทุกคนที่เปิดเว็บได้ข้อมูลชุดเดียวกันนี้`:'กำลังเชื่อมต่อ...'}</p>
     <p class="src">${ME?'เอกสารที่ประมวลผลเสร็จแล้วจะส่งเข้าคลังกลางให้อัตโนมัติ (ผู้ตรวจอนุมัติก่อน)':'เข้าสู่ระบบ (แถบซ้าย) เพื่อส่งเอกสารเข้าคลังกลางให้ทุกคนใช้'}</p>
     <p class="src">${ME?(typeof SYNC!=='undefined'&&SYNC.err?`☁ คลังส่วนตัว: <span class="kerr">${esc(SYNC.err)}</span>`:`☁ คลังส่วนตัว (ซิงก์ข้ามเครื่อง): ${SYNC.pushN?`กำลังส่ง ${SYNC.pushN} ไฟล์...`:(SYNC.last?`ซิงก์ล่าสุด ${fmtDate(SYNC.last)} · ${SYNC.meta.size} ไฟล์ในบัญชี`:'กำลังซิงก์...')}`):'เข้าสู่ระบบเพื่อซิงก์คิวและผลลัพธ์ข้ามเครื่อง'}</p>
-    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
+    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gosubj">✏️ จัดการรายวิชา</button>':''}${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
 }
 function centralListHTML(){
   const packs=DOCS.filter(d=>d.central);if(!packs.length)return '';
@@ -921,6 +921,7 @@ function centralListHTML(){
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>{syncCentral();if(typeof syncPull==='function')syncPull().catch(()=>{})};
   const g=document.getElementById('gorev');if(g)g.onclick=()=>setView('review');
+  const gs=document.getElementById('gosubj');if(gs)gs.onclick=()=>{KB_TAB='central';renderKB();setTimeout(()=>{const e=document.querySelector('.sgrid')||document.querySelector('.cloudbox');if(e)e.scrollIntoView({block:'start',behavior:'smooth'})},60)};
   wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);wireSubjAdmin(el);
   const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
   const h=document.getElementById('gohist');if(h)h.onclick=()=>{KB_TAB='hist';renderKB();window.scrollTo({top:0})};

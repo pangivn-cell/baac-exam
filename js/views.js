@@ -1,4 +1,6 @@
 /* views.js — คะแนน อันดับ หน้าต้อนรับ หน้าแรก สอบถาม AI เมนูมือถือ และเริ่มระบบ (ต้องโหลดเป็นไฟล์สุดท้าย) */
+/* แสดงเวอร์ชันให้ตรวจได้ง่าย: เมนูซ้าย (คอม) และมุมล่างขวา (มือถือ) */
+try{const _v=document.getElementById('ver'),_b=document.getElementById('vbadge');if(_v)_v.textContent='เวอร์ชัน '+BUILD;if(_b)_b.textContent='v'+BUILD}catch(e){}
 /* ---------- คะแนน · ระดับผู้สอบ (ไม่จำกัด) · แรงกิ้ง ---------- */
 const lvlFromPts=p=>levelInfo(p).lv;
 function periodKeys(d=new Date()){

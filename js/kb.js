@@ -102,8 +102,15 @@ function chipHTML(d,tp){
   return tp.map(t=>{
     const label=(t.link?'🔗 ':'')+t.name+(t.link?(t.count?` +${t.count}`:''):(t.count?` ${t.count}`:''));
     const tip=t.link?`${t.name} · ผูกทั้งไฟล์ (ใช้บัตรร่วม ${t.total||0} ใบ)${t.count?` · เพิ่ม ${t.count} ใบที่ยังไม่ถูกนับในวิชาอื่น`:' · บัตรทุกใบถูกนับในวิชาอื่นแล้ว'}`:`${t.name} · ${t.count||0} รายการ`;
-    const x=who&&(t.count>0||t.link)?`<button class="tagx" type="button" data-unlink="${esc(t.name)}" aria-label="เอา ${esc(t.name)} ออกจากไฟล์นี้">✕</button>`:'';
+    const canX=who&&(t.link||(!d.central&&t.count>0));
+    const x=canX?`<button class="tagx" type="button" data-unlink="${esc(t.name)}" aria-label="เอา ${esc(t.name)} ออกจากไฟล์นี้">✕</button>`:'';
     return `<span class="tag tagbtn${t.link?' taglink':''}" role="button" tabindex="0" data-chip="${esc(t.name)}" title="${esc(tip)}">${esc(label)}${x}</span>`}).join('');
+}
+/* ชุดในคลังกลาง: เก็บการผูกวิชาไว้บนคลาวด์ให้ทุกคนเห็น */
+async function savePackSubs(d,subs){
+  const f=await fb();
+  await f.fs.updateDoc(fsDoc('kb',d.cloudId),{subs,updatedAt:f.fs.serverTimestamp()});
+  d.subs=subs;await saveDoc(d);
 }
 /* กดชิปวิชา = ดูรายการบัตรของวิชานั้นในไฟล์นี้ */
 async function showDocSubject(id,name){
@@ -122,6 +129,13 @@ async function showDocSubject(id,name){
 /* ✕ ข้างชิป: ปลดวิชา / ย้ายไปวิชาอื่น / ลบรายการของวิชานั้น */
 async function unlinkDocSubject(id,topic){
   const d=DOCS.find(x=>x.id===id);if(!d)return;
+  if(d.central&&!(d.subs||[]).includes(topic)){toast('ชิปนี้มาจากวิชาของบัตรในชุด (แก้ที่บัตรหรือให้ผู้ส่งแก้)','bad');return}
+  if(d.central){
+    if(await modal(`<p class="mt">เอา “${esc(topic)}” ออกจากชุดนี้?</p><p class="src">${esc(d.name)} · ชุดในคลังกลาง · บัตรไม่ถูกแก้ · ทุกคนจะเห็นการเปลี่ยนแปลงหลังซิงก์</p>`,[{t:'ยกเลิก'},{t:'เอาไฟล์ออกจากวิชานี้',cls:'primary'}])!==1)return;
+    try{const subs=(d.subs||[]).filter(x=>x!==topic);await savePackSubs(d,subs);syncDocSubjects();renderSide();renderKB();toast(`เอา “${topic}” ออกจากชุดนี้แล้ว`)}
+    catch(e){toast('ไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+    return;
+  }
   if((d.subs||[]).includes(topic)){
     const cs=CARDS.filter(c=>c.docId===id),own=CARDS.filter(c=>c.docId===id&&c.topic===topic);
     const p=modal(`<p class="mt">เอา “${esc(topic)}” ออกจากไฟล์นี้?</p>
@@ -170,6 +184,19 @@ async function unlinkDocSubject(id,topic){
 /* ＋ เพิ่มวิชา: ผูกไฟล์นี้กับวิชาที่จะดึงข้อมูลไปออกข้อสอบ */
 async function addDocSubject(id){
   const d=DOCS.find(x=>x.id===id);if(!d)return;
+  if(d.central){
+    const names=[...new Set(SUBJ.filter(s=>s.id!=='specall'&&!s.doc).map(s=>s.name))];
+    const r=await modal(`<p class="mt">เพิ่มวิชาให้ชุดนี้</p>
+      <p class="src">${esc(d.name)} · ชุดในคลังกลาง ทุกคนจะเห็นการผูกนี้หลังซิงก์ · บัตรไม่ถูกย้าย</p>
+      <label class="lbl" for="as-s">วิชาที่จะใช้ข้อมูลชุดนี้</label>
+      <select class="tx" id="as-s">${names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>`,
+      [{t:'ยกเลิก'},{t:'เพิ่มวิชา',cls:'primary'}]);
+    if(r!==1)return;
+    const name=(document.getElementById('as-s')||{}).value||'';if(!name)return;
+    try{await savePackSubs(d,[...new Set([...(d.subs||[]),name])]);syncDocSubjects();renderSide();renderKB();toast(`ผูกชุดนี้กับ “${name}” แล้ว`)}
+    catch(e){toast('ไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+    return;
+  }
   const all=CARDS.filter(c=>c.docId===id);
   if(!all.length){toast('ไฟล์นี้ยังไม่มีบัตรหรือข้อสอบให้ผูกวิชา','bad');return}
   const cur={};for(const c of all)cur[c.topic]=(cur[c.topic]||0)+1;
@@ -1074,10 +1101,10 @@ function centralListHTML(){
   const packs=DOCS.filter(d=>d.central);if(!packs.length)return '';
   return `<p class="lbl">ชุดในคลังกลาง ${packs.length} ชุด · อนุมัติแล้วทั้งหมด ทุกคนใช้ร่วมกัน</p><p class="src">ป้ายสีฟ้า = วิชาที่โจทย์/ความรู้ในชุดนั้นไปอยู่ พร้อมจำนวน · "แสดงเป็นรายวิชา" = ให้ชุดนี้ขึ้นเป็นวิชาของตัวเองในเมนูซ้าย</p>`+packs.slice().reverse().map(d=>{const nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',summ=(d.summ||[]).filter(Boolean);
     return `<div class="kdoc" data-cid="${d.id}"><div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">ประเภท: ${ex?`คลังข้อสอบ ${nc} ข้อ (ใช้ออกข้อสอบตรงๆ และเป็นแบบอย่างโจทย์)`:`บัตรความรู้ ${nc} ใบ (AI ใช้คิดโจทย์ใหม่)`} · กลุ่ม${d.group==='gen'?'ความรู้ทั่วไป':'เฉพาะตำแหน่ง'} · ส่งโดย ${esc(d.owner||'-')}</p></div><span class="substat ok" style="white-space:nowrap">✓ อนุมัติแล้ว</span></div>
-      ${docTopics(d).length?`<div class="tags">${chipHTML(d,docTopics(d))}</div>`:''}
+      ${docTopics(d).length?`<div class="tags">${chipHTML(d,docTopics(d))}${nc&&isReviewerMe()?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${ex?'ข้อสอบ':'บัตรความรู้'} (${nc})${isReviewerMe()?' · ผู้ตรวจแก้ได้':''}`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
-      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button></div>${packSrcHTML(d)}</div>`}).join('');
+      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button>${nc&&isReviewerMe()?'<button class="ghost" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>${packSrcHTML(d)}</div>`}).join('');
 }
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>{syncCentral();if(typeof syncPull==='function')syncPull().catch(()=>{})};
@@ -1088,6 +1115,12 @@ function wireCloudKB(el){
   el.querySelectorAll('.kdoc[data-cid]').forEach(box=>{const d=DOCS.find(x=>x.id===box.dataset.cid);if(!d)return;
     const go=box.querySelector('[data-go]');if(go)go.onclick=()=>{P.subject='doc_'+d.id;save();setView('practice');renderSide();start(true)};
     box.querySelector('[data-cshow]').onclick=async()=>{d.show=!d.show;await saveDoc(d);syncDocSubjects();renderSide();renderKB()};
+    const ad=box.querySelector('[data-addsubj]');if(ad)ad.onclick=()=>addDocSubject(d.id);
+    box.querySelectorAll('[data-unlink]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();unlinkDocSubject(d.id,b.dataset.unlink)});
+    box.querySelectorAll('[data-chip]').forEach(el=>{
+      el.onclick=ev=>{if(ev.target.closest('[data-unlink]'))return;showDocSubject(d.id,el.dataset.chip)};
+      el.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();showDocSubject(d.id,el.dataset.chip)}};
+    });
   });
 }
 /* how much of this browser's storage the knowledge base uses (originals of big PDFs dominate) */

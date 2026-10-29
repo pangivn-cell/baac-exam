@@ -139,7 +139,7 @@ async function applyPack(id,p){
   CARDS=CARDS.filter(c=>c.docId!==docId);try{await kbDelMany('cards',ids)}catch(e){}
   if(p.deleted){if(old){DOCS.splice(DOCS.indexOf(old),1);try{await kbDelMany('docs',[docId])}catch(e){}}return}
   const d={id:docId,central:true,cloudId:id,name:p.title+(p.parts>1?` (ส่วนที่ ${p.part})`:''),type:'pack',size:0,at:p.approvedAtMs||Date.now(),unit:p.unit||'หน้า',
-    pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],sha:p.sha||'',txtSha:p.txtSha||'',owner:p.ownerName||'',srcFile:p.srcFile||'',figPages:[],bad:[],warn:'',err:''};
+    pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],sha:p.sha||'',txtSha:p.txtSha||'',owner:p.ownerName||'',srcFile:p.srcFile||'',figPages:[],bad:[],warn:'',err:'',subs:(p.subs||[]).map(topicName)};
   if(old)DOCS.splice(DOCS.indexOf(old),1);DOCS.push(d);await saveDoc(d);
   const cs=(p.cards||[]).map(c=>({...c,topic:topicName(c.topic),docId,st:st[c.id]||{},at:c.at||Date.now()}));
   CARDS.push(...cs);await saveCards(cs);
@@ -216,7 +216,7 @@ async function submitDoc(d,opt={}){
     for(const [i,cs] of parts.entries()){
       const pid=i?`${id}_${i+1}`:id;ids.push(pid);
       await f.fs.setDoc(fsDoc('subs',pid),{title:d.name,sha:d.sha||'',txtSha:d.txtSha||'',kind:d.kind||'kb',group:d.group||'spec',show:!!d.show,unit:d.unit,summ:(d.summ||[]).filter(Boolean).slice(0,20),
-        cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,srcFile,ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
+        cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,srcFile,subs:(d.subs||[]).slice(0,20),ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
         createdAt:f.fs.serverTimestamp(),updatedAt:f.fs.serverTimestamp()});
     }
     Object.assign(d,{subId:id,subParts:ids,subStatus:'pending',shareWait:false,shareErr:''});await saveDoc(d);step='อนุมัติ';

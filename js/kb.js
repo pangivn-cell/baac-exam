@@ -88,6 +88,36 @@ function docTopics(d){
   if(d.group==='gen')return[];
   const low=d.pages.map(p=>p.text).join('\n').toLowerCase();return SPEC.map(x=>({n:x[1],h:countHits(low,x[3])})).filter(x=>x.h>=3).sort((a,b)=>b.h-a.h).slice(0,5).map(x=>x.n);
 }
+/* ---------- เชื่อมต่อไฟล์กับรายวิชา ----------
+   แต่ละบัตร/ข้อสอบมีวิชาประจำตัว วิชาที่เลือกไว้คือวิชาที่ดึงข้อมูลไฟล์นี้ไปออกข้อสอบ
+   ไฟล์เดียวจึงแยกข้อมูลให้หลายวิชาได้ (เช่น การเงินธนาคาร 11 รายการ + ความรู้ ธ.ก.ส. 2 รายการ) */
+async function linkDocSubjects(id){
+  const d=DOCS.find(x=>x.id===id);if(!d)return;
+  if(!(typeof isReviewerMe==='function'&&isReviewerMe()||docMine(d))){toast('เชื่อมต่อได้เฉพาะเจ้าของไฟล์หรือผู้ตรวจ/แอดมิน','bad');return}
+  const cards=CARDS.filter(c=>c.docId===id);
+  if(!cards.length){toast('ไฟล์นี้ยังไม่มีบัตรหรือข้อสอบให้เชื่อมต่อ','bad');return}
+  const names=[...new Set([...SUBJ.filter(s=>s.id!=='specall'&&!s.doc).map(s=>s.name),...cards.map(c=>c.topic).filter(Boolean)])];
+  const opts=sel=>`<option value="">— เลือกวิชา —</option>`+names.map(n=>`<option value="${esc(n)}"${n===sel?' selected':''}>${esc(n)}</option>`).join('');
+  const lab=c=>c.type==='q'?'ข้อสอบ: '+String((c.q&&c.q.stem)||'').slice(0,48):String(c.title||c.fact||'').slice(0,52);
+  const rows=cards.map((c,j)=>`<div class="lkrow"><span class="lktxt">${j+1}. ${esc(lab(c))}</span><select class="tx lksel" data-lk="${esc(c.id)}">${opts(c.topic)}</select></div>`).join('');
+  const p=modal(`<p class="mt">เชื่อมต่อกับรายวิชา</p>
+    <p class="src">${esc(d.name)} · ${cards.length} รายการ · วิชาที่เลือกคือวิชาที่จะดึงข้อมูลไฟล์นี้ไปออกข้อสอบ (ไฟล์เดียวแบ่งให้หลายวิชาได้)</p>
+    <div class="lkall"><span class="lbl">ตั้งทั้งหมดเป็น</span><select class="tx" id="lk-all">${opts('')}</select><button class="ghost" type="button" id="lk-apply">ใช้</button></div>
+    <div class="kcards lklist">${rows}</div>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
+  const ap=document.getElementById('lk-apply');
+  if(ap)ap.onclick=()=>{const v=document.getElementById('lk-all').value;if(!v)return;
+    document.querySelectorAll('#dlg [data-lk]').forEach(s=>{s.value=v});toast(`ตั้งทั้งไฟล์เป็น "${v}" แล้ว · กดบันทึกเพื่อยืนยัน`)};
+  if(await p!==1)return;
+  const changed=[];
+  for(const c of cards){const sel=document.querySelector(`#dlg [data-lk="${c.id}"]`);if(!sel)continue;
+    const v=sel.value;if(v&&v!==c.topic){c.topic=v;c.editedAt=Date.now();changed.push(c)}}
+  if(!changed.length){toast('ไม่มีการเปลี่ยนแปลง');return}
+  await saveCards(changed);
+  if(canEmbed())embedCards(changed).catch(()=>{});
+  if(typeof syncPushCards==="function")syncPushCards(d,true);
+  syncDocSubjects();renderSide();renderKB();
+  toast(`เชื่อมต่อกับรายวิชาแล้ว · ${changed.length} รายการ`);
+}
 function docWindows(doc,max=12000){
   const w=[];let cur=[],len=0;
   for(const pg of doc.pages){if(!pg.text)continue;const t=pg.text.slice(0,max);if(len+t.length>max&&cur.length){w.push(cur);cur=[];len=0}cur.push({n:pg.n,text:t});len+=t.length}
@@ -799,7 +829,7 @@ function renderKB(){
       ${nc?det('c'+d.id,`${lab} (${nc} ${unit}) · ดู แก้ หรือลบได้`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
       ${figN?det('f'+d.id,`รูปประกอบ (${figN} รูป)`,`<div class="kfigs">${KB_OPEN.has('f'+d.id)?figsHTML(d):''}</div>`):''}
       ${det('p'+d.id,'ดูข้อความที่ระบบอ่านได้',`<pre>${esc(previewText(d))}</pre>`)}
-      <div class="btnrow" style="justify-content:flex-start">${d.show&&nc?'<button class="primary" data-go>ทำข้อสอบจากเอกสารนี้</button>':''}<button class="ghost" data-opt ${busy?'disabled':''}>ตั้งค่าประเภท/กลุ่ม/การแสดง</button>
+      <div class="btnrow" style="justify-content:flex-start">${d.show&&nc?'<button class="primary" data-go>ทำข้อสอบจากเอกสารนี้</button>':''}${nc?'<button class="ghost" data-link>เชื่อมต่อกับรายวิชา</button>':''}<button class="ghost" data-opt ${busy?'disabled':''}>ตั้งค่าประเภท/กลุ่ม/การแสดง</button>
         ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai&&!rb?'':'disabled'}>${d.stage==='queued'?'เริ่มย่อยตอนนี้':d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
         ${!busy&&d.stage!=='queued'&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
@@ -817,7 +847,7 @@ function renderKB(){
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
-      ${subjAdminHTML()}
+      ${hiddenSubjHTML()}
       ${srcAdminHTML()}
       ${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}`;
     if(ME&&!SRC.ready&&!SRC.loading)loadSrcIndex().then(()=>{if(VIEW==='kb'&&KB_TAB==='central')renderKB()});
@@ -870,6 +900,7 @@ function renderKB(){
     const id=box.dataset.id,d=DOCS.find(x=>x.id===id);
     const go=box.querySelector('[data-go]');if(go)go.onclick=()=>{P.subject='doc_'+id;save();setView('practice');renderSide();start(true)};
     const sb=box.querySelector('[data-sub]');if(sb)sb.onclick=()=>submitDoc(d);
+    const lk=box.querySelector('[data-link]');if(lk)lk.onclick=()=>linkDocSubjects(id);
     box.querySelector('[data-opt]').onclick=async()=>{
       const nc=CARDS.filter(c=>c.docId===id).length;
       if(await modal(`<p class="mt">ตั้งค่าเอกสาร</p><p class="src">${esc(d.name)}</p>${docOptHTML(d.group||'spec',!!d.show,d.kind||'kb',!!d.noShare,true)}${nc?'<p class="src">ถ้าเปลี่ยนประเภทไฟล์หรือกลุ่มวิชา AI ต้องประมวลผลไฟล์นี้ใหม่ ของเดิมของไฟล์นี้จะถูกแทนที่</p>':''}`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
@@ -915,7 +946,7 @@ function cloudBoxHTML(){
     <p class="src">${CLOUD.ok===false?esc(CLOUD.err):CLOUD.syncing?'กำลังซิงก์...':CLOUD.last?`ซิงก์ล่าสุด ${fmtDate(CLOUD.last)} · ทุกคนที่เปิดเว็บได้ข้อมูลชุดเดียวกันนี้`:'กำลังเชื่อมต่อ...'}</p>
     <p class="src">${ME?'เอกสารที่ประมวลผลเสร็จแล้วจะส่งเข้าคลังกลางให้อัตโนมัติ (ผู้ตรวจอนุมัติก่อน)':'เข้าสู่ระบบ (แถบซ้าย) เพื่อส่งเอกสารเข้าคลังกลางให้ทุกคนใช้'}</p>
     <p class="src">${ME?(typeof SYNC!=='undefined'&&SYNC.err?`☁ คลังส่วนตัว: <span class="kerr">${esc(SYNC.err)}</span>`:`☁ คลังส่วนตัว (ซิงก์ข้ามเครื่อง): ${SYNC.pushN?`กำลังส่ง ${SYNC.pushN} ไฟล์...`:(SYNC.last?`ซิงก์ล่าสุด ${fmtDate(SYNC.last)} · ${SYNC.meta.size} ไฟล์ในบัญชี`:'กำลังซิงก์...')}`):'เข้าสู่ระบบเพื่อซิงก์คิวและผลลัพธ์ข้ามเครื่อง'}</p>
-    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gosubj">✏️ จัดการรายวิชา</button>':''}${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
+    <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
 }
 function centralListHTML(){
   const packs=DOCS.filter(d=>d.central);if(!packs.length)return '';
@@ -929,8 +960,7 @@ function centralListHTML(){
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>{syncCentral();if(typeof syncPull==='function')syncPull().catch(()=>{})};
   const g=document.getElementById('gorev');if(g)g.onclick=()=>setView('review');
-  const gs=document.getElementById('gosubj');if(gs)gs.onclick=()=>{KB_TAB='central';renderKB();setTimeout(()=>{const e=document.querySelector('.sgrid')||document.querySelector('.cloudbox');if(e)e.scrollIntoView({block:'start',behavior:'smooth'})},60)};
-  wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);wireSubjAdmin(el);
+  wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);wireHiddenSubj(el,renderKB);
   const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
   const h=document.getElementById('gohist');if(h)h.onclick=()=>{KB_TAB='hist';renderKB();window.scrollTo({top:0})};
   el.querySelectorAll('.kdoc[data-cid]').forEach(box=>{const d=DOCS.find(x=>x.id===box.dataset.cid);if(!d)return;

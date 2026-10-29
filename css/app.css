@@ -387,3 +387,12 @@ nav.subjects{gap:14px}
 .buildnote #buildx{background:transparent;color:var(--sheet);opacity:.75;padding:6px 8px;border-color:rgba(255,255,255,.3)}
 .buildnote button:hover{filter:brightness(1.08)}
 @media (prefers-reduced-motion:reduce){.buildnote{transition:none}}
+/* เชื่อมต่อกับรายวิชา (ในหน้าตั้งค่าเอกสาร/คลังความรู้) */
+.lkall{display:flex;gap:8px;align-items:center;margin:6px 0}
+.lkall .tx{flex:1;min-width:0}
+.lklist{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 8px}
+.lkrow{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
+.lkrow:last-child{border-bottom:none}
+.lktxt{font-size:13px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lksel{flex:0 0 44%;max-width:44%}
+@media (max-width:520px){.lkrow{flex-wrap:wrap}.lksel{flex:1 0 100%;max-width:100%}}

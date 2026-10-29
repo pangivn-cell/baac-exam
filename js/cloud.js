@@ -439,16 +439,21 @@ onAppReady(()=>{
   setInterval(applySubjectCfg,30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){syncSubjects();applySubjectCfg()}});
 });
-function subjAdminHTML(){
+/* วิชาที่ซ่อนอยู่: แสดงเฉพาะตอนมี เพื่อเปิดกลับได้โดยไม่ต้องมีแผงจัดการเต็มรูปแบบ */
+function hiddenSubjHTML(){
   if(!isReviewerMe())return '';
-  const hide=new Set(SUBJ_CFG.hide||[]),grp=g=>SUBJ_ALL.filter(s=>s.group===g&&s.id!=='specall');
-  const row=s=>`<label class="srow"><input type="checkbox" data-sshow="${esc(s.id)}" ${hide.has(s.id)?'':'checked'}> ${esc(s.name)}${s.custom?' <span class="tag">เพิ่มเอง</span>':''} <button class="linkbtn" type="button" data-srename="${esc(s.id)}">เปลี่ยนชื่อ</button>${s.custom?` <button class="linkbtn" type="button" data-sdel="${esc(s.id)}">ลบ</button>`:''}</label>`;
-  return `<div class="cloudbox"><p><b>📚 จัดการรายวิชา</b> · ใช้กับทุกคน</p>
-    <p class="src">เอาเครื่องหมายถูกออก = ซ่อนวิชานั้นจากเมนูและการสร้างโจทย์ (ข้อมูลในคลังยังอยู่ เปิดกลับได้) · วิชาที่เพิ่มเองใช้ AI สร้างโจทย์ วิชาเฉพาะตำแหน่งจะใช้บัตรความรู้ในคลังที่ตรงหัวข้อด้วย</p>
-    <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="sgrid">${grp('gen').map(row).join('')}</div>
-    <p class="lbl">${esc(SPEC_LABEL)}</p><div class="sgrid">${grp('spec').map(row).join('')}</div>
-    <p class="src">เพิ่มวิชาใหม่: ตอนอัปโหลดไฟล์ เลือก "＋ เพิ่มวิชาใหม่" แล้วตั้งชื่อ วิชาจะถูกสร้างเมื่อ AI ย่อยไฟล์นั้นเสร็จและมีข้อมูลแล้ว · ลบวิชาพร้อมข้อมูล: กดรูปถังขยะ 🗑 ข้างชื่อวิชาในเมนูซ้าย</p>
-    <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="ssave" disabled>บันทึกการแสดง/ซ่อน</button></div></div>`;
+  const hid=(SUBJ_CFG.hide||[]).slice();if(!hid.length)return '';
+  const btn=id=>{const s=SUBJ_ALL.find(x=>x.id===id);return `<button class="ghost" type="button" data-sunhide="${esc(id)}">${esc(s?s.name:id)} · เปิดกลับ</button>`};
+  return `<div class="cloudbox"><p><b>รายวิชาที่ซ่อนอยู่ (${hid.length})</b></p>
+    <p class="src">วิชาเหล่านี้ถูกเอาออกจากเมนูของทุกคน แต่ข้อมูลยังอยู่ครบ · กดเพื่อเปิดกลับ</p>
+    <div class="btnrow" style="justify-content:flex-start">${hid.map(btn).join('')}</div></div>`;
+}
+function wireHiddenSubj(el,rerender){
+  el.querySelectorAll('[data-sunhide]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.sunhide;b.disabled=true;
+    try{await saveSubjCfg({hide:(SUBJ_CFG.hide||[]).filter(x=>x!==id)});toast('เปิดวิชากลับแล้ว');rerender()}
+    catch(e){b.disabled=false;toast('เปิดไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+  });
 }
 async function saveSubjCfg(cfg){
   const next={add:cfg.add??SUBJ_CFG.add??[],hide:cfg.hide??SUBJ_CFG.hide??[],rename:cfg.rename??SUBJ_CFG.rename??{},alias:cfg.alias??SUBJ_CFG.alias??{}};
@@ -516,32 +521,6 @@ async function renameSideSubject(id){
   if(SUBJ.some(x=>x.id!==id&&x.name===name)){toast('มีวิชาชื่อนี้อยู่แล้ว','bad');return}
   try{await renameSubject(id,s.name,name)}catch(e){toast('เปลี่ยนชื่อไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
 }
-function wireSubjAdmin(el){
-  const sv0=el.querySelector('#ssave');if(!sv0)return;
-  const cur=()=>({add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice(),rename:{...(SUBJ_CFG.rename||{})},alias:{...(SUBJ_CFG.alias||{})}});
-  const sv=el.querySelector('#ssave');
-  el.querySelectorAll('[data-sshow]').forEach(c=>c.onchange=()=>{sv.disabled=false});
-  sv.onclick=async()=>{const cfg=cur();cfg.hide=[...el.querySelectorAll('[data-sshow]')].filter(c=>!c.checked).map(c=>c.dataset.sshow);
-    if(cfg.hide.length>=SUBJ_ALL.length-1){toast('ต้องเหลืออย่างน้อย 1 วิชา','bad');return}
-    try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}};
-  el.querySelectorAll('[data-srename]').forEach(b=>b.onclick=async e=>{
-    e.preventDefault();e.stopPropagation();
-    const id=b.dataset.srename,s=SUBJ_ALL.find(x=>x.id===id);if(!s)return;
-    if(await modal(`<p class="mt">เปลี่ยนชื่อรายวิชา</p><p class="src">ชื่อเดิม: ${esc(s.name)} · บัตรความรู้และเอกสารที่ผูกกับวิชานี้จะถูกย้ายตาม</p><label class="lbl" for="srn">ชื่อใหม่</label><input class="tx" id="srn" maxlength="60" value="${esc(s.name)}">`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;
-    const name=(document.getElementById('srn')||{}).value?.trim()||'';
-    if(!name||name===s.name)return;
-    if(SUBJ_ALL.some(x=>x.id!==id&&x.name===name)){toast('มีรายวิชาชื่อนี้อยู่แล้ว','bad');return}
-    b.disabled=true;
-    try{await renameSubject(id,s.name,name)}catch(e){b.disabled=false;toast('เปลี่ยนชื่อไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
-  });
-  el.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=async()=>{
-    const id=b.dataset.sdel,s=SUBJ_ALL.find(x=>x.id===id);if(!s)return;
-    if(await modal(`<p class="mt">ลบวิชา ${esc(s.name)}?</p><p class="src">บัตรความรู้และข้อสอบในคลังที่เป็นหัวข้อนี้ยังอยู่ แต่จะไม่มีวิชานี้ในเมนู ถ้าแค่ไม่อยากให้เห็นชั่วคราว ให้เอาเครื่องหมายถูกออกแทน</p>`,[{t:'ยกเลิก'},{t:'ลบวิชา',cls:'primary'}])!==1)return;
-    const cfg=cur();cfg.add=cfg.add.filter(x=>x.id!==id);cfg.hide=cfg.hide.filter(x=>x!==id);
-    try{await saveSubjCfg(cfg)}catch(e){toast('บันทึกไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
-  });
-}
-
 /* ---------- ลบวิชาพร้อมข้อมูลทั้งหมด (ผู้ตรวจ/แอดมิน) จากปุ่ม 🗑 ในเมนู ----------
    ลบบัตรความรู้และข้อสอบที่เป็นหัวข้อนี้ออกจากทุกชุดในคลังกลาง (ชุดที่ไม่เหลืออะไรถูกเอาออกทั้งชุด) และในเครื่องนี้
    แล้วเอาวิชาออกจากเมนูของทุกคน · ไฟล์ต้นฉบับใน Google Drive ไม่ถูกลบ */
@@ -552,12 +531,12 @@ async function deleteSubject(id){
   const nq=cards.filter(c=>c.type==='q').length,nk=cards.length-nq;
   const p=modal(`<p class="mt">ลบวิชา ${esc(name)}?</p>
     <p>วิชานี้มีบัตรความรู้ <b>${nk}</b> ใบ และข้อสอบ <b>${nq}</b> ข้อ${packIds.length?` · อยู่ในคลังกลาง ${packIds.length} ชุด`:''}</p>
-    <p class="src"><b>ลบแค่รายวิชา</b> = เอาออกจากเมนูของทุกคน แต่เก็บบัตร/ข้อสอบและไฟล์ต้นฉบับไว้ครบ (เปิดกลับได้ที่ จัดการรายวิชา)<br><b>ลบวิชาและข้อมูล</b> = ลบบัตร/ข้อสอบทั้งหมดในวิชานี้${packIds.length?' รวมในคลังกลาง':''} (กู้คืนไม่ได้)</p>
+    <p class="src"><b>ลบแค่รายวิชา</b> = เอาออกจากเมนูของทุกคน แต่เก็บบัตร/ข้อสอบและไฟล์ต้นฉบับไว้ครบ (เปิดกลับได้ที่ คลังกลาง → รายวิชาที่ซ่อนอยู่)<br><b>ลบวิชาและข้อมูล</b> = ลบบัตร/ข้อสอบทั้งหมดในวิชานี้${packIds.length?' รวมในคลังกลาง':''} (กู้คืนไม่ได้)</p>
     <label class="rad"><input type="checkbox" id="sdelok"><span><b>เข้าใจแล้ว ลบข้อมูลถาวร</b><span class="src">ติ๊กเฉพาะเมื่อเลือก ลบวิชาและข้อมูล</span></span></label>`,[{t:'ยกเลิก'},{t:'ลบแค่รายวิชา',cls:'primary'},{t:'ลบวิชาและข้อมูล'}]);
   let ok=false;const cb=document.getElementById('sdelok');if(cb)cb.onchange=()=>{ok=cb.checked};
   const r=await p;if(!r)return;
   if(r===1){
-    /* เก็บข้อมูลทั้งหมด: แค่ซ่อนวิชาออกจากเมนู (เปิดกลับได้ใน จัดการรายวิชา) */
+    /* เก็บข้อมูลทั้งหมด: แค่ซ่อนวิชาออกจากเมนู (เปิดกลับได้ใน คลังกลาง → รายวิชาที่ซ่อนอยู่) */
     try{
       if(P.subject===id){P.subject='ineq';save()}
       await saveSubjCfg({add:(SUBJ_CFG.add||[]).slice(),hide:[...new Set([...(SUBJ_CFG.hide||[]),id])],rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}});

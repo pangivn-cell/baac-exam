@@ -24,6 +24,7 @@ button,select,textarea{font-family:var(--f-body)}
 .side{background:var(--rail);border-right:1px solid var(--line);padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;display:flex;flex-direction:column;gap:18px;position:sticky;top:env(safe-area-inset-top,0px);align-self:start;height:100vh;box-sizing:border-box;overflow-y:auto}
 .brand{font-family:var(--f-display);font-weight:600;font-size:1.35rem;margin:0}
 .brand small{display:block;font:400 13px var(--f-body);color:var(--ink-2)}
+.brand .bver{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--accent);color:var(--sheet);font:600 11px/1.5 var(--f-body);vertical-align:middle;letter-spacing:.03em}
 .cap{font-size:12px;letter-spacing:.06em;color:var(--ink-2);margin:0 0 6px}
 nav.subjects{display:flex;flex-direction:column;gap:4px}
 .subj{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;font:500 15px var(--f-body);padding:9px 10px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--ink);cursor:pointer}

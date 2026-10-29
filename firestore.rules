@@ -20,16 +20,6 @@ service cloud.firestore {
     match /users/{uid}/qlog/{doc} {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
-    // คิว + คลังส่วนตัว (ซิงก์ข้ามเครื่อง): เจ้าของเท่านั้น
-    //   docs/{key} = ข้อมูลเอกสาร/สถานะคิว/lease · pages, cards = เนื้อหาแบ่งก้อน · figs = รูปประกอบ
-    match /users/{uid}/docs/{doc} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
-      match /pages/{part} { allow read, write: if signedIn() && request.auth.uid == uid; }
-      match /cards/{part} { allow read, write: if signedIn() && request.auth.uid == uid; }
-    }
-    match /users/{uid}/figs/{fig} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
-    }
 
     // คลังกลางที่อนุมัติแล้ว: ใครก็อ่านได้ (ไม่ต้องล็อกอิน) เขียนได้เฉพาะผู้ตรวจ
     match /kb/{id} {

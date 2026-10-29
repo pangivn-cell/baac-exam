@@ -277,6 +277,59 @@ function renderStudy(){
     askAI(`อธิบายรายการนี้จากคลังให้ละเอียด อ่านเข้าใจง่าย พร้อมตัวอย่าง: [${cardCite(c)||c.topic}] ${c.type==='q'?c.q.stem:c.title+': '+c.fact}`,false);$('aians').scrollIntoView({behavior:'smooth',block:'start'})});
 }
 
+/* ---------- ติดต่อผู้พัฒนา ---------- */
+/* ช่องทางตรง: ใส่เฉพาะช่องที่ใช้จริง ช่องที่เว้นว่างจะไม่แสดง */
+const DEV={email:'',line:'',facebook:'',github:'https://github.com/pangivn-cell/baac-exam/issues'};
+const FB_DRAFT='exam-feedback-draft';
+const FB_KINDS={bug:'🐞 แจ้งปัญหาการใช้งาน',exam:'✏️ ข้อสอบ/เฉลยไม่ถูก',idea:'💡 เสนอฟีเจอร์ใหม่',other:'💬 อื่น ๆ'};
+function renderDev(){
+  if(VIEW!=='dev')return;
+  head('ติดต่อผู้พัฒนา','แจ้งปัญหา เสนอแนะ หรือบอกสิ่งที่อยากให้มี · ข้อความจะส่งถึงผู้ดูแลระบบในแอป');
+  const el=document.getElementById('sheet');
+  const chan=[];
+  if(DEV.email)chan.push(`<a class="ghost" href="mailto:${esc(DEV.email)}">✉️ ${esc(DEV.email)}</a>`);
+  if(DEV.line)chan.push(`<a class="ghost" href="${esc(DEV.line)}" target="_blank" rel="noopener">💬 LINE</a>`);
+  if(DEV.facebook)chan.push(`<a class="ghost" href="${esc(DEV.facebook)}" target="_blank" rel="noopener">📘 Facebook</a>`);
+  if(DEV.github)chan.push(`<a class="ghost" href="${esc(DEV.github)}" target="_blank" rel="noopener">🐙 แจ้งผ่าน GitHub</a>`);
+  el.innerHTML=`<div class="cloudbox" style="max-width:760px">
+      <p><b>ส่งข้อความถึงผู้พัฒนา</b></p>
+      <p class="src">ระบบแนบเวอร์ชัน เครื่อง และหน้าที่คุณใช้อยู่ให้อัตโนมัติ (v${esc(APP_VER)} · ${esc(BUILD)} · หน้า ${esc(VIEW_FROM)}) เพื่อช่วยหาสาเหตุ · ไม่ต้องใส่ข้อมูลส่วนตัวก็ได้</p>
+      <label class="lbl" for="fb-kind">เรื่องที่ติดต่อ</label>
+      <select id="fb-kind" class="tx">${Object.entries(FB_KINDS).map(([k,t])=>`<option value="${k}">${t}</option>`).join('')}</select>
+      <label class="lbl" for="fb-msg">รายละเอียด</label>
+      <textarea id="fb-msg" class="cetx" rows="5" maxlength="4000" placeholder="เกิดอะไรขึ้น ทำอะไรอยู่ตอนนั้น ขึ้นข้อความอะไร …"></textarea>
+      <label class="lbl" for="fb-back">ช่องทางติดต่อกลับ (ไม่บังคับ)</label>
+      <input class="tx" id="fb-back" maxlength="120" placeholder="อีเมล หรือ LINE ID">
+      <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="fb-send">ส่งข้อความ</button><span class="src">${ME?`ส่งในชื่อ ${esc(ME.name||'ผู้ใช้')}`:'ต้องเข้าสู่ระบบก่อนส่ง'}</span></div>
+    </div>
+    ${chan.length?`<div class="cloudbox" style="max-width:760px"><p><b>ช่องทางอื่น</b></p><div class="btnrow" style="justify-content:flex-start">${chan.join('')}</div></div>`:''}
+    ${isReviewerMe()?'<p class="src">ผู้ตรวจ/แอดมิน: อ่านข้อความทั้งหมดได้ที่เมนู <b>ตรวจอนุมัติ → ข้อความ</b></p>':''}`;
+  const $=id=>document.getElementById(id);
+  const ta=$('fb-msg');try{ta.value=localStorage.getItem(FB_DRAFT)||''}catch(e){}
+  ta.oninput=()=>{try{localStorage.setItem(FB_DRAFT,ta.value)}catch(e){}};
+  $('fb-send').onclick=async()=>{
+    const kind=$('fb-kind').value,msg=ta.value.trim(),back=$('fb-back').value.trim();
+    if(msg.length<5){toast('พิมพ์รายละเอียดก่อน (อย่างน้อย 5 ตัวอักษร)','bad');ta.focus();return}
+    if(!ME){toast('เข้าสู่ระบบก่อนจึงส่งข้อความได้','bad');if(typeof loginDialog==='function')loginDialog();return}
+    const btn=$('fb-send');btn.disabled=true;btn.textContent='กำลังส่ง…';
+    try{
+      const f=await fb();
+      await f.fs.addDoc(f.fs.collection(f.db,'feedback'),{uid:ME.uid,name:ME.name||'',email:ME.email||'',kind,msg,back,status:'open',
+        ver:APP_VER,build:BUILD,view:VIEW_FROM,subject:(typeof SUBJ!=='undefined'?(SUBJ.find(s=>s.id===P.subject)||{}).name:'')||'',
+        ua:String(navigator.userAgent||'').slice(0,300),at:f.fs.serverTimestamp()});
+      ta.value='';$('fb-back').value='';try{localStorage.removeItem(FB_DRAFT)}catch(e){}
+      toast('ส่งถึงผู้พัฒนาแล้ว ขอบคุณครับ 🙏');
+    }catch(e){
+      const c=String(e&&e.code||e&&e.message||e);
+      toast(c.includes('permission')?'ส่งไม่ได้: ฐานข้อมูลยังไม่ได้เปิดสิทธิ์ (ให้แอดมินอัปโหลด firestore.rules)':'ส่งไม่สำเร็จ: '+c,'bad');
+      if(DEV.email&&!btn.parentElement.querySelector('[data-ml]')){
+        const body=encodeURIComponent(`${msg}\n\n— v${APP_VER} ${BUILD} · หน้า ${VIEW_FROM}`);
+        btn.insertAdjacentHTML('afterend',`<a class="ghost" data-ml href="mailto:${esc(DEV.email)}?subject=${encodeURIComponent('Baac_Exam: '+FB_KINDS[kind])}&body=${body}">ส่งทางอีเมลแทน</a>`);
+      }
+    }finally{btn.disabled=false;btn.textContent='ส่งข้อความ'}
+  };
+}
+
 /* ---------- ส่งเข้าคลังกลางอัตโนมัติเมื่อประมวลผลเสร็จ ---------- */
 function autoShare(d){
   if(!d||d.central||d.noShare||d.shareErr||d.subStatus==='rejected'||d.subStatus==='pending'||d.subStatus==='approved')return;

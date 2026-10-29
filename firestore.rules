@@ -94,6 +94,16 @@ service cloud.firestore {
         && request.resource.data.pass >= resource.data.pass && request.resource.data.pass <= resource.data.pass + 5;
     }
 
+    // ข้อความถึงผู้พัฒนา: ผู้ใช้ที่ล็อกอินส่งได้ · ผู้ส่งอ่านของตัวเอง · ผู้ตรวจ/แอดมินอ่านและปิดงานได้
+    match /feedback/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.msg is string
+        && request.resource.data.msg.size() >= 5 && request.resource.data.msg.size() <= 4000;
+      allow read: if isReviewer() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isReviewer();
+    }
+
     // รายงานเฉลยผิด
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';

@@ -291,11 +291,11 @@ document.addEventListener('click',e=>{
 let RV={tab:'subs',subs:null,reports:null,users:null,open:new Set()};
 async function renderReview(){
   if(VIEW!=='review')return;
-  head('ตรวจอนุมัติ','ตรวจของที่ส่งเข้าคลังกลาง รายงานเฉลยผิด และจัดการคลัง');
+  head('ตรวจอนุมัติ','ตรวจของที่ส่งเข้าคลังกลาง รายงานเฉลยผิด ข้อความถึงผู้พัฒนา และจัดการคลัง');
   const el=document.getElementById('sheet');
   if(!isReviewerMe()){el.innerHTML='<div class="state"><p><b>หน้านี้สำหรับผู้ตรวจและแอดมิน</b></p></div>';return}
   const tab=(v,t)=>`<button data-rt="${v}" aria-pressed="${RV.tab===v}">${t}</button>`;
-  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(${ME.role==='admin'?4:3},1fr)">${tab('subs','รออนุมัติ')}${tab('reports','รายงานเฉลยผิด')}${tab('kb','คลังกลาง')}${ME.role==='admin'?tab('users','สมาชิก'):''}</div><div id="rvbody"><div class="state"><div class="spin"></div></div></div>`;
+  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">${tab('subs','รออนุมัติ')}${tab('reports','รายงานเฉลยผิด')}${tab('feedback','ข้อความ')}${tab('kb','คลังกลาง')}${ME.role==='admin'?tab('users','สมาชิก'):''}</div><div id="rvbody"><div class="state"><div class="spin"></div></div></div>`;
   el.querySelectorAll('[data-rt]').forEach(b=>b.onclick=()=>{RV.tab=b.dataset.rt;renderReview()});
   const body=document.getElementById('rvbody');
   try{
@@ -328,6 +328,23 @@ async function renderReview(){
           try{await editCloudCard(r.packId,c.id,c.type==='q'?{q:c.q,fact:c.fact,title:c.title,ansSrc:c.ansSrc,topic:c.topic}:{fact:c.fact,title:c.title,topic:c.topic});
             await f.fs.updateDoc(fsDoc('reports',r.id),{status:'resolved',by:ME.name});toast('แก้ในคลังกลางแล้ว ทุกคนจะได้ฉบับแก้ตอนซิงก์');await syncCentral()}catch(e){toast('แก้ไม่สำเร็จ: '+(e.code||e.message),'bad')}
           renderReview()};
+      });
+    }else if(RV.tab==='feedback'){
+      const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'feedback'),f.fs.where('status','==','open')));
+      const ms=x=>(x.at&&x.at.toMillis?x.at.toMillis():0);
+      const list=snap.docs.map(s=>({id:s.id,...s.data()})).sort((a,b)=>ms(b)-ms(a));
+      const when=x=>{const t=ms(x);if(!t)return '';const d=new Date(t);return ` · ${d.toLocaleDateString('th-TH',{day:'numeric',month:'short'})} ${d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`};
+      body.innerHTML=list.length?list.map(x=>`<div class="kdoc" data-fb="${x.id}">
+        <p class="kn">${esc(FB_KINDS[x.kind]||x.kind||'ข้อความ')}</p>
+        <p class="src">${esc(x.name||'-')} · v${esc(x.ver||'?')} ${esc(x.build||'')}${x.view?` · หน้า ${esc(x.view)}`:''}${x.subject?` · ${esc(x.subject)}`:''}${when(x)}</p>
+        <p style="white-space:pre-wrap">${esc(x.msg||'')}</p>
+        ${x.back?`<p class="src">ติดต่อกลับ: <b>${esc(x.back)}</b></p>`:''}
+        <p class="src">${esc(String(x.ua||'').slice(0,120))}</p>
+        <div class="btnrow" style="justify-content:flex-start">${x.back&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.back)?`<a class="ghost" href="mailto:${esc(x.back)}?subject=${encodeURIComponent('ตอบกลับ Baac_Exam')}">ตอบกลับทางอีเมล</a>`:''}<button class="primary" data-done>ทำเครื่องหมายว่าแก้แล้ว</button></div></div>`).join('')
+        :'<p class="src" style="text-align:center">ไม่มีข้อความค้าง</p>';
+      body.querySelectorAll('[data-fb]').forEach(box=>box.querySelector('[data-done]').onclick=async()=>{
+        try{await f.fs.updateDoc(fsDoc('feedback',box.dataset.fb),{status:'resolved',by:ME.name,resolvedAt:f.fs.serverTimestamp()});toast('ปิดข้อความแล้ว')}catch(e){toast('ไม่สำเร็จ','bad')}
+        renderReview();
       });
     }else if(RV.tab==='kb'){
       const packs=DOCS.filter(d=>d.central);

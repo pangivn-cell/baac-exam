@@ -403,3 +403,5 @@ nav.subjects{gap:14px}
 .tagadd{background:transparent;border:1px dashed var(--accent);cursor:pointer;color:var(--accent)}
 .tagadd:hover{background:var(--accent-soft)}
 .taglink{border:1px dashed var(--accent);background:transparent}
+.tagbtn{cursor:pointer}
+.tagbtn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}

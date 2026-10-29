@@ -87,7 +87,9 @@ function docTopics(d){
   if(cs.length){
     const m={};for(const c of cs)if(c.topic!=='อื่นๆ')m[c.topic]=(m[c.topic]||0)+1;
     const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({name:t,count:n,link:false}));
-    for(const n of (d.subs||[]))if(!out.some(x=>x.name===n))out.push({name:n,count:cs.length,link:true});   /* ผูกทั้งไฟล์ */
+    const counted=new Set(out.map(x=>x.name));
+    const extra=cs.filter(c=>!c.topic||c.topic==='อื่นๆ'||!counted.has(c.topic)).length;   /* บัตรที่ยังไม่ถูกนับในวิชาไหน */
+    for(const n of (d.subs||[]))if(!out.some(x=>x.name===n))out.push({name:n,count:extra,total:cs.length,link:true});   /* ผูกทั้งไฟล์ */
     return out.slice(0,8);
   }
   if(d.group==='gen')return[];
@@ -98,9 +100,24 @@ function docTopics(d){
 function chipHTML(d,tp){
   const who=isReviewerMe()||docMine(d);
   return tp.map(t=>{
-    const label=(t.link?'🔗 ':'')+t.name+(t.count?` ${t.count}`:'');
+    const label=(t.link?'🔗 ':'')+t.name+(t.link?(t.count?` +${t.count}`:''):(t.count?` ${t.count}`:''));
+    const tip=t.link?`${t.name} · ผูกทั้งไฟล์ (ใช้บัตรร่วม ${t.total||0} ใบ)${t.count?` · เพิ่ม ${t.count} ใบที่ยังไม่ถูกนับในวิชาอื่น`:' · บัตรทุกใบถูกนับในวิชาอื่นแล้ว'}`:`${t.name} · ${t.count||0} รายการ`;
     const x=who&&(t.count>0||t.link)?`<button class="tagx" type="button" data-unlink="${esc(t.name)}" aria-label="เอา ${esc(t.name)} ออกจากไฟล์นี้">✕</button>`:'';
-    return `<span class="tag${t.link?' taglink':''}" title="${esc(t.name)}${t.link?' · ผูกทั้งไฟล์ (ใช้บัตรร่วม)':''}">${esc(label)}${x}</span>`}).join('');
+    return `<span class="tag tagbtn${t.link?' taglink':''}" role="button" tabindex="0" data-chip="${esc(t.name)}" title="${esc(tip)}">${esc(label)}${x}</span>`}).join('');
+}
+/* กดชิปวิชา = ดูรายการบัตรของวิชานั้นในไฟล์นี้ */
+async function showDocSubject(id,name){
+  const d=DOCS.find(x=>x.id===id);if(!d)return;
+  const linked=(d.subs||[]).includes(name);
+  const cards=CARDS.filter(c=>c.docId===id&&inSubj(c,name));
+  if(!cards.length){toast('ยังไม่มีบัตรของวิชานี้ในไฟล์','bad');return}
+  const text=c=>c.type==='q'?'ข้อสอบ: '+String((c.q&&c.q.stem)||''):String(c.title||c.fact||'');
+  const rows=cards.map((c,j)=>`<div class="lkrow"><span class="lktxt">${j+1}. ${esc(text(c)).slice(0,70)}</span><span class="src" style="flex:0 0 auto">${esc(c.topic||'อื่นๆ')}</span></div>`).join('');
+  const r=await modal(`<p class="mt">บัตรของ “${esc(name)}” ในไฟล์นี้</p>
+    <p class="src">${esc(d.name)} · ${cards.length} รายการ${linked?' · วิชานี้ผูกทั้งไฟล์ (🔗 ใช้บัตรร่วม)':''}</p>
+    <div class="kcards lklist">${rows}</div>`,
+    [{t:'ปิด'},{t:'เชื่อมต่อ/แก้วิชา',cls:'primary'}]);
+  if(r===1)linkDocSubjects(id);
 }
 /* ✕ ข้างชิป: ปลดวิชา / ย้ายไปวิชาอื่น / ลบรายการของวิชานั้น */
 async function unlinkDocSubject(id,topic){
@@ -1001,6 +1018,10 @@ function renderKB(){
     const sb=box.querySelector('[data-sub]');if(sb)sb.onclick=()=>submitDoc(d);
     const lk=box.querySelector('[data-link]');if(lk)lk.onclick=()=>linkDocSubjects(id);
     box.querySelectorAll('[data-unlink]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();unlinkDocSubject(id,b.dataset.unlink)});
+    box.querySelectorAll('[data-chip]').forEach(el=>{
+      el.onclick=ev=>{if(ev.target.closest('[data-unlink]'))return;showDocSubject(id,el.dataset.chip)};
+      el.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();showDocSubject(id,el.dataset.chip)}};
+    });
     const ad=box.querySelector('[data-addsubj]');if(ad)ad.onclick=()=>addDocSubject(id);
     box.querySelector('[data-opt]').onclick=async()=>{
       const nc=CARDS.filter(c=>c.docId===id).length;

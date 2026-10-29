@@ -379,3 +379,10 @@ nav.subjects{gap:14px}
 .ver{margin:12px 0 4px;text-align:center;font-size:12px;color:var(--ink-2);opacity:.7;letter-spacing:.02em}
 .vbadge{display:none}
 @media (max-width:760px){.vbadge{display:block;position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:25;font-size:11px;color:var(--ink-2);opacity:.55;pointer-events:none}}
+/* แถบแจ้งเวอร์ชันใหม่: ไม่รีเฟรชหน้าเอง ให้ผู้ใช้กดเอง (กันข้อสอบ/ไฟล์ที่ทำค้างหาย) */
+.buildnote{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 24px);box-sizing:border-box;padding:10px 14px;border-radius:14px;background:var(--ink);color:var(--sheet);font:600 14px var(--f-body);box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.buildnote button{font:600 14px var(--f-body);border-radius:10px;padding:7px 12px;cursor:pointer;border:1px solid transparent}
+.buildnote #buildnow{background:var(--accent);color:var(--sheet)}
+.buildnote #buildx{background:transparent;color:var(--sheet);opacity:.75;padding:6px 8px;border-color:rgba(255,255,255,.3)}
+.buildnote button:hover{filter:brightness(1.08)}
+@media (prefers-reduced-motion:reduce){.buildnote{transition:none}}

@@ -376,16 +376,52 @@ function previewCard(c){
 }
 
 /* ---------- รายวิชา: เพิ่ม / ซ่อน (แอดมิน/ผู้ตรวจ) ใช้กับทุกคน ---------- */
+/* เทียบค่าแบบไม่สนลำดับคีย์ เพราะ Firestore เรียงคีย์ของ map ใหม่เอง (ลำดับต่างแต่ข้อมูลเหมือน = ไม่ต้องรีโหลด) */
+function subjCfgSig(o){
+  const sk=v=>{const out={};if(v&&typeof v==='object')for(const k of Object.keys(v).sort())out[k]=v[k];return out};
+  const c=o||{};return JSON.stringify({add:(c.add||[]).map(sk),hide:c.hide||[],rename:sk(c.rename),alias:sk(c.alias)});
+}
+/* กำลังทำอะไรอยู่หรือไม่ — ถ้าใช่ ห้ามรีโหลดหน้าเด็ดขาด (ข้อสอบ/ไฟล์ที่ทำค้างจะหาย) */
+function subjBusy(){
+  try{
+    if(document.hidden)return true;
+    const d=document.getElementById('dlg');if(d&&d.open)return true;
+    if(typeof M!=='undefined'&&M&&M.status==='run')return true;
+    if(typeof R!=='undefined'&&R&&R.status==='loading')return true;
+    if(typeof PROC_ID!=='undefined'&&PROC_ID)return true;
+    if(typeof PROCQ!=='undefined'&&PROCQ&&PROCQ.length)return true;
+  }catch(e){}
+  return false;
+}
+let SUBJ_PENDING=null,SUBJ_CHECKED=0;
 async function syncSubjects(){
+  const t=Date.now();if(t-SUBJ_CHECKED<60000)return;SUBJ_CHECKED=t;
   try{const f=await fb(),snap=await f.fs.getDoc(fsDoc('config','subjects'));
     const cfg=snap.exists()?{add:snap.data().add||[],hide:snap.data().hide||[],rename:snap.data().rename||{},alias:snap.data().alias||{}}:{add:[],hide:[],rename:{},alias:{}};
-    const now=JSON.stringify(cfg),was=JSON.stringify({add:SUBJ_CFG.add||[],hide:SUBJ_CFG.hide||[],rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}});
-    if(now===was)return;
-    try{localStorage.setItem(SUBJ_CFG_KEY,now)}catch(e){}
-    if(!(M&&M.status==='run')&&!(R&&R.status==='loading'))location.reload();
-  }catch(e){}
+    if(subjCfgSig(cfg)===subjCfgSig(SUBJ_CFG)){SUBJ_PENDING=null;return}
+    SUBJ_PENDING=cfg;
+  }catch(e){return}
+  applySubjectCfg();
 }
-onAppReady(()=>{setTimeout(syncSubjects,1500);setInterval(syncSubjects,300000)});
+/* ใช้ค่าใหม่กับเมนูทันทีโดยไม่รีโหลดหน้า — เก็บลง localStorage ไม่ได้ก็ยังใช้ต่อได้ในหน้านี้ */
+function applySubjectCfg(force,quiet){
+  if(!SUBJ_PENDING||(!force&&subjBusy()))return;
+  const cfg=SUBJ_PENDING;SUBJ_PENDING=null;
+  SUBJ_CFG={add:cfg.add||[],hide:cfg.hide||[],rename:cfg.rename||{},alias:cfg.alias||{}};
+  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify(SUBJ_CFG))}catch(e){}
+  try{rebuildSubjects()}catch(e){}
+  try{if(typeof syncDocSubjects==='function')syncDocSubjects()}catch(e){}
+  if(!SUBJ.some(s=>s.id===P.subject)){P.subject=(SUBJ[0]||{id:'ineq'}).id;try{save()}catch(e){}}
+  try{renderSide()}catch(e){}
+  try{if(VIEW==='practice'){if(typeof render==='function')render()}else if(typeof setView==='function')setView(VIEW)}catch(e){}
+  if(!quiet)try{toast('อัปเดตรายวิชาจากส่วนกลางแล้ว')}catch(e){}
+}
+onAppReady(()=>{
+  setTimeout(syncSubjects,3000);
+  setInterval(syncSubjects,5*60000);
+  setInterval(applySubjectCfg,30000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){syncSubjects();applySubjectCfg()}});
+});
 function subjAdminHTML(){
   if(!isReviewerMe())return '';
   const hide=new Set(SUBJ_CFG.hide||[]),grp=g=>SUBJ_ALL.filter(s=>s.group===g&&s.id!=='specall');
@@ -400,8 +436,9 @@ function subjAdminHTML(){
 async function saveSubjCfg(cfg){
   const next={add:cfg.add??SUBJ_CFG.add??[],hide:cfg.hide??SUBJ_CFG.hide??[],rename:cfg.rename??SUBJ_CFG.rename??{},alias:cfg.alias??SUBJ_CFG.alias??{}};
   const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{...next,updatedAt:f.fs.serverTimestamp(),by:ME.name});
-  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify(next))}catch(e){}
-  toast('บันทึกรายวิชาแล้ว กำลังเปิดหน้าใหม่');setTimeout(()=>location.reload(),700);
+  SUBJ_PENDING=next;SUBJ_CHECKED=Date.now();
+  applySubjectCfg(true,true);   /* อัปเดตเมนูทันที ไม่ต้องรีโหลดหน้าให้งานที่ทำค้างหาย */
+  toast('บันทึกรายวิชาแล้ว');
 }
 /* เปลี่ยนชื่อรายวิชา: แก้ config + alias แล้วย้าย topic ของบัตร/เอกสาร/คลังกลาง/งานรอตรวจให้ตรงกัน
    เครื่องอื่นและผู้ใช้อื่นจะแปลงชื่อเดิมเป็นชื่อใหม่ตอนโหลดผ่าน alias */
@@ -546,8 +583,9 @@ async function addSubjectFromDoc(doc){
   const old=SUBJ_ALL.find(s=>s.name===doc.topic);
   const cfg=old?{add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).filter(x=>x!==old.id)}
     :{add:[...(SUBJ_CFG.add||[]),{id:'u'+newId(),name:doc.topic,group:doc.group||'spec',desc:doc.topicDesc||doc.topic,kw:[doc.topic]}],hide:(SUBJ_CFG.hide||[]).slice()};
-  const f=await fb();await f.fs.setDoc(fsDoc('config','subjects'),{add:cfg.add,hide:cfg.hide,rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{},updatedAt:f.fs.serverTimestamp(),by:ME.name});
-  try{localStorage.setItem(SUBJ_CFG_KEY,JSON.stringify({...cfg,rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}}))}catch(e){}
-  toast(`เพิ่มวิชา "${doc.topic}" แล้ว (มีข้อมูล ${n} รายการ) · หน้าเว็บจะเปิดใหม่เมื่อประมวลผลไฟล์อื่นเสร็จ`);
-  const wait=()=>{if(PROC_ID||PROCQ.length||(M&&M.status==='run'))return setTimeout(wait,5000);location.reload()};setTimeout(wait,2500);
+  const f=await fb();const next={add:cfg.add,hide:cfg.hide,rename:SUBJ_CFG.rename||{},alias:SUBJ_CFG.alias||{}};
+  await f.fs.setDoc(fsDoc('config','subjects'),{...next,updatedAt:f.fs.serverTimestamp(),by:ME.name});
+  /* อัปเดตเมนูทันที ไม่ต้องรีโหลดหน้า (งานที่กำลังประมวลผลอยู่ไม่ถูกตัดกลางคัน) */
+  SUBJ_PENDING=next;SUBJ_CHECKED=Date.now();applySubjectCfg(true,true);
+  toast(`เพิ่มวิชา "${doc.topic}" แล้ว (มีข้อมูล ${n} รายการ) · อยู่ในเมนูซ้ายแล้ว`);
 }

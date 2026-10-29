@@ -1,5 +1,6 @@
 /* core.js — ข้อมูลวิชา ตั้งค่าที่จำไว้ ตัวช่วยทั่วไป */
-const SUBJ=[
+/* รายการตั้งต้น — rebuildSubjects() คัดลอกไปสร้าง SUBJ ใหม่ทุกครั้งที่ config จากส่วนกลางเปลี่ยน */
+const SUBJ_BASE=[
  {id:'ineq',name:'เงื่อนไขสัญลักษณ์',desc:'อสมการ 2 บรรทัด ตัดสินข้อสรุปว่า จริง ไม่จริง หรือสรุปไม่ได้',ai:false},
  {id:'series',name:'อนุกรม',desc:'อนุกรมตัวเลข หาจำนวนถัดไปหรือจำนวนที่หายไป',ai:false},
  {id:'math',name:'คณิตศาสตร์ทั่วไป',desc:'ร้อยละ อัตราส่วน กำไรขาดทุน ความเร็ว อายุ และโจทย์ปัญหา',ai:false},
@@ -10,8 +11,9 @@ const SUBJ=[
  {id:'data',name:'การวิเคราะห์ข้อมูล',desc:'อ่านตาราง กราฟแท่ง กราฟเส้น ร้อยละ ค่าเฉลี่ย และการเปรียบเทียบ',ai:false},
  {id:'spatial',name:'มิติสัมพันธ์',desc:'นับลูกบาศก์ รูปคลี่กล่อง หมุนและพลิกรูป พับกระดาษเจาะรู อนุกรมรูปภาพ · ระบบวาดรูปเองจึงเฉลยถูกแน่นอน และใช้โจทย์รูปจากเอกสารในคลังความรู้ร่วมด้วย',ai:false,figOnly:true},
 ];
+const SUBJ=[];      /* เต็มโดย rebuildSubjects() */
 /* ความรู้เฉพาะตำแหน่ง: [id, ชื่อ, ขอบเขต, คำค้นในคลังความรู้] */
-const SPEC=[
+const SPEC_BASE=[
  ['credit','สินเชื่อ','หลักการให้สินเชื่อ ประเภทสินเชื่อ เงื่อนไขและขั้นตอนการขอสินเชื่อ',['สินเชื่อ','เงินกู้','ผู้กู้','วงเงิน']],
  ['creditan','วิเคราะห์สินเชื่อ','การวิเคราะห์ความสามารถชำระหนี้ งบการเงิน กระแสเงินสด และหลักประกัน',['วิเคราะห์สินเชื่อ','ความสามารถในการชำระหนี้','กระแสเงินสด','งบการเงิน','DSCR','หลักประกัน']],
  ['c5','5C','หลักพิจารณาสินเชื่อ 5C: Character, Capacity, Capital, Collateral, Condition',['5C','5 C','Character','Capacity','Collateral','Condition']],
@@ -25,26 +27,37 @@ const SPEC=[
  ['agecon','เศรษฐกิจการเกษตร','เศรษฐกิจเกษตรไทย ราคาสินค้าเกษตร สหกรณ์ และตลาดสินค้าเกษตร',['เกษตรกร','สหกรณ์','สินค้าเกษตร','เศรษฐกิจการเกษตร','ผลผลิต']],
  ['baac','ความรู้ ธ.ก.ส.','บทบาท พันธกิจ โครงสร้าง และผลิตภัณฑ์ของ ธ.ก.ส.',['ธ.ก.ส.','ธกส','BAAC','ธนาคารเพื่อการเกษตรและสหกรณ์']],
 ];
+const SPEC=[];      /* เต็มโดย rebuildSubjects() */
 /* รายวิชาที่แอดมินเพิ่ม/ซ่อน (Firestore config/subjects ทุกคนอ่านได้) จำไว้ในเครื่องเพื่อใช้ตั้งแต่ตอนเปิดหน้า
-   add: [{id,name,desc,group:'gen'|'spec',kw:[]}]  hide: [id]  ถ้าค่าในฐานข้อมูลเปลี่ยน cloud.js จะเปิดหน้าใหม่ให้ */
+   add: [{id,name,desc,group:'gen'|'spec',kw:[]}]  hide: [id]  เปลี่ยนแล้ว cloud.js จะสร้างเมนูใหม่ให้ทันที (ไม่รีโหลดหน้า) */
 const SUBJ_CFG_KEY='exam-subjects';
-let SUBJ_CFG={add:[],hide:[],rename:{},alias:{}};try{SUBJ_CFG={add:[],hide:[],rename:{},alias:{},...(JSON.parse(localStorage.getItem(SUBJ_CFG_KEY)||'null')||{})}}catch(e){}
-const RN=SUBJ_CFG.rename||{};
-for(const a of SUBJ_CFG.add||[]){if(!a||!a.id||!a.name)continue;const nm=RN[a.id]||a.name;
-  if(a.group==='spec')SPEC.push([a.id,nm,a.desc||nm,[...(a.kw&&a.kw.length?a.kw:[nm]),a.name].filter(Boolean)]);else SUBJ.push({id:a.id,name:nm,desc:a.desc||'โจทย์สร้างโดย AI',ai:true,custom:true,kw:[...(a.kw||[]),a.name].filter(Boolean)})}
-SUBJ.forEach(s=>s.group='gen');
-/* เปลี่ยนชื่อวิชา: ชื่อที่แสดงใช้ rename[id] · ชื่อเดิมยังเก็บไว้เป็นคำค้น */
-for(const s of SUBJ)if(RN[s.id]&&s.name!==RN[s.id]){s.kw=[...(s.kw||[]),s.name];s.name=RN[s.id]}else if(RN[s.id])s.name=RN[s.id];
-SUBJ.push({id:'specall',name:'รวมทุกวิชา',desc:'สุ่มโจทย์จากทุกหัวข้อความรู้เฉพาะตำแหน่ง',ai:true,group:'spec',kw:[]});
-SPEC.forEach(x=>{if(RN[x[0]]){if(!x[3].includes(x[1]))x[3].push(x[1]);x[1]=RN[x[0]]}});
-SPEC.forEach(([id,name,scope,kw])=>SUBJ.push({id,name,desc:scope,ai:true,group:'spec',kw}));
-for(const a of SUBJ_CFG.add||[]){const s=SUBJ.find(x=>x.id===a.id);if(s)s.custom=true}
-/* ซ่อนรายวิชา: เอาออกจากเมนูและการสร้างโจทย์ ข้อมูลในคลังยังอยู่ (เปิดกลับได้) */
-const SUBJ_ALL=SUBJ.map(s=>({id:s.id,name:s.name,group:s.group,custom:!!s.custom}));
-for(const id of SUBJ_CFG.hide||[]){const i=SUBJ.findIndex(s=>s.id===id);if(i>=0)SUBJ.splice(i,1);const j=SPEC.findIndex(x=>x[0]===id);if(j>=0)SPEC.splice(j,1)}
+let SUBJ_CFG={add:[],hide:[],rename:{},alias:{}};
+try{SUBJ_CFG={add:[],hide:[],rename:{},alias:{},...(JSON.parse(localStorage.getItem(SUBJ_CFG_KEY)||'null')||{})}}catch(e){}
+/* สร้าง SUBJ/SPEC ใหม่จาก SUBJ_CFG — เรียกซ้ำได้ตลอดโดยไม่ต้องรีโหลดหน้า */
+function rebuildSubjects(){
+  SUBJ.length=0;SPEC.length=0;
+  for(const s of SUBJ_BASE)SUBJ.push({...s});
+  for(const x of SPEC_BASE)SPEC.push([x[0],x[1],x[2],x[3].slice()]);
+  const RN={...(SUBJ_CFG.rename||{})};
+  for(const a of SUBJ_CFG.add||[]){if(!a||!a.id||!a.name)continue;const nm=RN[a.id]||a.name;
+    if(a.group==='spec')SPEC.push([a.id,nm,a.desc||nm,[...(a.kw&&a.kw.length?a.kw:[nm]),a.name].filter(Boolean)]);else SUBJ.push({id:a.id,name:nm,desc:a.desc||'โจทย์สร้างโดย AI',ai:true,custom:true,kw:[...(a.kw||[]),a.name].filter(Boolean)})}
+  SUBJ.forEach(s=>s.group='gen');
+  /* เปลี่ยนชื่อวิชา: ชื่อที่แสดงใช้ rename[id] · ชื่อเดิมยังเก็บไว้เป็นคำค้น */
+  for(const s of SUBJ)if(RN[s.id]&&s.name!==RN[s.id]){s.kw=[...(s.kw||[]),s.name];s.name=RN[s.id]}else if(RN[s.id])s.name=RN[s.id];
+  SUBJ.push({id:'specall',name:'รวมทุกวิชา',desc:'สุ่มโจทย์จากทุกหัวข้อความรู้เฉพาะตำแหน่ง',ai:true,group:'spec',kw:[]});
+  SPEC.forEach(x=>{if(RN[x[0]]){if(!x[3].includes(x[1]))x[3].push(x[1]);x[1]=RN[x[0]]}});
+  SPEC.forEach(([id,name,scope,kw])=>SUBJ.push({id,name,desc:scope,ai:true,group:'spec',kw}));
+  for(const a of SUBJ_CFG.add||[]){const s=SUBJ.find(x=>x.id===a.id);if(s)s.custom=true}
+  /* ซ่อนรายวิชา: เอาออกจากเมนูและการสร้างโจทย์ ข้อมูลในคลังยังอยู่ (เปิดกลับได้) */
+  SUBJ_ALL=SUBJ.map(s=>({id:s.id,name:s.name,group:s.group,custom:!!s.custom}));
+  for(const id of SUBJ_CFG.hide||[]){const i=SUBJ.findIndex(s=>s.id===id);if(i>=0)SUBJ.splice(i,1);const j=SPEC.findIndex(x=>x[0]===id);if(j>=0)SPEC.splice(j,1)}
+  GEN_TOPICS=SUBJ.filter(s=>s.group==='gen').map(s=>s.name);
+  if(typeof refreshSpecTopics==='function')refreshSpecTopics();
+}
+let SUBJ_ALL=[],GEN_TOPICS=[];
+rebuildSubjects();
 /* ชื่อวิชาเดิม → ชื่อปัจจุบัน (ใช้แปลงบัตรความรู้เก่าที่เก็บชื่อเดิมไว้) */
 const topicName=t=>((SUBJ_CFG.alias||{})[t]||t);
-const GEN_TOPICS=SUBJ.filter(s=>s.group==='gen').map(s=>s.name);
 const isSpecSub=id=>id==='spec'||id==='specall'||SPEC.some(x=>x[0]===id)||String(id).startsWith('doc_');
 const LEVEL_TXT={1:'ง่ายมาก พื้นฐาน ขั้นตอนเดียว',2:'ง่าย 1–2 ขั้นตอน',3:'ปานกลาง ระดับข้อสอบ ก.พ. ทั่วไป',4:'ยาก หลายขั้นตอน มีตัวลวง',5:'ยากมาก ระดับแข่งขันสูง ตัวลวงแนบเนียน'};
 const LBL={T:'จริง',F:'ไม่จริง',U:'สรุปไม่ได้'};

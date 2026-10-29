@@ -314,7 +314,8 @@ const MKEY='exam-mock-v1',MSKEY='exam-mock-set';
 const CATS={gen:'ความรู้ความสามารถทั่วไป',spec:'ความรู้เฉพาะตำแหน่งงานสินเชื่อ'};
 const MOCK_N=[20,40,60,80,100],MOCK_MIN=[15,30,45,60,90,120];
 const MOCK_MIX=[['math',.22],['series',.12],['ineq',.15],['logic',.12],['dir',.06],['data',.08],['spatial',.07],['thai',.1],['eng',.08]];
-const SPEC_TOPICS=SPEC.map(x=>x[1]);
+let SPEC_TOPICS=SPEC.map(x=>x[1]);
+function refreshSpecTopics(){SPEC_TOPICS=SPEC.map(x=>x[1])}
 let MS={cat:'gen',n:40,min:60,custom:60,limit:3,action:'warn'};
 try{const s=JSON.parse(localStorage.getItem(MSKEY)||'null');if(s)MS={...MS,...s}}catch(e){}
 const saveMS=()=>{try{localStorage.setItem(MSKEY,JSON.stringify(MS))}catch(e){}};

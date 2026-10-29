@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600&family=Sarabun:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="css/app.css?v=2026-10-28a">
+<link rel="stylesheet" href="css/app.css?v=2026-10-29a">
 </head><body>
 
 <header class="mtop" id="mtop"><button class="mbtn" id="mmenu" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="side"><span class="ic" aria-hidden="true">☰</span>เมนู</button><span class="mtitle" id="mtitle">ระบบซ้อมสอบ</span><button class="mav out" id="mav" type="button">เข้าสู่ระบบ</button></header>
@@ -45,25 +45,44 @@
 <dialog id="dlg"></dialog>
 <input type="file" id="kbfile" hidden multiple accept=".pdf,.docx,.txt,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html">
 <script>
-/* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ ถ้ามีเวอร์ชันใหม่บนเว็บให้เปิดเวอร์ชันใหม่เอง (ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ) */
-const BUILD='2026-10-28a';window.APP_VERSION=BUILD;
-if(/github\.io$/.test(location.hostname))fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
-  const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
-  let k='';try{k=sessionStorage.getItem('exam-build-reload')||''}catch(e){}if(k===m[1])return;
-  try{sessionStorage.setItem('exam-build-reload',m[1])}catch(e){}
-  location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+location.hash);
-}).catch(()=>{});
+/* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ · ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ (ใช้ sh bump.sh <เวอร์ชัน>) */
+const BUILD='2026-10-29a';window.APP_VERSION=BUILD;
+/* ไม่รีเฟรชหน้าเองอีกต่อไป: หน้าเว็บที่เปิดอยู่มีข้อสอบ/ไฟล์ที่กำลังทำค้างได้ ถ้าเจอเวอร์ชันใหม่จะขึ้นแถบให้กดรีเฟรชเอง */
+(function(){
+  if(!/github\.io$/.test(location.hostname))return;
+  const DKEY='exam-build-notice';let last=0;
+  function show(v){
+    try{if(sessionStorage.getItem(DKEY)===v)return}catch(e){}
+    if(document.getElementById('buildnote'))return;
+    const el=document.createElement('div');el.id='buildnote';el.className='buildnote';el.setAttribute('role','status');
+    el.innerHTML='<span>มีเวอร์ชันใหม่ <b>'+v+'</b></span><button type="button" id="buildnow">รีเฟรชตอนนี้</button><button type="button" id="buildx" aria-label="ปิดการแจ้งเตือน">✕</button>';
+    document.body.appendChild(el);
+    el.querySelector('#buildnow').onclick=()=>location.replace(location.pathname+'?v='+encodeURIComponent(v)+location.hash);
+    el.querySelector('#buildx').onclick=()=>{try{sessionStorage.setItem(DKEY,v)}catch(e){}el.remove()};
+  }
+  function check(force){
+    if(document.hidden)return;
+    const now=Date.now();if(!force&&now-last<5*60000)return;last=now;
+    fetch(location.pathname+'?chk='+now,{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
+      const m=t.match(/const BUILD='([^']+)'/);if(!m||m[1]===BUILD)return;
+      if(String(m[1])>String(BUILD))show(m[1]);   /* แจ้งเฉพาะเวอร์ชันที่ใหม่กว่า กันเด้งกลับเวอร์ชันเก่าเป็นวงจร */
+    }).catch(()=>{});
+  }
+  setTimeout(()=>check(true),5000);
+  setInterval(check,15*60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check(false)});
+})();
 </script>
-<script src="js/core.js?v=2026-10-28a"></script>
-<script src="js/generators.js?v=2026-10-28a"></script>
-<script src="js/ai.js?v=2026-10-28a"></script>
-<script src="js/practice.js?v=2026-10-28a"></script>
-<script src="js/questions.js?v=2026-10-28a"></script>
-<script src="js/kb.js?v=2026-10-28a"></script>
-<script src="js/cloud.js?v=2026-10-28a"></script>
-<script src="js/qpool.js?v=2026-10-28a"></script>
-<script src="js/sources.js?v=2026-10-28a"></script>
-<script src="js/sync.js?v=2026-10-28a"></script>
-<script src="js/visuals.js?v=2026-10-28a"></script>
-<script src="js/views.js?v=2026-10-28a"></script>
+<script src="js/core.js?v=2026-10-29a"></script>
+<script src="js/generators.js?v=2026-10-29a"></script>
+<script src="js/ai.js?v=2026-10-29a"></script>
+<script src="js/practice.js?v=2026-10-29a"></script>
+<script src="js/questions.js?v=2026-10-29a"></script>
+<script src="js/kb.js?v=2026-10-29a"></script>
+<script src="js/cloud.js?v=2026-10-29a"></script>
+<script src="js/qpool.js?v=2026-10-29a"></script>
+<script src="js/sources.js?v=2026-10-29a"></script>
+<script src="js/sync.js?v=2026-10-29a"></script>
+<script src="js/visuals.js?v=2026-10-29a"></script>
+<script src="js/views.js?v=2026-10-29a"></script>
 </body></html>

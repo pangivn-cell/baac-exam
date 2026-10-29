@@ -88,6 +88,71 @@ function docTopics(d){
   if(d.group==='gen')return[];
   const low=d.pages.map(p=>p.text).join('\n').toLowerCase();return SPEC.map(x=>({n:x[1],h:countHits(low,x[3])})).filter(x=>x.h>=3).sort((a,b)=>b.h-a.h).slice(0,5).map(x=>x.n);
 }
+/* ชิปวิชาของไฟล์: ปุ่ม ✕ เอาไฟล์ออกจากวิชานั้นได้ทันที */
+function chipHTML(d,tp){
+  const who=isReviewerMe()||docMine(d);
+  return tp.map(t=>{const i=t.lastIndexOf(' '),name=i>0?t.slice(0,i):t;
+    return `<span class="tag" title="${esc(name)}">${esc(t)}${who?`<button class="tagx" type="button" data-unlink="${esc(name)}" aria-label="เอา ${esc(name)} ออกจากไฟล์นี้">✕</button>`:''}</span>`}).join('');
+}
+/* ✕ ข้างชิป: ปลดวิชา / ย้ายไปวิชาอื่น / ลบรายการของวิชานั้น */
+async function unlinkDocSubject(id,topic){
+  const d=DOCS.find(x=>x.id===id);if(!d)return;
+  const cards=CARDS.filter(c=>c.docId===id&&c.topic===topic);
+  if(!cards.length){toast('ไม่พบรายการของวิชานี้ในไฟล์','bad');return}
+  const names=[...new Set(SUBJ.filter(s=>s.id!=='specall'&&!s.doc).map(s=>s.name))].filter(n=>n!==topic);
+  const p=modal(`<p class="mt">เอา “${esc(topic)}” ออกจากไฟล์นี้?</p>
+    <p class="src">${esc(d.name)} · ${cards.length} รายการ · ไฟล์ต้นฉบับไม่ถูกลบ</p>
+    <label class="lbl" for="ul-to">เก็บรายการไว้ แต่ย้ายไปวิชา</label>
+    <select class="tx" id="ul-to"><option value="">— ปลดวิชา (เก็บบัตรไว้ แต่ไม่ใช้ทำข้อสอบ) —</option>${names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+    <label class="rad" style="margin-top:8px"><input type="checkbox" id="ul-del"><span><b>หรือลบ ${cards.length} รายการนี้ออกเลย</b><span class="src">กู้คืนไม่ได้ · ไฟล์ต้นฉบับยังอยู่</span></span></label>`,
+    [{t:'ยกเลิก'},{t:'ยืนยัน',cls:'primary'}]);
+  if(await p!==1)return;
+  const del=!!(document.getElementById('ul-del')||{}).checked;
+  const to=((document.getElementById('ul-to')||{}).value||'').trim();
+  if(del){
+    const ids=new Set(cards.map(c=>c.id));CARDS=CARDS.filter(c=>!ids.has(c.id));
+    try{await kbDelMany('cards',[...ids])}catch(e){}
+    d.delCards=[...new Set([...(d.delCards||[]),...ids])].slice(-1000);await saveDoc(d);
+    if(typeof syncPushCards==='function')syncPushCards(d,true);
+    toast(`ลบ ${cards.length} รายการของ “${topic}” แล้ว`);
+  }else{
+    const nt=to||'อื่นๆ';
+    for(const c of cards){c.topic=nt;c.editedAt=Date.now()}
+    await saveCards(cards);
+    if(canEmbed())embedCards(cards).catch(()=>{});
+    if(typeof syncPushCards==='function')syncPushCards(d,true);
+    toast(to?`ย้าย ${cards.length} รายการไป “${to}” แล้ว`:`ปลด “${topic}” ออกจากไฟล์นี้แล้ว (บัตรยังอยู่)`);
+  }
+  syncDocSubjects();renderSide();renderKB();
+}
+/* ＋ เพิ่มวิชา: ผูกไฟล์นี้กับวิชาที่จะดึงข้อมูลไปออกข้อสอบ */
+async function addDocSubject(id){
+  const d=DOCS.find(x=>x.id===id);if(!d)return;
+  const all=CARDS.filter(c=>c.docId===id);
+  if(!all.length){toast('ไฟล์นี้ยังไม่มีบัตรหรือข้อสอบให้ผูกวิชา','bad');return}
+  const cur={};for(const c of all)cur[c.topic]=(cur[c.topic]||0)+1;
+  const names=[...new Set(SUBJ.filter(s=>s.id!=='specall'&&!s.doc).map(s=>s.name))];
+  const free=all.filter(c=>!c.topic||c.topic==='อื่นๆ').length;
+  const p=modal(`<p class="mt">เพิ่มวิชาให้ไฟล์นี้</p>
+    <p class="src">${esc(d.name)} · ${all.length} รายการ${Object.keys(cur).length?` · ตอนนี้: ${Object.entries(cur).map(([k,v])=>`${esc(k)} ${v}`).join(' · ')}`:''}</p>
+    <label class="lbl" for="as-s">วิชาที่จะใช้ข้อมูลไฟล์นี้ทำข้อสอบ</label>
+    <select class="tx" id="as-s">${names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+    <label class="rad"><input type="radio" name="as-scope" value="free" ${free&&free<all.length?'checked':''} ${free?'':'disabled'}><span><b>เฉพาะรายการที่ยังไม่ผูกวิชา (${free})</b><span class="src">รายการอื่นคงวิชาเดิมไว้</span></span></label>
+    <label class="rad"><input type="radio" name="as-scope" value="all" ${free&&free<all.length?'':'checked'}><span><b>ย้ายทุกรายการ (${all.length}) ไปวิชานี้</b><span class="src">ใช้เมื่อทั้งไฟล์เป็นเรื่องของวิชาเดียว</span></span></label>`,
+    [{t:'ยกเลิก'},{t:'เพิ่มวิชา',cls:'primary'}]);
+  if(await p!==1)return;
+  const name=(document.getElementById('as-s')||{}).value||'';
+  const scope=((document.querySelector('input[name="as-scope"]:checked')||{}).value)||'all';
+  if(!name)return;
+  const target=scope==='free'?all.filter(c=>!c.topic||c.topic==='อื่นๆ'):all;
+  if(!target.length){toast('ไม่มีรายการให้เปลี่ยน','bad');return}
+  for(const c of target){c.topic=name;c.editedAt=Date.now()}
+  await saveCards(target);
+  if(canEmbed())embedCards(target).catch(()=>{});
+  if(typeof syncPushCards==='function')syncPushCards(d,true);
+  syncDocSubjects();renderSide();renderKB();
+  toast(`ผูกไฟล์นี้กับ “${name}” แล้ว · ${target.length} รายการ`);
+}
 /* ---------- เชื่อมต่อไฟล์กับรายวิชา ----------
    แต่ละบัตร/ข้อสอบมีวิชาประจำตัว วิชาที่เลือกไว้คือวิชาที่ดึงข้อมูลไฟล์นี้ไปออกข้อสอบ
    ไฟล์เดียวจึงแยกข้อมูลให้หลายวิชาได้ (เช่น การเงินธนาคาร 11 รายการ + ความรู้ ธ.ก.ส. 2 รายการ) */
@@ -820,7 +885,7 @@ function renderKB(){
       ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
       ${d.stage==='ready'&&!busy&&!nc&&!d.dupOf&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
-      ${tp.length?`<div class="tags">${tp.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
+      ${nc?`<div class="tags">${chipHTML(d,tp)}${(isReviewerMe()||docMine(d))?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
       ${d.warn?`<p class="kwarn">${esc(d.warn)}</p>`:''}
       ${d.dupOf?`<p class="src">ซ้ำกับ "${esc((DOCS.find(x=>x.id===d.dupOf)||{}).name||'เอกสารเดิม')}" · ไม่ประมวลผลซ้ำ</p>`:''}
       ${d.dupSkipped?`<p class="src">ข้ามบัตร/ข้อสอบซ้ำ ${d.dupSkipped} รายการ</p>`:''}
@@ -901,6 +966,8 @@ function renderKB(){
     const go=box.querySelector('[data-go]');if(go)go.onclick=()=>{P.subject='doc_'+id;save();setView('practice');renderSide();start(true)};
     const sb=box.querySelector('[data-sub]');if(sb)sb.onclick=()=>submitDoc(d);
     const lk=box.querySelector('[data-link]');if(lk)lk.onclick=()=>linkDocSubjects(id);
+    box.querySelectorAll('[data-unlink]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();unlinkDocSubject(id,b.dataset.unlink)});
+    const ad=box.querySelector('[data-addsubj]');if(ad)ad.onclick=()=>addDocSubject(id);
     box.querySelector('[data-opt]').onclick=async()=>{
       const nc=CARDS.filter(c=>c.docId===id).length;
       if(await modal(`<p class="mt">ตั้งค่าเอกสาร</p><p class="src">${esc(d.name)}</p>${docOptHTML(d.group||'spec',!!d.show,d.kind||'kb',!!d.noShare,true)}${nc?'<p class="src">ถ้าเปลี่ยนประเภทไฟล์หรือกลุ่มวิชา AI ต้องประมวลผลไฟล์นี้ใหม่ ของเดิมของไฟล์นี้จะถูกแทนที่</p>':''}`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}])!==1)return;

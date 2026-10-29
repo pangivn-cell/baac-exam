@@ -396,3 +396,9 @@ nav.subjects{gap:14px}
 .lktxt{font-size:13px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lksel{flex:0 0 44%;max-width:44%}
 @media (max-width:520px){.lkrow{flex-wrap:wrap}.lksel{flex:1 0 100%;max-width:100%}}
+/* ชิปวิชาของไฟล์: ปุ่ม ✕ ในชิป และปุ่ม ＋ เพิ่มวิชา */
+.tag{display:inline-flex;align-items:center;gap:4px;border:none;font-family:var(--f-body)}
+.tagx{font:600 11px/1 var(--f-body);border:none;background:transparent;color:var(--accent);cursor:pointer;padding:0 0 0 2px;opacity:.75;border-radius:999px}
+.tagx:hover{opacity:1;color:var(--bad)}
+.tagadd{background:transparent;border:1px dashed var(--accent);cursor:pointer;color:var(--accent)}
+.tagadd:hover{background:var(--accent-soft)}

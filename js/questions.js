@@ -128,9 +128,12 @@ function withCard(q,doc){
   return q;
 }
 const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>hasFig(id)&&!junkFig(id)&&!textFig(id)));
+/* ไฟล์ที่ “เชื่อมต่อกับรายวิชา” ไว้: บัตรของไฟล์นั้นใช้ได้กับทุกวิชาที่ผูกไว้ โดยไม่ต้องย้ายบัตร */
+const docSubsOf=id=>{const d=DOCS.find(x=>x.id===id);return (d&&Array.isArray(d.subs))?d.subs:[]};
+const inSubj=(c,name)=>c.topic===name||docSubsOf(c.docId).includes(name);
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
 const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));return CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length)};
-function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.includes(c.topic)):b.filter(c=>c.topic===s.name)}
+function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
@@ -155,13 +158,13 @@ function addEx(pr,pool){const ex=styleEx(pool)+(GEN_AVOID.length?`\nโจทย
 function cardPF(pool,topicsFn,level,weak,maxUse=Infinity){
   const used=new Map();
   return(k,base)=>{const vis=canVision(),act=pool().filter(c=>vis||!(c.figs&&c.figs.length)),slots=topicsFn(k,base).map(t=>{
-      const cand=(t?act.filter(x=>x.topic===t):act).filter(x=>(used.get(x.id)||0)<maxUse),c=pickCard(cand,new Set(used.keys()));
+      const cand=(t?act.filter(x=>inSubj(x,t)):act).filter(x=>(used.get(x.id)||0)<maxUse),c=pickCard(cand,new Set(used.keys()));
       if(c)used.set(c.id,(used.get(c.id)||0)+1);return{topic:t||(c&&c.topic)||'',card:c}});
     return cardPrompt(slots,level,weak)};
 }
 /* how many questions of a subject should come from knowledge cards (each card at most twice per round) */
 function cardMixCount(s,n){
-  const k=activeCards().filter(c=>c.topic===s.name).length;if(!k)return 0;
+  const k=activeCards().filter(c=>inSubj(c,s.name)).length;if(!k)return 0;
   return s.ai?Math.min(n,k*2):Math.min(Math.max(1,Math.round(n*.4)),k*2);
 }
 const rotTopics=()=>{const order=shuffle(SPEC_TOPICS.slice());return(k,b)=>Array.from({length:k},(_,i)=>order[(b+i)%order.length])};
@@ -270,7 +273,7 @@ async function makeNew0(s,level,n,o,pool){
   /* เอกสารที่เพิ่งดึงมาจากอีกเครื่อง: โหลดบัตรความรู้/ข้อความหน้าให้ครบก่อนสร้างโจทย์ */
   if(doc&&typeof syncHydrate==='function'){try{await syncHydrate(doc,{cards:true})}catch(e){}act=activeCards()}
   const tag=q=>withCard({...q,sub:s.id,subName:s.name,gen:'ai'},doc),run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
-  if(s.figOnly&&!LOCAL[s.id]&&!figCards().some(c=>c.topic===s.name)){if(pool.length)return[];throw{code:'need_figs'}}
+  if(s.figOnly&&!LOCAL[s.id]&&!figCards().some(c=>inSubj(c,s.name))){if(pool.length)return[];throw{code:'need_figs'}}
   if(s.doc&&doc&&doc.kind==='exam'&&!act.some(c=>c.docId===doc.id))return (await run(k=>genPrompt({name:doc.name,desc:'ข้อสอบแนวเดียวกับตัวอย่าง'},level,k),n)).map(tag);
   if(s.doc){
     if(!doc)throw{code:'no_doc'};
@@ -282,11 +285,11 @@ async function makeNew0(s,level,n,o,pool){
   if(s.id==='specall'){const tf=rotTopics();
     return (await run(act.some(c=>SPEC_TOPICS.includes(c.topic))?cardPF(activeCards,tf,level,weak,2):(k,b)=>specPrompt(tf(k,b),{level,weak}),n)).map(tag)}
   if(s.group==='spec')
-    return (await run(act.some(c=>c.topic===s.name)?cardPF(activeCards,k=>Array(k).fill(s.name),level,weak,2):k=>specPrompt(Array(k).fill(s.name),{level,weak}),n)).map(tag);
+    return (await run(act.some(c=>inSubj(c,s.name))?cardPF(activeCards,k=>Array(k).fill(s.name),level,weak,2):k=>specPrompt(Array(k).fill(s.name),{level,weak}),n)).map(tag);
   /* subjects that need pictures (มิติสัมพันธ์): AI can't draw new figures reliably, so figure cards from uploaded documents (each used once)
      plus the local generator that draws its own figures with known answers */
   if(s.figOnly){
-    const pool=()=>figCards().filter(c=>c.topic===s.name),k=pool().length,local=LOCAL[s.id];
+    const pool=()=>figCards().filter(c=>inSubj(c,s.name)),k=pool().length,local=LOCAL[s.id];
     if(!local){if(!k)throw{code:'need_figs'};if(!canVision())throw{code:'no_vision'}}
     let fromFig=[];
     if(k&&canVision()){try{fromFig=(await run(cardPF(pool,x=>Array(x).fill(s.name),level,weak,1),Math.min(local?Math.ceil(n/2):n,k))).map(tag).filter(q=>q.fig)}catch(e){if(!local||(e&&e.code==='cancelled'))throw e}}

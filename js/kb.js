@@ -63,10 +63,10 @@ const topicsOf=g=>g==='gen'?GEN_TOPICS:SPEC_TOPICS;
 function subjDesc(s){const nb=bankFor(s).length,bt=nb?` · ข้อสอบจริงในคลัง ${nb} ข้อ`:'';return subjDesc0(s)+bt}
 function subjDesc0(s){
   if(s.id==='specall'){const n=activeCards().filter(c=>SPEC_TOPICS.includes(c.topic)).length;return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
-  if(s.group==='gen'&&!s.doc){const n=activeCards().filter(c=>c.topic===s.name).length;if(n)return `${s.desc} · ${activeAI()?`ผสมโจทย์จากบัตรความรู้ ${n} ใบ`:`มีบัตรความรู้ ${n} ใบ (ตั้งค่า AI เพื่อใช้)`}`}
+  if(s.group==='gen'&&!s.doc){const n=activeCards().filter(c=>inSubj(c,s.name)).length;if(n)return `${s.desc} · ${activeAI()?`ผสมโจทย์จากบัตรความรู้ ${n} ใบ`:`มีบัตรความรู้ ${n} ใบ (ตั้งค่า AI เพื่อใช้)`}`}
   if(s.doc){const d=DOCS.find(x=>x.id===s.doc);if(!d)return 'ไม่พบเอกสาร';const n=activeCards().filter(c=>c.docId===d.id).length;
     return n?`โจทย์สร้างจากบัตรความรู้ ${n} ใบที่ AI ย่อยจาก ${d.name} มีอ้างอิง${d.unit}ทุกข้อ`:`โจทย์สร้างจากเนื้อหา ${d.name} (ยังไม่ได้ย่อยเป็นบัตรความรู้)`}
-  if(s.group==='spec'){const n=activeCards().filter(c=>c.topic===s.name).length;
+  if(s.group==='spec'){const n=activeCards().filter(c=>inSubj(c,s.name)).length;
     return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:kbContext([s.name]).text?'อิงเนื้อหาเอกสารในคลังความรู้':'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
   return s.desc;
 }
@@ -84,19 +84,44 @@ function kbContext(topics,max=9000){
 }
 function docTopics(d){
   const cs=CARDS.filter(c=>c.docId===d.id);
-  if(cs.length){const m={};for(const c of cs)if(c.topic!=='อื่นๆ')m[c.topic]=(m[c.topic]||0)+1;return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([t,n])=>`${t} ${n}`)}
+  if(cs.length){
+    const m={};for(const c of cs)if(c.topic!=='อื่นๆ')m[c.topic]=(m[c.topic]||0)+1;
+    const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({name:t,count:n,link:false}));
+    for(const n of (d.subs||[]))if(!out.some(x=>x.name===n))out.push({name:n,count:cs.length,link:true});   /* ผูกทั้งไฟล์ */
+    return out.slice(0,8);
+  }
   if(d.group==='gen')return[];
-  const low=d.pages.map(p=>p.text).join('\n').toLowerCase();return SPEC.map(x=>({n:x[1],h:countHits(low,x[3])})).filter(x=>x.h>=3).sort((a,b)=>b.h-a.h).slice(0,5).map(x=>x.n);
+  const low=d.pages.map(p=>p.text).join('\n').toLowerCase();
+  return SPEC.map(x=>({name:x[1],h:countHits(low,x[3])})).filter(x=>x.h>=3).sort((a,b)=>b.h-a.h).slice(0,5).map(x=>({name:x.name,count:0,link:false,guess:true}));
 }
 /* ชิปวิชาของไฟล์: ปุ่ม ✕ เอาไฟล์ออกจากวิชานั้นได้ทันที */
 function chipHTML(d,tp){
   const who=isReviewerMe()||docMine(d);
-  return tp.map(t=>{const i=t.lastIndexOf(' '),name=i>0?t.slice(0,i):t;
-    return `<span class="tag" title="${esc(name)}">${esc(t)}${who?`<button class="tagx" type="button" data-unlink="${esc(name)}" aria-label="เอา ${esc(name)} ออกจากไฟล์นี้">✕</button>`:''}</span>`}).join('');
+  return tp.map(t=>{
+    const label=(t.link?'🔗 ':'')+t.name+(t.count?` ${t.count}`:'');
+    const x=who&&(t.count>0||t.link)?`<button class="tagx" type="button" data-unlink="${esc(t.name)}" aria-label="เอา ${esc(t.name)} ออกจากไฟล์นี้">✕</button>`:'';
+    return `<span class="tag${t.link?' taglink':''}" title="${esc(t.name)}${t.link?' · ผูกทั้งไฟล์ (ใช้บัตรร่วม)':''}">${esc(label)}${x}</span>`}).join('');
 }
 /* ✕ ข้างชิป: ปลดวิชา / ย้ายไปวิชาอื่น / ลบรายการของวิชานั้น */
 async function unlinkDocSubject(id,topic){
   const d=DOCS.find(x=>x.id===id);if(!d)return;
+  if((d.subs||[]).includes(topic)){
+    const cs=CARDS.filter(c=>c.docId===id),own=CARDS.filter(c=>c.docId===id&&c.topic===topic);
+    const p=modal(`<p class="mt">เอา “${esc(topic)}” ออกจากไฟล์นี้?</p>
+      <p class="src">${esc(d.name)} · ผูกทั้งไฟล์ไว้ (${cs.length} รายการใช้ร่วม) · เอาออกแล้วบัตรยังอยู่ครบ</p>
+      ${own.length?`<label class="rad"><input type="checkbox" id="ul-cards"><span><b>ปลดบัตรที่ตั้งวิชานี้อยู่ด้วย (${own.length} ใบ → “อื่นๆ”)</b><span class="src">ถ้าไม่ติ๊ก บัตรยังเป็นวิชานี้ แต่ไฟล์จะไม่ถูกใช้อีก</span></span></label>`:''}`,
+      [{t:'ยกเลิก'},{t:'เอาไฟล์ออกจากวิชานี้',cls:'primary'}]);
+    if(await p!==1)return;
+    d.subs=(d.subs||[]).filter(x=>x!==topic);
+    const cb=document.getElementById('ul-cards');
+    if(cb&&cb.checked&&own.length){for(const c of own){c.topic='อื่นๆ';c.editedAt=Date.now()}await saveCards(own)}
+    await saveDoc(d);
+    if(typeof syncPushMeta==='function')syncPushMeta(d);
+    if(typeof syncPushCards==='function')syncPushCards(d,true);
+    syncDocSubjects();renderSide();renderKB();
+    toast(`เอาไฟล์ออกจากวิชา “${topic}” แล้ว`);
+    return;
+  }
   const cards=CARDS.filter(c=>c.docId===id&&c.topic===topic);
   if(!cards.length){toast('ไม่พบรายการของวิชานี้ในไฟล์','bad');return}
   const names=[...new Set(SUBJ.filter(s=>s.id!=='specall'&&!s.doc).map(s=>s.name))].filter(n=>n!==topic);
@@ -137,13 +162,22 @@ async function addDocSubject(id){
     <p class="src">${esc(d.name)} · ${all.length} รายการ${Object.keys(cur).length?` · ตอนนี้: ${Object.entries(cur).map(([k,v])=>`${esc(k)} ${v}`).join(' · ')}`:''}</p>
     <label class="lbl" for="as-s">วิชาที่จะใช้ข้อมูลไฟล์นี้ทำข้อสอบ</label>
     <select class="tx" id="as-s">${names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
-    <label class="rad"><input type="radio" name="as-scope" value="free" ${free&&free<all.length?'checked':''} ${free?'':'disabled'}><span><b>เฉพาะรายการที่ยังไม่ผูกวิชา (${free})</b><span class="src">รายการอื่นคงวิชาเดิมไว้</span></span></label>
-    <label class="rad"><input type="radio" name="as-scope" value="all" ${free&&free<all.length?'':'checked'}><span><b>ย้ายทุกรายการ (${all.length}) ไปวิชานี้</b><span class="src">ใช้เมื่อทั้งไฟล์เป็นเรื่องของวิชาเดียว</span></span></label>`,
+    <label class="rad"><input type="radio" name="as-scope" value="link" checked><span><b>ผูกทั้งไฟล์กับวิชานี้ (ใช้บัตรร่วม ไม่ย้ายบัตร)</b><span class="src">บัตรของไฟล์นี้ใช้ได้ทั้งวิชาเดิมและวิชานี้</span></span></label>
+    <label class="rad"><input type="radio" name="as-scope" value="free" ${free?'':'disabled'}><span><b>ย้ายเฉพาะรายการที่ยังไม่ผูกวิชา (${free})</b><span class="src">รายการอื่นคงวิชาเดิมไว้</span></span></label>
+    <label class="rad"><input type="radio" name="as-scope" value="all"><span><b>ย้ายทุกรายการ (${all.length}) ไปวิชานี้</b><span class="src">ใช้เมื่อทั้งไฟล์เป็นเรื่องของวิชาเดียว</span></span></label>`,
     [{t:'ยกเลิก'},{t:'เพิ่มวิชา',cls:'primary'}]);
   if(await p!==1)return;
   const name=(document.getElementById('as-s')||{}).value||'';
-  const scope=((document.querySelector('input[name="as-scope"]:checked')||{}).value)||'all';
+  const scope=((document.querySelector('input[name="as-scope"]:checked')||{}).value)||'link';
   if(!name)return;
+  if(scope==='link'){
+    d.subs=[...new Set([...(d.subs||[]),name])];
+    await saveDoc(d);
+    if(typeof syncPushMeta==='function')syncPushMeta(d);
+    syncDocSubjects();renderSide();renderKB();
+    toast(`ผูกไฟล์นี้กับ “${name}” แล้ว · ใช้บัตรร่วมทั้งไฟล์`);
+    return;
+  }
   const target=scope==='free'?all.filter(c=>!c.topic||c.topic==='อื่นๆ'):all;
   if(!target.length){toast('ไม่มีรายการให้เปลี่ยน','bad');return}
   for(const c of target){c.topic=name;c.editedAt=Date.now()}
@@ -151,7 +185,7 @@ async function addDocSubject(id){
   if(canEmbed())embedCards(target).catch(()=>{});
   if(typeof syncPushCards==='function')syncPushCards(d,true);
   syncDocSubjects();renderSide();renderKB();
-  toast(`ผูกไฟล์นี้กับ “${name}” แล้ว · ${target.length} รายการ`);
+  toast(`ย้าย ${target.length} รายการไป “${name}” แล้ว`);
 }
 /* ---------- เชื่อมต่อไฟล์กับรายวิชา ----------
    แต่ละบัตร/ข้อสอบมีวิชาประจำตัว วิชาที่เลือกไว้คือวิชาที่ดึงข้อมูลไฟล์นี้ไปออกข้อสอบ
@@ -885,7 +919,7 @@ function renderKB(){
       ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
       ${d.stage==='ready'&&!busy&&!nc&&!d.dupOf&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
-      ${nc?`<div class="tags">${chipHTML(d,tp)}${(isReviewerMe()||docMine(d))?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
+      ${tp.length?`<div class="tags">${chipHTML(d,tp)}${nc&&(isReviewerMe()||docMine(d))?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
       ${d.warn?`<p class="kwarn">${esc(d.warn)}</p>`:''}
       ${d.dupOf?`<p class="src">ซ้ำกับ "${esc((DOCS.find(x=>x.id===d.dupOf)||{}).name||'เอกสารเดิม')}" · ไม่ประมวลผลซ้ำ</p>`:''}
       ${d.dupSkipped?`<p class="src">ข้ามบัตร/ข้อสอบซ้ำ ${d.dupSkipped} รายการ</p>`:''}
@@ -1019,7 +1053,7 @@ function centralListHTML(){
   const packs=DOCS.filter(d=>d.central);if(!packs.length)return '';
   return `<p class="lbl">ชุดในคลังกลาง ${packs.length} ชุด · อนุมัติแล้วทั้งหมด ทุกคนใช้ร่วมกัน</p><p class="src">ป้ายสีฟ้า = วิชาที่โจทย์/ความรู้ในชุดนั้นไปอยู่ พร้อมจำนวน · "แสดงเป็นรายวิชา" = ให้ชุดนี้ขึ้นเป็นวิชาของตัวเองในเมนูซ้าย</p>`+packs.slice().reverse().map(d=>{const nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',summ=(d.summ||[]).filter(Boolean);
     return `<div class="kdoc" data-cid="${d.id}"><div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">ประเภท: ${ex?`คลังข้อสอบ ${nc} ข้อ (ใช้ออกข้อสอบตรงๆ และเป็นแบบอย่างโจทย์)`:`บัตรความรู้ ${nc} ใบ (AI ใช้คิดโจทย์ใหม่)`} · กลุ่ม${d.group==='gen'?'ความรู้ทั่วไป':'เฉพาะตำแหน่ง'} · ส่งโดย ${esc(d.owner||'-')}</p></div><span class="substat ok" style="white-space:nowrap">✓ อนุมัติแล้ว</span></div>
-      ${docTopics(d).length?`<div class="tags">${docTopics(d).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
+      ${docTopics(d).length?`<div class="tags">${chipHTML(d,docTopics(d))}</div>`:''}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${ex?'ข้อสอบ':'บัตรความรู้'} (${nc})${isReviewerMe()?' · ผู้ตรวจแก้ได้':''}`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
       <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button></div>${packSrcHTML(d)}</div>`}).join('');

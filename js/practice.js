@@ -325,7 +325,7 @@ const saveM=()=>{try{if(M)localStorage.setItem(MKEY,JSON.stringify(M));else loca
 const mockMins=()=>MS.min==='custom'?Math.max(1,Math.min(300,Math.round(+MS.custom||60))):+MS.min;
 
 function genPlan(n,useAI){
-  const ok=id=>{const s=SUBJ.find(x=>x.id===id);return bankFor(s).length>0||(s.figOnly&&!LOCAL[s.id]?useAI&&canVision()&&figCards().some(c=>c.topic===s.name):useAI||!s.ai)};
+  const ok=id=>{const s=SUBJ.find(x=>x.id===id);return bankFor(s).length>0||(s.figOnly&&!LOCAL[s.id]?useAI&&canVision()&&figCards().some(c=>inSubj(c,s.name)):useAI||!s.ai)};
   const mix=MOCK_MIX.filter(([id])=>ok(id)),tot=mix.reduce((a,[,w])=>a+w,0);
   const raw=mix.map(([id,w])=>({id,x:n*w/tot}));raw.forEach(r=>r.k=Math.floor(r.x));
   let left=n-raw.reduce((a,r)=>a+r.k,0);

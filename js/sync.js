@@ -73,7 +73,7 @@ function syncDocFromMeta(m){
     figMeta:figs,stored:m.driveId?'drive':'',at:+m.createdMs||Date.now(),syncAt:Date.now(),
     leaseBy:m.leaseBy||'',leaseAt:+m.leaseAt||0,delCards:Array.isArray(m.delCards)?m.delCards:[],cardsResetAt:+m.cardsResetAt||0,pagesRev:+m.pagesRev||0,cardsRev:+m.cardsRev||0,
     label:m.label||'',pagesRemote:(m.pagesParts||0)>0,cardsRemote:(m.cardsParts||0)>0,cardCount:+((m.counts&&m.counts.cards)||0),qCount:+((m.counts&&m.counts.q)||0),
-    txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,ownerUid:m.ownerUid||ME.uid,remote:true};
+    txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,subs:Array.isArray(m.subs)?m.subs:[],ownerUid:m.ownerUid||ME.uid,remote:true};
 }
 function syncRememberFigs(doc,figs){
   for(const f of figs||[])if(f&&f.id)PFIG.set(f.id,{id:f.id,docId:doc.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0});
@@ -123,6 +123,7 @@ async function syncMerge(local,m){
   if(m.cardsParts!=null&&local.cardsParts!==m.cardsParts){local.cardsParts=m.cardsParts;ch=true}
   if(m.counts){local.cardCount=+m.counts.cards||0;local.qCount=+m.counts.q||0}
   if(m.label!=null&&local.label!==m.label){local.label=m.label;ch=true}
+  if(Array.isArray(m.subs)&&(m.subs||[]).join('|')!==(local.subs||[]).join('|')){local.subs=m.subs.slice();ch=true}
   if(m.txtSha&&local.txtSha!==m.txtSha){local.txtSha=m.txtSha;ch=true}
   if(m.dupOf&&local.dupOf!==m.dupOf){local.dupOf=m.dupOf;ch=true}
   if(m.dupSkipped!=null&&local.dupSkipped!==+m.dupSkipped){local.dupSkipped=+m.dupSkipped;ch=true}
@@ -260,7 +261,7 @@ function syncMetaOf(doc){
     summ:doc.summ||[],bad:doc.bad||[],figPages:doc.figPages||[],pagesParts:+doc.pagesParts||0,cardsParts:+doc.cardsParts||0,pagesRev:+doc.pagesRev||0,cardsRev:+doc.cardsRev||0,
     figs:(doc.figMeta||[]).map(f=>({id:f.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0})),
     delCards:(doc.delCards||[]).slice(-1000),cardsResetAt:+doc.cardsResetAt||0,
-    txtSha:doc.txtSha||'',dupOf:doc.dupOf||'',dupSkipped:+doc.dupSkipped||0,
+    txtSha:doc.txtSha||'',dupOf:doc.dupOf||'',dupSkipped:+doc.dupSkipped||0,subs:(doc.subs||[]).slice(0,20),
     counts,createdMs:+doc.at||Date.now(),deleted:false
   };
 }

@@ -482,6 +482,7 @@ async function renameSubject(id,oldName,newName,opt={}){
   const touchedDocs=new Set(changed.filter(c=>!String(c.docId).startsWith('c_')).map(c=>c.docId));
   const dch=[];
   for(const d of DOCS)if(d.topic===oldName){d.topic=newName;dch.push(d)}
+  for(const d of DOCS)if(Array.isArray(d.subs)&&d.subs.includes(oldName)){d.subs=d.subs.map(n=>n===oldName?newName:n);if(!dch.includes(d))dch.push(d)}
   for(const d of dch)await saveDoc(d);
   /* คลังกลางที่อนุมัติแล้ว + งานรออนุมัติ */
   for(const pid of centralPacks){
@@ -561,6 +562,7 @@ async function deleteSubject(id){
       if(typeof syncPushMeta==='function')syncPushMeta(dd);
       if(typeof syncPushCards==='function')syncPushCards(dd,true);
     }
+    for(const d of DOCS)if(Array.isArray(d.subs)&&d.subs.includes(name)){d.subs=d.subs.filter(x=>x!==name);await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d)}
     const custom=(SUBJ_CFG.add||[]).some(a=>a.id===id);
     await saveSubjCfg({add:(SUBJ_CFG.add||[]).filter(a=>a.id!==id),hide:custom?(SUBJ_CFG.hide||[]).filter(x=>x!==id):[...new Set([...(SUBJ_CFG.hide||[]),id])]});
   }catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}

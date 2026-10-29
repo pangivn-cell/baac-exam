@@ -86,11 +86,12 @@ function docTopics(d){
   const cs=CARDS.filter(c=>c.docId===d.id);
   if(cs.length){
     const m={};for(const c of cs)if(c.topic!=='อื่นๆ')m[c.topic]=(m[c.topic]||0)+1;
-    const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({name:t,count:n,link:false}));
-    const counted=new Set(out.map(x=>x.name));
-    const extra=cs.filter(c=>!c.topic||c.topic==='อื่นๆ'||!counted.has(c.topic)).length;   /* บัตรที่ยังไม่ถูกนับในวิชาไหน */
-    for(const n of (d.subs||[]))if(!out.some(x=>x.name===n))out.push({name:n,count:extra,total:cs.length,link:true});   /* ผูกทั้งไฟล์ */
-    return out.slice(0,8);
+    const links=new Set((d.subs||[]).map(topicName));
+    const names=[...new Set([...Object.keys(m),...links])];
+    const out=names.map(n=>{const own=m[n]||0,linked=links.has(n);
+      return {name:n,own,link:linked,count:linked?cs.length:own}})          /* ผูกทั้งไฟล์ = ใช้บัตรได้ทั้งไฟล์ */
+      .sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name));
+    return out.slice(0,9);
   }
   if(d.group==='gen')return[];
   const low=d.pages.map(p=>p.text).join('\n').toLowerCase();
@@ -100,8 +101,8 @@ function docTopics(d){
 function chipHTML(d,tp){
   const who=isReviewerMe()||docMine(d);
   return tp.map(t=>{
-    const label=(t.link?'🔗 ':'')+t.name+(t.link?(t.count?` +${t.count}`:''):(t.count?` ${t.count}`:''));
-    const tip=t.link?`${t.name} · ผูกทั้งไฟล์ (ใช้บัตรร่วม ${t.total||0} ใบ)${t.count?` · เพิ่ม ${t.count} ใบที่ยังไม่ถูกนับในวิชาอื่น`:' · บัตรทุกใบถูกนับในวิชาอื่นแล้ว'}`:`${t.name} · ${t.count||0} รายการ`;
+    const label=(t.link?'🔗 ':'')+t.name+(t.count?` ${t.count}`:'');
+    const tip=t.link?`${t.name} · ผูกทั้งไฟล์ ใช้บัตรร่วม ${t.count} ใบ${t.own?` (ตั้งหัวข้อนี้ไว้ ${t.own} ใบ)`:' (ยังไม่มีบัตรที่ตั้งหัวข้อนี้)'}`:`${t.name} · ${t.count||0} รายการ`;
     const canX=who&&(t.link||(!d.central&&t.count>0));
     const x=canX?`<button class="tagx" type="button" data-unlink="${esc(t.name)}" aria-label="เอา ${esc(t.name)} ออกจากไฟล์นี้">✕</button>`:'';
     return `<span class="tag tagbtn${t.link?' taglink':''}" role="button" tabindex="0" data-chip="${esc(t.name)}" title="${esc(tip)}">${esc(label)}${x}</span>`}).join('');
@@ -1104,7 +1105,7 @@ function centralListHTML(){
       ${docTopics(d).length?`<div class="tags">${chipHTML(d,docTopics(d))}${nc&&isReviewerMe()?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${ex?'ข้อสอบ':'บัตรความรู้'} (${nc})${isReviewerMe()?' · ผู้ตรวจแก้ได้':''}`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
-      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button>${nc&&isReviewerMe()?'<button class="ghost" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>${packSrcHTML(d)}</div>`}).join('');
+      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button>${nc&&isReviewerMe()&&!docTopics(d).length?'<button class="ghost" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>${packSrcHTML(d)}</div>`}).join('');
 }
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>{syncCentral();if(typeof syncPull==='function')syncPull().catch(()=>{})};

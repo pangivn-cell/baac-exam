@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600&family=Sarabun:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="css/app.css?v=2026-10-29j">
+<link rel="stylesheet" href="css/app.css?v=2026-10-31a">
 </head><body>
 
 <header class="mtop" id="mtop"><button class="mbtn" id="mmenu" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="side"><span class="ic" aria-hidden="true">☰</span>เมนู</button><span class="mtitle" id="mtitle">ระบบซ้อมสอบ</span><button class="mav out" id="mav" type="button">เข้าสู่ระบบ</button></header>
@@ -47,8 +47,8 @@
 <input type="file" id="kbfile" hidden multiple accept=".pdf,.docx,.txt,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html">
 <script>
 /* เว็บจริงถูกแคชไว้ในเบราว์เซอร์ได้ · ต้องเปลี่ยน BUILD ทุกครั้งที่อัปเดตเว็บ (ใช้ sh bump.sh <เวอร์ชัน>) */
-const BUILD='2026-10-29j';window.APP_VERSION=BUILD;
-const APP_VER='2.1';window.APP_VER=APP_VER;   /* เวอร์ชันที่ผู้ใช้เห็น (เปลี่ยนพร้อม BUILD ด้วย sh bump.sh <build> <appver>) */
+const BUILD='2026-10-31a';window.APP_VERSION=BUILD;
+const APP_VER='2.2';window.APP_VER=APP_VER;   /* เวอร์ชันที่ผู้ใช้เห็น (เปลี่ยนพร้อม BUILD ด้วย sh bump.sh <build> <appver>) */
 /* ไม่รีเฟรชหน้าเองอีกต่อไป: หน้าเว็บที่เปิดอยู่มีข้อสอบ/ไฟล์ที่กำลังทำค้างได้ ถ้าเจอเวอร์ชันใหม่จะขึ้นแถบให้กดรีเฟรชเอง */
 (function(){
   if(!/github\.io$/.test(location.hostname))return;
@@ -75,16 +75,17 @@ const APP_VER='2.1';window.APP_VER=APP_VER;   /* เวอร์ชันที�
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)check(false)});
 })();
 </script>
-<script src="js/core.js?v=2026-10-29j"></script>
-<script src="js/generators.js?v=2026-10-29j"></script>
-<script src="js/ai.js?v=2026-10-29j"></script>
-<script src="js/practice.js?v=2026-10-29j"></script>
-<script src="js/questions.js?v=2026-10-29j"></script>
-<script src="js/kb.js?v=2026-10-29j"></script>
-<script src="js/cloud.js?v=2026-10-29j"></script>
-<script src="js/qpool.js?v=2026-10-29j"></script>
-<script src="js/sources.js?v=2026-10-29j"></script>
-<script src="js/sync.js?v=2026-10-29j"></script>
-<script src="js/visuals.js?v=2026-10-29j"></script>
-<script src="js/views.js?v=2026-10-29j"></script>
+<script src="js/core.js?v=2026-10-31a"></script>
+<script src="js/generators.js?v=2026-10-31a"></script>
+<script src="js/ai.js?v=2026-10-31a"></script>
+<script src="js/practice.js?v=2026-10-31a"></script>
+<script src="js/bank-thkas.js?v=2026-10-31a"></script>
+<script src="js/questions.js?v=2026-10-31a"></script>
+<script src="js/kb.js?v=2026-10-31a"></script>
+<script src="js/cloud.js?v=2026-10-31a"></script>
+<script src="js/qpool.js?v=2026-10-31a"></script>
+<script src="js/sources.js?v=2026-10-31a"></script>
+<script src="js/sync.js?v=2026-10-31a"></script>
+<script src="js/visuals.js?v=2026-10-31a"></script>
+<script src="js/views.js?v=2026-10-31a"></script>
 </body></html>

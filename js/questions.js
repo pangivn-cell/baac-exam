@@ -132,7 +132,8 @@ const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>hasFig(id)&&!ju
 const docSubsOf=id=>{const d=DOCS.find(x=>x.id===id);return (d&&Array.isArray(d.subs))?d.subs:[]};
 const inSubj=(c,name)=>c.topic===name||docSubsOf(c.docId).includes(name);
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
-const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));return CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length)};
+const BUILTIN_CARDS=(typeof BUILTIN_BANK!=='undefined'?BUILTIN_BANK:[]).map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]}}));
+const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
 function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){

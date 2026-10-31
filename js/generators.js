@@ -673,4 +673,4 @@ function genSpatial(level,n){
   const order=shuffle(Object.keys(SPA_GEN));let i=0;
   return many(()=>{const k=order[i++%order.length];for(let g=0;g<30;g++){const q=SPA_GEN[k](level);if(q)return q}return null},n);
 }
-const LOCAL={series:(l,n)=>many(()=>genSeries1(l),n),math:(l,n)=>many(()=>genMath1(l),n),logic:(l,n)=>many(()=>genLogic1(l),n),spatial:genSpatial,dir:(l,n)=>genDir(l,n),data:(l,n)=>genData(l,n)};
+const LOCAL={series:(l,n)=>many(()=>genSeries1(l),n),math:(l,n)=>many(()=>genMath1(l),n),addseq:(l,n)=>many(()=>{const pool=(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[]).filter(q=>q.level===l);if(!pool.length)return null;const q=rnd(pool);return{kind:'mc',stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:(q.steps||[]).map(t=>[t,''])};},n),logic:(l,n)=>many(()=>genLogic1(l),n),spatial:genSpatial,dir:(l,n)=>genDir(l,n),data:(l,n)=>genData(l,n)};

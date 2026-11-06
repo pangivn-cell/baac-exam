@@ -353,7 +353,7 @@ nav.subjects{gap:14px}
 .kconf .kc{background:var(--sheet)}
 .cetx{width:100%;box-sizing:border-box;font:15px/1.6 var(--f-body);padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
 .mtop,.mback{display:none}
-@media (max-width:760px){
+@media (max-width:1024px){
   .mtop{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:30;background:var(--rail);border-bottom:1px solid var(--line);
     padding:8px max(12px,env(safe-area-inset-right,0px)) 8px max(12px,env(safe-area-inset-left,0px));padding-top:max(8px,env(safe-area-inset-top,0px))}
   .mbtn{display:flex;align-items:center;gap:6px;font:600 15px var(--f-body);padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sheet);color:var(--ink);cursor:pointer}
@@ -381,7 +381,7 @@ nav.subjects{gap:14px}
 /* เลขเวอร์ชัน: เห็นในเมนูซ้าย (คอม) และมุมล่างขวา (มือถือ) */
 .ver{margin:12px 0 4px;text-align:center;font-size:12px;color:var(--ink-2);opacity:.7;letter-spacing:.02em}
 .vbadge{display:none}
-@media (max-width:760px){.vbadge{display:block;position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:25;font-size:11px;color:var(--ink-2);opacity:.55;pointer-events:none}}
+@media (max-width:1024px){.vbadge{display:block;position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:25;font-size:11px;color:var(--ink-2);opacity:.55;pointer-events:none}}
 /* แถบแจ้งเวอร์ชันใหม่: ไม่รีเฟรชหน้าเอง ให้ผู้ใช้กดเอง (กันข้อสอบ/ไฟล์ที่ทำค้างหาย) */
 .buildnote{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 24px);box-sizing:border-box;padding:10px 14px;border-radius:14px;background:var(--ink);color:var(--sheet);font:600 14px var(--f-body);box-shadow:0 10px 30px rgba(0,0,0,.28)}
 .buildnote button{font:600 14px var(--f-body);border-radius:10px;padding:7px 12px;cursor:pointer;border:1px solid transparent}
@@ -503,7 +503,7 @@ body.exam-on .aifab,body.exam-on .aipanel{display:none}
 .fsbar .fsgap{flex:1}
 body.side-off .app{grid-template-columns:minmax(0,1fr)}
 body.side-off .side{display:none}
-@media (max-width:760px){.sidetog{display:none}}
+@media (max-width:1024px){.sidetog{display:none}}
 
 /* ---------- หน้าแรก ---------- */
 .hhero{display:flex;flex-wrap:wrap;gap:16px 24px;align-items:center;justify-content:space-between;border-radius:18px;padding:20px 22px;

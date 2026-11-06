@@ -389,7 +389,7 @@ function autoShare(d){
 function flushShares(){if(!ME)return;for(const d of DOCS)if(!d.central&&d.stage==='ready'&&!d.noShare&&!d.shareErr&&!d.subId)autoShare(d)}
 
 /* ---------- เมนูบนมือถือ: ปุ่ม ☰ เปิดแถบเมนูจากด้านซ้าย เลือกแล้วปิดเอง ---------- */
-const isPhone=()=>matchMedia('(max-width:760px)').matches;
+const isPhone=()=>matchMedia('(max-width:1024px)').matches;
 function setMenu(open){
   document.body.classList.toggle('menu-open',open);
   const b=document.getElementById('mmenu');if(b)b.setAttribute('aria-expanded',open);
@@ -411,7 +411,7 @@ function renderMav(){
 }
 new MutationObserver(renderMav).observe(document.getElementById('acct'),{childList:true});renderMav();
 new MutationObserver(()=>{const on=document.querySelector('.app').classList.contains('exam');document.body.classList.toggle('exam-on',on);if(on)setMenu(false)}).observe(document.querySelector('.app'),{attributes:true,attributeFilter:['class']});
-matchMedia('(max-width:760px)').addEventListener('change',e=>{if(!e.matches)setMenu(false)});
+matchMedia('(max-width:1024px)').addEventListener('change',e=>{if(!e.matches)setMenu(false)});
 document.querySelectorAll('#views button,#views2 button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
 document.getElementById('count').onchange=e=>{P.count=+e.target.value;save();if(VIEW==='practice'&&R&&!R.picks.some(x=>x!=null)&&R.status!=='loading')start(true);else toast(`ชุดถัดไปจะมี ${P.count} ข้อ`)};

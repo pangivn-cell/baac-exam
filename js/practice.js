@@ -182,11 +182,11 @@ function wireAsk(id,q,pick){
         const res=await verifyDispute(q,pick,text,{signal,onStep:t=>{m.text=t;paint()}});
         m.sources=res.sources;
         if(res.verdict==='correct')m.text=`ตรวจแล้ว เฉลยถูก: ${q.choices[q.answer]}\n${res.reason}`;
-        else if(res.verdict==='unsure')m.text=`ตรวจ 2 รอบแล้วผลไม่ตรงกัน ยังสรุปไม่ได้ว่าเฉลยผิด จึงยังไม่แก้\n${res.reason}${typeof cloudCardOf==='function'&&cloudCardOf(q)?'\nถ้ามั่นใจ กด "รายงานเฉลยผิด" ให้ผู้ตรวจดูอีกครั้ง':''}`;
+        else if(res.verdict==='unsure')m.text=`ตรวจ 3 รอบแล้วผลยังไม่ตรงกัน ยังสรุปไม่ได้ว่าเฉลยผิด จึงยังไม่แก้\n${res.reason}${typeof cloudCardOf==='function'&&cloudCardOf(q)?'\nถ้ามั่นใจ กด "รายงานเฉลยผิด" ให้ผู้ตรวจดูอีกครั้ง':''}`;
         else if(computedQ(q))m.text=`ผลตรวจบอกว่า${res.verdict==='bad_question'?'โจทย์มีปัญหา':'เฉลยอาจผิด'}: ${res.reason}\nข้อนี้ระบบคำนวณเฉลยด้วยโปรแกรม จึงไม่แก้อัตโนมัติ แจ้งผู้พัฒนาผ่านเมนูติดต่อผู้พัฒนาได้`;
         else{
           const shared=await applyCorrection(q,res);const p=res.prop;
-          m.text=`ตรวจ 2 รอบตรงกัน: ${res.verdict==='bad_question'?'โจทย์/ตัวเลือกเดิมมีปัญหา แก้โจทย์แล้ว':'เฉลยเดิมผิด'}\nคำตอบที่ถูก: ${p.choices[p.answer]}\n${res.reason}\n${shared?'แก้ในระบบแล้ว ทุกคนจะได้ข้อที่แก้แล้ว':(typeof ME!=='undefined'&&ME)?'แก้ในเครื่องนี้แล้ว แต่ส่งให้ทุกคนไม่สำเร็จ (ฐานข้อมูลยังไม่เปิดสิทธิ์ส่วนนี้)':'แก้ในเครื่องนี้แล้ว (เข้าสู่ระบบเพื่อแก้ให้ทุกคน)'}`;
+          m.text=`${res.tie?'ตรวจ 3 รอบ ผลส่วนใหญ่ (2 ใน 3) ตรงกัน':'ตรวจ 2 รอบตรงกัน'}: ${res.verdict==='bad_question'?'โจทย์/ตัวเลือกเดิมมีปัญหา แก้โจทย์แล้ว':'เฉลยเดิมผิด'}\nคำตอบที่ถูก: ${p.choices[p.answer]}\n${res.reason}\n${shared?'แก้ในระบบแล้ว ทุกคนจะได้ข้อที่แก้แล้ว':(typeof ME!=='undefined'&&ME)?'แก้ในเครื่องนี้แล้ว แต่ส่งให้ทุกคนไม่สำเร็จ (ฐานข้อมูลยังไม่เปิดสิทธิ์ส่วนนี้)':'แก้ในเครื่องนี้แล้ว (เข้าสู่ระบบเพื่อแก้ให้ทุกคน)'}`;
           st.rules=rulesFor(q,pick);
           setTimeout(()=>{if(typeof render==='function'&&R&&R.items&&R.items.includes(q))render()},50);
         }

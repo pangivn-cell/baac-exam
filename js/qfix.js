@@ -72,7 +72,28 @@ ${q.srcText?`\nเนื้อหาจากเอกสารต้นทา�
 ตอบเป็น JSON เท่านั้น: {"answer":0,"reason":"สั้นๆ"}`,{signal});
   const a2=r2&&Number.isInteger(+r2.answer)&&+r2.answer>=0&&+r2.answer<order.length?order[+r2.answer]:-1;
   out.agree=a2===prop.answer;
-  if(!out.agree)out.verdict='unsure';
+  if(out.agree)return out;
+  /* รอบ 3 ตัดสินชี้ขาด: 2 รอบแรกไม่ตรงกัน → ให้เทียบเหตุผลของทั้งสองฝั่งกับเอกสาร/หลักฐาน
+     ถ้ารอบ 3 เลือกข้อที่รอบ 1 เสนอ (2 ใน 3 เสียงตรงกัน) แก้เลย ไม่ต้องรอผู้ตรวจ */
+  step('ผล 2 รอบไม่ตรงกัน กำลังตรวจรอบที่ 3 เพื่อชี้ขาด...');
+  const L=j=>j>=0&&j<prop.choices.length?`${j}) ${prop.choices[j]}`:'ไม่มีข้อถูก/ถูกหลายข้อ';
+  const oldA=v==='wrong_key'?q.answer:-2;
+  const r3=await aiJSON(`คุณเป็นผู้ชี้ขาดข้อพิพาทเรื่องเฉลยข้อสอบ ตัดสินอย่างเป็นกลางจากเนื้อหาและหลักฐาน
+โจทย์: ${prop.stem}
+ตัวเลือก:
+${prop.choices.map((t,j)=>`${j}) ${t}`).join('\n')}
+${oldA>=0?`เฉลยเดิมในระบบ: ${L(oldA)}\n`:''}ฝ่าย A เสนอว่าข้อที่ถูกคือ ${L(prop.answer)} เหตุผล: ${out.reason}
+ฝ่าย B (แก้ใหม่โดยไม่ดูเฉลย) ได้ ${L(a2)} เหตุผล: ${String(r2&&r2.reason||'-')}
+ผู้ทำข้อสอบแย้งว่า: ${claim}
+${q.srcText?`\nเนื้อหาจากเอกสารต้นทาง:\n${q.srcText.slice(0,3000)}\n`:''}${evidence?`\nข้อมูลจากเว็บ:\n${evidence}\n`:''}
+ตรวจเหตุผลของแต่ละฝ่ายทีละประเด็น แล้วเลือกเลขตัวเลือกที่ถูกที่สุดตามระเบียบ/เนื้อหาจริง
+confidence "high" เมื่อเหตุผลหรือหลักฐานยืนยันได้ชัด
+ตอบเป็น JSON เท่านั้น: {"answer":0,"reason":"สั้นๆ 1–3 ประโยค","confidence":"high"}`,{signal});
+  const a3=r3&&Number.isInteger(+r3.answer)?+r3.answer:-1;
+  out.reason3=String(r3&&r3.reason||'');
+  if(a3===prop.answer&&String(r3&&r3.confidence||'')!=='low'){out.agree=true;out.tie=true;out.reason=`${out.reason}\nรอบชี้ขาด: ${out.reason3}`;return out}
+  if(a3===oldA){out.verdict='correct';out.reason=`ตรวจ 3 รอบ ส่วนใหญ่ยืนยันเฉลยเดิม: ${out.reason3}`;return out}
+  out.verdict='unsure';out.reason=`รอบ 1 เสนอ ${L(prop.answer)}: ${out.reason}\nรอบ 2 ได้ ${L(a2)}: ${String(r2&&r2.reason||'-')}\nรอบ 3 ได้ ${L(a3)}: ${out.reason3}`;
   return out;
 }
 

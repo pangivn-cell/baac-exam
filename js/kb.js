@@ -612,6 +612,9 @@ async function processDoc(doc){
     if(doc.stage==='ocr'){if(canVision('proc'))await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
     if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone&&!doc.fill){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
+    if(doc.kind==='exam'&&(doc.stage==='embed'||doc.stage==='conflict')&&CARDS.some(c=>c.docId===doc.id&&needKey(c))){
+      try{await solveNoKey(doc)}catch(e){if(e&&e.code==='cancelled')throw e;doc.needSolve=true;doc.solveAt=Date.now();doc.warn=`รอ AI คลาวด์ทำเฉลยข้อที่เอกสารไม่มีเฉลย (${errCopy(e&&e.code,'ทำเฉลย')}) ระบบจะลองใหม่เอง`}
+    }
     /* ดัชนีความหมาย/เทียบเนื้อหาขัดกัน เป็นส่วนเสริม: โควตาหรือเครดิตหมดตรงนี้ไม่ให้ไฟล์ค้าง ข้ามไปพร้อมใช้ (ค้นด้วยคำแทน) */
     const extra=async(fn,what)=>{try{await fn()}catch(e){if(e&&e.code==='cancelled')throw e;doc.warn=`ข้าม${what} (${errCopy(e&&e.code,what)}) · ไฟล์ใช้งานได้ตามปกติ`}};
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await extra(()=>embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb)),'การทำดัชนีค้นหา')}doc.stage='conflict';await saveDoc(doc)}
@@ -753,14 +756,14 @@ async function digestDoc(doc){
   doc.fill=false;
 }
 /* exam files: pull every multiple-choice question out as-is (answer key may sit elsewhere in the file, so it rides along) */
-function extractPrompt(doc,win,figs,keyText,fill){
+function extractPrompt(doc,win,figs,keyText,fill,noSolve){
   return `เอกสาร "${doc.name}" เป็นข้อสอบหรือตัวอย่างโจทย์ ดึงข้อสอบปรนัยทุกข้อในเนื้อหาด้านล่างออกมาตามต้นฉบับ เพื่อเก็บเป็นคลังข้อสอบ
 กติกา:
 ${VIZ_RULE}
 - 1 รายการ = 1 ข้อ stem คือโจทย์ตามต้นฉบับ แก้ได้เฉพาะคำที่อ่านเพี้ยนจากไฟล์ ถ้าโจทย์ต้องอ่านข้อความหรือตารางร่วม ให้ใส่ข้อความนั้นใน stem ด้วย
 - choices คือตัวเลือกตามลำดับเดิม ไม่ต้องใส่ ก ข ค ง หรือ 1 2 3 4 นำหน้า ถ้าตัวเลือกเป็นรูปที่อยู่ในภาพ ให้ใส่ป้ายตามที่เห็นในรูป เช่น "ก" "ข" "ค" "ง"
 - answer คือลำดับตัวเลือกที่ถูก เริ่มจาก 0 ถ้าเอกสารมีเฉลย (ในช่วงนี้หรือในส่วนเฉลยที่แนบ) ให้ใช้เฉลยนั้น และ answerSource เป็น "เอกสาร"
-  ถ้าไม่มีเฉลย ให้แก้โจทย์เองอย่างรอบคอบทีละขั้น แล้ว answerSource เป็น "AI" ถ้าไม่แน่ใจจริงๆ ให้ answer เป็น -1
+  ${noSolve?'ถ้าเอกสารไม่มีเฉลยของข้อนั้น ให้ answer เป็น -1 และ answerSource เป็น "" ห้ามแก้โจทย์หรือเดาคำตอบเอง (ระบบจะให้ AI อีกตัวทำเฉลยภายหลัง)':'ถ้าไม่มีเฉลย ให้แก้โจทย์เองอย่างรอบคอบทีละขั้น แล้ว answerSource เป็น "AI" ถ้าไม่แน่ใจจริงๆ ให้ answer เป็น -1'}
 - explanation คือเหตุผล 1–3 ขั้น ถ้าเอกสารมีคำอธิบายให้ใช้ของเอกสาร
 - topic เลือกจาก: ${topicsOf(doc.group).join(', ')} หรือ อื่นๆ
 - page คือเลขในป้าย [${doc.unit} ...] ของข้อนั้น
@@ -776,18 +779,61 @@ ${win.map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n\n')}
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"no":"1","topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"answerSource":"เอกสาร","explanation":["เหตุผล"],"figs":[],"page":${win[0].n}}]}`;
 }
+/* ---------- เฉลยข้อที่เอกสารไม่มีเฉลย ด้วย AI คลาวด์ (ตัวหลัก ไม่ใช่ AI ในเครื่อง) ----------
+   เป้าหมาย: ข้อที่ยังไม่มีเฉลย และข้อที่ AI ในเครื่องเดาเฉลยไว้ (byLocal + ไม่ได้มาจากเอกสาร)
+   ทำทีละ 8 ข้อ ข้อที่มีรูปส่งทีละข้อพร้อมรูป · ข้อที่ AI ไม่มั่นใจคงไว้ไม่มีเฉลย (ไม่ถูกใช้ออกข้อสอบ)
+   โควตา/เครดิตหมด → doc.needSolve ระบบลองใหม่เองใน autoRetry */
+const needKey=c=>c.type==='q'&&c.q&&(c.q.answer<0||(c.byLocal&&c.ansSrc!=='doc'));
+async function solveNoKey(doc){
+  const p=activeAI();if(!p){doc.needSolve=CARDS.some(c=>c.docId===doc.id&&needKey(c));return 0}
+  const todo=CARDS.filter(c=>c.docId===doc.id&&needKey(c));if(!todo.length){doc.needSolve=false;return 0}
+  const pageText=c=>{const pg=(doc.pages||[]).find(x=>x.n===+c.page);return pg&&pg.text?pg.text.slice(0,1800):''};
+  const groups=[];let cur=[];for(const c of todo){if((c.figs||[]).length&&canVision()){groups.push([c]);continue}cur.push(c);if(cur.length>=8){groups.push(cur);cur=[]}}if(cur.length)groups.push(cur);
+  let done=0;
+  for(const [gi,g] of groups.entries()){
+    if(doc.deleted)throw{code:'cancelled'};
+    setProg(doc,`AI คลาวด์ (${AINAME[p]||p}) กำลังทำเฉลยข้อที่เอกสารไม่มีเฉลย ${Math.min(done+g.length,todo.length)} จาก ${todo.length} ข้อ`);
+    const ctx=[...new Set(g.map(pageText).filter(Boolean))].join('\n---\n').slice(0,5000);
+    const text=`แก้ข้อสอบปรนัยต่อไปนี้ทีละข้ออย่างรอบคอบ คิดทีละขั้นก่อนตอบ แล้วเลือกตัวเลือกที่ถูกที่สุด
+${ctx?`เนื้อหาจากหน้าเอกสารที่โจทย์อยู่ (ใช้ประกอบ เช่น บทอ่าน ตาราง):\n${ctx}\n`:''}
+${g.map((c,i)=>`ข้อ ${i}: ${c.q.stem}\n${c.q.choices.map((t,j)=>`  ${j}) ${t}`).join('\n')}`).join('\n\n')}
+กติกา:
+- answer คือเลขตัวเลือกที่ถูก (เริ่มจาก 0) ถ้าโจทย์ไม่ครบ อ่านไม่ออก ไม่มีตัวเลือกที่ถูก หรือไม่มั่นใจ ให้ answer เป็น -1 ห้ามเดา
+- steps คือเหตุผล 1–3 ขั้น สั้น ภาษาไทย
+ตอบเป็น JSON เท่านั้น: {"answers":[{"i":0,"answer":0,"steps":["เหตุผล"]}]}`;
+    let r=null;
+    if(g.length===1&&(g[0].figs||[]).length&&canVision()){const imgs=[];for(const id of g[0].figs){const im=await figForAI(id);if(im)imgs.push(im)}r=imgs.length?await aiVisionJSON(text,imgs):await aiJSON(text)}
+    else r=await aiJSON(text);
+    const changed=[];
+    for(const a of (r&&Array.isArray(r.answers)?r.answers:[])){
+      const c=g[+a.i];if(!c)continue;const ans=+a.answer;
+      if(Number.isInteger(ans)&&ans>=0&&ans<c.q.choices.length){
+        const steps=(Array.isArray(a.steps)?a.steps:[a.steps]).filter(Boolean).map(String).slice(0,4);
+        c.q={...c.q,answer:ans,steps};c.ansSrc='AI';c.byLocal=false;c.solvedBy=p;c.editedAt=Date.now();
+        c.fact=`${c.q.stem}\nตัวเลือก: ${c.q.choices.join(' | ')}\nตอบ: ${c.q.choices[ans]}`;changed.push(c);
+      }else if(c.byLocal&&c.q.answer>=0){c.q={...c.q,answer:-1,steps:[]};c.ansSrc='';c.byLocal=false;changed.push(c)}   /* เดาไว้แต่คลาวด์ไม่มั่นใจ: ไม่ใช้ */
+    }
+    if(changed.length){await saveCards(changed);done+=changed.filter(c=>c.q.answer>=0).length}
+    if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
+  }
+  doc.needSolve=false;   /* ข้อที่คลาวด์ไม่มั่นใจคงไว้ไม่มีเฉลย ไม่วนถามซ้ำ */
+  return done;
+}
 async function extractDoc(doc){
   if(!doc.digDone)doc.win=winOf(doc,true);
   const W=docWindows(doc,winOf(doc,true));
   const keyText=doc.pages.filter(p=>/เฉลย|answer\s*key|คำตอบที่ถูก/i.test(p.text)).map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n').slice(0,3500);
+  /* AI ในเครื่องดึงโจทย์ได้ แต่แก้โจทย์เองยังผิดบ่อย: ใช้เฉลยเฉพาะที่เอกสารให้มา ข้อที่ไม่มีเฉลยให้ AI คลาวด์ทำ (solveNoKey) */
+  const local=aiRoute('proc').p==='local';
   const toQs=(r,win,sent)=>{const pages=win.map(p=>p.n);
     return (r&&Array.isArray(r.questions)?r.questions:[]).filter(q=>q&&typeof q.stem==='string'&&q.stem.trim()&&Array.isArray(q.choices)&&q.choices.length>=2).map(q=>{
       const figs=(Array.isArray(q.figs)?q.figs:[]).map(String).filter(id=>sent.includes(id)),choices=q.choices.slice(0,6).map(String);
-      const ans=Number.isInteger(+q.answer)&&+q.answer>=0&&+q.answer<choices.length?+q.answer:-1;
+      const fromDoc=String(q.answerSource||'').includes('เอกสาร');
+      const ans=(!local||fromDoc)&&Number.isInteger(+q.answer)&&+q.answer>=0&&+q.answer<choices.length?+q.answer:-1;
       const steps=(Array.isArray(q.explanation)?q.explanation:[q.explanation]).filter(Boolean).map(String);
       return{id:newId(),docId:doc.id,type:'q',no:String(q.no||''),title:q.stem.trim().slice(0,90),topic:doc.topic||(topicsOf(doc.group).includes(q.topic)?q.topic:'อื่นๆ'),kind:'ข้อสอบ',
         fact:`${q.stem.trim()}\nตัวเลือก: ${choices.join(' | ')}${ans>=0?`\nตอบ: ${choices[ans]}`:''}`,page:pages.includes(+q.page)?+q.page:pages[0],imp:2,at:Date.now(),st:{},
-        figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps,viz:cleanViz(q.viz)}}})};
+        figs,ansSrc:ans<0?'':fromDoc?'doc':'AI',byLocal:local,q:{stem:q.stem.trim(),choices,answer:ans,steps:ans<0?[]:steps,viz:cleanViz(q.viz)}}})};
   const keepNew=async arr=>{
     const seen=new Set(CARDS.filter(c=>c.type==='q'&&c.q).map(c=>qKey(c.q))),keep=[];
     for(const c of arr){const k=qKey(c.q);if(seen.has(k))continue;seen.add(k);keep.push(c)}
@@ -801,12 +847,12 @@ async function extractDoc(doc){
       setProg(doc,`AI กำลังดึงข้อสอบออกจากไฟล์ ช่วงที่ ${i+1} จาก ${W.length}`);
       const figIds=canVision('proc')?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okQFig).slice(0,12):[];
       const images=[],sent=[];for(const id of figIds){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
-      for(const {win,r} of await aiWin(W[i],w=>{const prompt=extractPrompt(doc,w,sent,keyText);return images.length?aiVisionJSON(prompt,images,PROC):aiJSON(prompt,PROC)}))await keepNew(toQs(r,win,sent));
+      for(const {win,r} of await aiWin(W[i],w=>{const prompt=extractPrompt(doc,w,sent,keyText,false,local);return images.length?aiVisionJSON(prompt,images,PROC):aiJSON(prompt,PROC)}))await keepNew(toQs(r,win,sent));
     }
     const gap=uncovered(doc,W[i],true);
     if(gap.length){
       setProg(doc,`AI กำลังเก็บตกหน้าที่ยังดึงข้อสอบไม่ได้ ช่วงที่ ${i+1} จาก ${W.length}`);
-      for(const {win,r} of await aiWin(gap,w=>aiJSON(extractPrompt(doc,w,[],keyText,true),PROC)))await keepNew(toQs(r,win,[]));
+      for(const {win,r} of await aiWin(gap,w=>aiJSON(extractPrompt(doc,w,[],keyText,true,local),PROC)))await keepNew(toQs(r,win,[]));
     }
     doc.digDone=i+1;await saveDoc(doc);
     if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
@@ -1360,6 +1406,13 @@ async function autoRetry(){
       if(noRetry(d.errCode))continue;
       if(!d.nextTry){retryLater(d,d.errCode);await saveDoc(d);continue}
       if(now>=d.nextTry){d.nextTry=0;await saveDoc(d);queueDoc(d.id)}
+    }
+    for(const d of mine){
+      if(d.stage!=='ready'||busy(d)||!d.needSolve||!activeAI()||now-(+d.solveAt||0)<30*60000)continue;
+      d.solveAt=now;
+      try{const n=await solveNoKey(d);d.warn='';await saveDoc(d);if(n&&d.subStatus==='approved'&&ME&&!d.noShare)submitDoc(d,{auto:true})}
+      catch(e){d.warn=`รอ AI คลาวด์ทำเฉลยข้อที่เอกสารไม่มีเฉลย (${errCopy(e&&e.code,'ทำเฉลย')}) ระบบจะลองใหม่เอง`;await saveDoc(d)}
+      finally{d.prog=''}
     }
     if(!ME)return;
     for(const d of mine){

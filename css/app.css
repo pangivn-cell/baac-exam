@@ -563,3 +563,11 @@ body.side-off .side{display:none}
 .lkchip:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
 .lkchip input{margin:0;accent-color:var(--accent)}
 #dlg .lbl{margin:10px 0 0;font-weight:600}
+
+/* ---------- สร้างโจทย์ ---------- */
+.qgtop{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:var(--paper)}
+.qgrow{display:grid;grid-template-columns:minmax(0,1.4fr) auto minmax(80px,1fr) auto;gap:12px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--sheet)}
+.qgn{display:flex;flex-direction:column;min-width:0}
+.qgc{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink-2);white-space:nowrap}.qgc b{color:var(--ink);font-size:15px}
+.qgbar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.qgbar i{display:block;height:100%;background:var(--unk)}.qgbar i.ok{background:var(--ok)}
+@media (max-width:700px){.qgrow{grid-template-columns:minmax(0,1fr) auto}.qgbar{grid-column:1/-1}.qgrow>button,.qgrow>span:last-child{grid-column:1/-1;justify-self:start}}

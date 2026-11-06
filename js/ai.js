@@ -231,7 +231,8 @@ async function aiText(input,{signal,onText}={}){
   throw err;
 }
 async function aiJSON(input,{signal,onText,task}={}){
-  const {p,model}=aiRoute(task);if(!p)throw{code:'no_ai'};
+  /* signal.route: งานเบื้องหลัง (เติมโจทย์) ระบุ AI เอง ไม่กระทบงานอื่นที่ทำพร้อมกัน */
+  const {p,model}=(signal&&signal.route)||aiRoute(task);if(!p)throw{code:'no_ai'};
   if(p==='claude')return SAMPLE.json(input,{cache:false,signal,onText});
   const t=await keyCall(p,input,true,signal,model);if(onText)onText({text:t});return looseJSON(t);
 }

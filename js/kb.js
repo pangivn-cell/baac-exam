@@ -457,7 +457,7 @@ async function searchCards(q,k=4){
   return act.map(c=>({c,s:countHits((c.title+' '+c.fact).toLowerCase(),words)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,k).map(x=>x.c);
 }
 async function aiVisionJSON(text,images,{signal,task}={}){
-  let {p,model}=aiRoute(task);if(!visionOK(p)){p=activeAI();model=''}if(!visionOK(p))throw{code:'no_vision'};
+  let {p,model}=(signal&&signal.route)||aiRoute(task);if(!visionOK(p)){p=activeAI();model=''}if(!visionOK(p))throw{code:'no_vision'};
   return looseJSON(await keyCall(p,[{role:'user',content:{text,images}}],true,signal,model));
 }
 

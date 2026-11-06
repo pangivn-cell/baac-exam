@@ -275,6 +275,53 @@ function docWindows(doc,max=12000){
 const DIG_WIN=4500,EXAM_WIN=4000;
 const winOf=(doc,exam)=>doc.win||(doc.digDone?(exam?9000:10000):(exam?EXAM_WIN:DIG_WIN));
 const PROC={task:'proc'};
+const EXAMQ=d=>d.kind==='exam';
+/* ---------- ตรวจความครบของไฟล์ที่ย่อยเสร็จแล้ว ----------
+   หน้าที่มีเนื้อหา (ตามเกณฑ์เดียวกับรอบเก็บตก) แต่ไม่มีบัตร/ข้อสอบจากไฟล์นั้นเลย = หน้าที่หาย
+   เครื่องประมวลผลหลัก (AI ในเครื่อง ไม่เสียเครดิต) ตรวจเองเมื่อคิวว่าง ทีละไฟล์ เจอหน้าที่หายสั่งย่อยใหม่ทั้งชุด (doc.audit)
+   ไฟล์ละไม่เกิน 2 รอบ ยังขาดอยู่ = เตือนเลขหน้าไว้ (มักเป็นหน้าภาพล้วนที่ไม่มีข้อความ) */
+const AUDIT_MAX=2;
+function coverage(d){
+  if(!d||!(d.pages||[]).length)return null;
+  const ex=EXAMQ(d),miss=new Set();let need=0;
+  for(const w of docWindows(d,winOf(d,ex)))for(const p of uncovered(d,w,ex))miss.add(p.n);
+  const has=new Set(CARDS.filter(c=>c.docId===d.id).map(c=>+c.page));
+  for(const p of d.pages)if(p.text&&p.text.replace(/\s/g,'').length>=60)need++;
+  /* หน้าภาพที่ยังไม่ได้อ่าน: ข้อความเพี้ยน/มีรูป แต่ยังไม่ผ่านการอ่านภาพ และยังไม่มีบัตร (ต้องมีไฟล์ PDF ให้เปิดภาพ) */
+  const done=new Set(d.ocrDone||[]),img=d.type==='pdf'?[...new Set([...(d.bad||[]),...(d.figPages||[])])].filter(n=>!done.has(n)&&!has.has(n)).sort((a,b)=>a-b):[];
+  return{miss:[...miss].sort((a,b)=>a-b),img,need,ok:Math.max(0,need-miss.size),has:has.size};
+}
+let AUDIT_BUSY=false;
+async function auditTick(){
+  if(AUDIT_BUSY||!localUp()||PROC_ID||PROCQ.length)return;
+  AUDIT_BUSY=true;
+  try{for(let k=0;k<10&&!PROC_ID&&!PROCQ.length;k++){   /* ไฟล์ที่ครบอยู่แล้วตรวจเร็ว: ตรวจต่อได้หลายไฟล์ต่อรอบ */
+  const now=Date.now();
+  const d=DOCS.find(x=>!x.central&&docMine(x)&&x.stage==='ready'&&!x.deleted&&(+x.auditAt||0)<(+x.doneAt||+x.at||0)+1&&(x.redoN||0)<=AUDIT_MAX&&(+x.cardCount>0||CARDS.some(c=>c.docId===x.id)));
+  if(!d)break;
+    if(!(d.pages||[]).length&&+d.pagesParts>0&&typeof ensureDocPages==='function')await ensureDocPages(d);
+    const cv=coverage(d);d.auditAt=now;
+    if(!cv){await saveDoc(d);continue}
+    d.miss=cv.miss.length+cv.img.length;
+    if(!d.miss){d.missPages=[];await saveDoc(d);continue}
+    /* หน้าภาพ หรือ AI ในเครื่องย่อยใหม่แล้วยังขาด → ส่งต่อให้ AI คลาวด์ทันที (อ่านภาพ + ย่อยเฉพาะหน้าที่ขาด) */
+    if((cv.img.length||(d.redoN||0)>=1)&&!d.cloudTried&&activeAI()){
+      d.cloudTried=true;d.cloudFill=true;d.missPages=[...cv.img,...cv.miss].slice(0,40);
+      const img=new Set(cv.img);d.ocrDone=(d.ocrDone||[]).filter(n=>!img.has(n));d.bad=[...new Set([...(d.bad||[]),...cv.img])];
+      Object.assign(d,{fill:true,audit:false,digDone:0,win:0,stage:cv.img.length?'ocr':'digest',err:'',reprocess:true});
+      await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);
+      toast(`"${d.name.slice(0,40)}" ${cv.img.length?`มีหน้าภาพ ${cv.img.length} หน้า`:''}${cv.img.length&&cv.miss.length?' และ':''}${cv.miss.length?`ยังขาด ${cv.miss.length} หน้า`:''} · ส่งต่อให้ AI คลาวด์ (${AINAME[activeAI()]}) ทำ`);
+      queueDoc(d.id);break;
+    }
+    if((d.redoN||0)>=AUDIT_MAX||d.cloudTried){d.missPages=cv.miss.slice(0,40);d.warn=`ตรวจแล้วยังมี ${cv.miss.length} หน้าที่ย่อยไม่ได้ (เช่น หน้า ${cv.miss.slice(0,8).join(', ')}) มักเป็นหน้าที่มีแต่ภาพ ลองกด "ให้ AI อ่านทุกหน้าใหม่"`;await saveDoc(d);continue}
+    d.redoN=(d.redoN||0)+1;d.missPages=cv.miss.slice(0,40);
+    Object.assign(d,{audit:true,fill:false,digDone:0,win:0,stage:'digest',err:'',reprocess:true});
+    await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);
+    toast(`ตรวจพบ "${d.name.slice(0,40)}" ย่อยไม่ครบ ${cv.miss.length} หน้า · ย่อยใหม่ทั้งชุดด้วย AI ในเครื่อง (รอบที่ ${d.redoN})`);
+    queueDoc(d.id);break;
+  }}catch(e){console.warn('audit',e)}
+  finally{AUDIT_BUSY=false;if(VIEW==='kb')kbSoon()}
+}
 /* AI ตอบขาด (ยาวเกิน) หรือ JSON เสีย: แบ่งช่วงครึ่งหนึ่งแล้วทำใหม่ทีละครึ่ง แทนที่จะทิ้งทั้งช่วง */
 function splitWin(win){
   if(win.length>1){const h=Math.ceil(win.length/2);return[win.slice(0,h),win.slice(h)]}
@@ -586,7 +633,9 @@ async function dropIfEmpty(d){
   await delLocalDoc(d.id);syncDocSubjects();
   console.warn('ลบไฟล์ว่างออกจากรายการ',d.name);return true;
 }
+var PROC_CLOUD=false;
 async function processDoc(doc){
+  PROC_CLOUD=!!doc.cloudFill;
   if(await dropIfEmpty(doc)){renderKB();toast(`ลบ "${doc.name}" ออกจากรายการแล้ว (ไฟล์ว่าง ไม่มีข้อมูลให้ประมวลผล)`);return}
   doc.err='';
   const mode=procMode(doc);doc.forceHere=false;
@@ -630,7 +679,7 @@ async function processDoc(doc){
     const extra=async(fn,what)=>{try{await fn()}catch(e){if(e&&e.code==='cancelled')throw e;doc.warn=`ข้าม${what} (${errCopy(e&&e.code,what)}) · ไฟล์ใช้งานได้ตามปกติ`}};
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await extra(()=>embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb)),'การทำดัชนีค้นหา')}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await extra(()=>findConflicts(doc),'การเทียบเนื้อหาขัดกัน')}doc.stage='ready';await saveDoc(doc)}
-    doc.tries=0;doc.nextTry=0;doc.errCode='';doc.errLocal=false;
+    doc.tries=0;doc.nextTry=0;doc.errCode='';doc.errLocal=false;doc.doneAt=Date.now();doc.cloudFill=false;
     const added=CARDS.filter(c=>c.docId===doc.id).length-cards0;
     if(added>0&&doc.subStatus==='approved'&&!doc.noShare&&ME&&typeof submitDoc==='function')setTimeout(()=>submitDoc(doc,{auto:true}),80);
     if(doc.newSubj)setTimeout(()=>addSubjectFromDoc(doc),20);
@@ -642,6 +691,7 @@ async function processDoc(doc){
     doc.err=code==='drive'?((e&&e.why)||'ดึงไฟล์จาก Google Drive ไม่ได้')+' · กด ประมวลผลต่อ เพื่อลองใหม่':code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+(e&&e.model?` [${AINAME[e.prov]||e.prov} · โมเดล ${e.model}]`:'')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)'+(mode==='own'&&hostKnown()?' · หรือรอเครื่องประมวลผลหลัก (AI ในเครื่อง) ทำต่อให้เมื่อเปิดเครื่อง':'');
     await saveDoc(doc);
   }finally{
+    PROC_CLOUD=false;
     if(leaseTimer)clearInterval(leaseTimer);
     dropBuf(doc.id);doc.prog='';renderKB();renderSide();
     if(typeof syncPushDoc==='function')(async()=>{try{await syncPushDoc(doc,{force:false})}catch(e){}await syncRelease(doc)})();
@@ -742,6 +792,8 @@ async function digestDoc(doc){
   };
   for(let i=doc.digDone||0;i<W.length;i++){
     if(doc.deleted)throw{code:'cancelled'};   /* ผู้ใช้ลบไฟล์ระหว่างประมวลผล */
+    /* รอบตรวจความครบ: ย่อยใหม่ทั้งชุด แต่ช่วงที่ครบทุกหน้าแล้วข้ามไป (ไม่สร้างบัตรซ้ำ) */
+    if(doc.audit&&!uncovered(doc,W[i],EXAMQ(doc)).length){doc.digDone=i+1;continue}
     /* doc.fill = เก็บตกไฟล์ที่ย่อยเสร็จแล้ว: ไม่ย่อยซ้ำ ทำเฉพาะหน้าที่ยังไม่มีบัตร */
     if(!doc.fill){
       setProg(doc,`AI กำลังย่อยความรู้ ช่วงที่ ${i+1} จาก ${W.length}`);
@@ -764,7 +816,7 @@ async function digestDoc(doc){
     doc.digDone=i+1;await saveDoc(doc);
     if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
-  doc.fill=false;
+  doc.fill=false;doc.audit=false;
 }
 /* exam files: pull every multiple-choice question out as-is (answer key may sit elsewhere in the file, so it rides along) */
 function extractPrompt(doc,win,figs,keyText,fill,noSolve){
@@ -855,6 +907,8 @@ async function extractDoc(doc){
   };
   for(let i=doc.digDone||0;i<W.length;i++){
     if(doc.deleted)throw{code:'cancelled'};   /* ผู้ใช้ลบไฟล์ระหว่างประมวลผล */
+    /* รอบตรวจความครบ: ย่อยใหม่ทั้งชุด แต่ช่วงที่ครบทุกหน้าแล้วข้ามไป (ไม่สร้างบัตรซ้ำ) */
+    if(doc.audit&&!uncovered(doc,W[i],EXAMQ(doc)).length){doc.digDone=i+1;continue}
     if(!doc.fill){
       setProg(doc,`AI กำลังดึงข้อสอบออกจากไฟล์ ช่วงที่ ${i+1} จาก ${W.length}`);
       const figIds=canVision('proc')?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okQFig).slice(0,12):[];
@@ -869,7 +923,7 @@ async function extractDoc(doc){
     doc.digDone=i+1;await saveDoc(doc);
     if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
-  doc.fill=false;
+  doc.fill=false;doc.audit=false;
 }
 async function findConflicts(doc){
   const mine=CARDS.filter(c=>c.docId===doc.id&&c.emb&&c.type!=='q'),others=CARDS.filter(c=>c.docId!==doc.id&&c.emb&&c.type!=='q');
@@ -1148,6 +1202,7 @@ function renderKB(){
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
       ${d.stage==='ready'&&!busy&&!nc&&!d.dupOf&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
       ${tp.length?`<div class="tags">${chipHTML(d,tp)}${nc&&(isReviewerMe()||docMine(d))?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
+      ${d.stage==='ready'&&d.auditAt?(d.miss?(d.redoN>AUDIT_MAX-1&&d.warn?'':`<p class="src">🔎 ตรวจความครบ: ขาด ${d.miss} หน้า${(d.redoN||0)<AUDIT_MAX?' · ระบบจะย่อยใหม่เองเมื่อคิวว่าง (ต้องเปิด AI ในเครื่อง)':''}</p>`):'<p class="src">🔎 ตรวจความครบแล้ว: ทุกหน้าที่มีเนื้อหามีบัตร/ข้อสอบครบ ✓</p>'):''}
       ${d.warn?`<p class="kwarn">${esc(d.warn)}</p>`:''}
       ${d.dupOf?`<p class="src">ซ้ำกับ "${esc((DOCS.find(x=>x.id===d.dupOf)||{}).name||'เอกสารเดิม')}" · ไม่ประมวลผลซ้ำ</p>`:''}
       ${d.dupSkipped?`<p class="src">ข้ามบัตร/ข้อสอบซ้ำ ${d.dupSkipped} รายการ</p>`:''}
@@ -1409,6 +1464,7 @@ async function autoRetry(){
     const now=Date.now(),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
     let dropped=0;for(const d of DOCS.filter(x=>!x.central&&docMine(x)&&!busy(x)))if(await dropIfEmpty(d))dropped++;
     if(dropped){renderSide();toast(`ลบไฟล์ว่าง ${dropped} ไฟล์ออกจากรายการ (ไม่มีข้อมูลให้ประมวลผล)`)}
+    setTimeout(auditTick,3000);   /* คิวว่าง + AI ในเครื่องพร้อม: ตรวจความครบไฟล์ถัดไป */
     const mine=DOCS.filter(d=>!d.central&&docMine(d));
     for(const d of mine){
       if(busy(d)||d.stage==='ready'||(!activeAI()&&!localUp()&&!hostKnown()))continue;

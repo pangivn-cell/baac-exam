@@ -60,7 +60,8 @@ const KEY_PROVS=['gemini','openai','anthropic','meta','custom'];
 const provReady=p=>p==='custom'?!!(AIP.custom.url&&AIP.custom.model):!!(AIP[p]&&AIP[p].key);
 /* ผู้ให้บริการ+โมเดลที่ใช้กับงานนั้น: task 'proc' (ประมวลผลไฟล์) ใช้ตัวที่ตั้งแยกไว้ถ้าตั้งไว้ ไม่งั้นใช้ตัวหลัก */
 function aiRoute(task){
-  if(task==='proc'&&localUp())return{p:'local',model:LLMHOST.model};
+  /* PROC_CLOUD: ไฟล์ที่ส่งต่อให้คลาวด์ (หน้าภาพ / AI ในเครื่องย่อยไม่ได้) ใช้ AI ตัวหลักแม้เครื่องนี้มี AI ในเครื่อง */
+  if(task==='proc'&&localUp()&&!(typeof PROC_CLOUD!=='undefined'&&PROC_CLOUD))return{p:'local',model:LLMHOST.model};
   if(task==='proc'&&!inViewer){const q=AIP.proc||{};
     if(q.provider&&q.provider!=='same'&&provReady(q.provider))return{p:q.provider,model:q.model||(q.provider==='custom'?AIP.custom.model:AIP[q.provider].model)};
     const p=activeAI();if(p&&q.model&&p!=='claude')return{p,model:q.model};}

@@ -11,15 +11,15 @@ function periodKeys(d=new Date()){
   const ys=new Date(Date.UTC(t.getUTCFullYear(),0,1)),wk=Math.ceil(((t-ys)/864e5+1)/7);
   return{all:'all',week:`w${t.getUTCFullYear()}-${String(wk).padStart(2,'0')}`,month:`m${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
 }
-/* ทำชุดผ่าน = 1 คะแนน ส่งขึ้นอันดับ (rank2) ครั้งละไม่เกิน 5 */
-function awardPass(){P.pass=(P.pass||0)+1;P.unsyncedPass=(P.unsyncedPass||0)+1;save();renderAcct();flushPoints()}
+/* ทำชุดผ่าน = 1 คะแนน (ได้เต็มติดกันมีโบนัส ดู finish) ส่งขึ้นอันดับ (rank2) ครั้งละไม่เกิน 5 */
+function awardPass(pts=1){P.pass=(P.pass||0)+pts;P.unsyncedPass=(P.unsyncedPass||0)+pts;P.unsyncedRounds=(P.unsyncedRounds||0)+1;save();renderAcct();flushPoints()}
 async function flushPoints(){
   if(!ME||!(P.unsyncedPass>0)||flushPoints.busy)return;flushPoints.busy=true;
   try{const f=await fb(),K=periodKeys();
-    while(P.unsyncedPass>0){const chunk=Math.min(5,P.unsyncedPass);
+    while(P.unsyncedPass>0){const chunk=Math.min(5,P.unsyncedPass),rounds=Math.min(chunk,P.unsyncedRounds==null?chunk:P.unsyncedRounds);
       for(const per of [K.all,K.week,K.month])
-        await f.fs.setDoc(fsDoc('rank2',per,'u',ME.uid),{name:ME.name,pass:f.fs.increment(chunk),rounds:f.fs.increment(chunk),lvl:myLevel(),updatedAt:f.fs.serverTimestamp()},{merge:true});
-      P.unsyncedPass-=chunk;save();}
+        await f.fs.setDoc(fsDoc('rank2',per,'u',ME.uid),{name:ME.name,pass:f.fs.increment(chunk),rounds:f.fs.increment(rounds),lvl:myLevel(),updatedAt:f.fs.serverTimestamp()},{merge:true});
+      P.unsyncedPass-=chunk;if(P.unsyncedRounds!=null)P.unsyncedRounds=Math.max(0,P.unsyncedRounds-rounds);save();}
   }catch(e){console.warn('rank',e&&e.code||e)}finally{flushPoints.busy=false}
 }
 async function loadMyPoints(){

@@ -287,8 +287,11 @@ function finish(){
   const before=myLevel(),passed=pct>=PASS_PCT;
   const wrong=R.items.filter((q,j)=>R.picks[j]!==q.answer).map(q=>qLabel(q).replace(/\s+/g,' ').slice(0,90));
   P.weak[R.subject]=[...(P.weak[R.subject]||[]),...wrong].slice(-5);if(!wrong.length)P.weak[R.subject]=[];
-  if(passed)awardPass();
-  save();Object.assign(R,{status:'done',score,pct,passed,before,after:myLevel()});recordCards(R.items,R.picks);logQs(R.items,R.picks);
+  /* โบนัสทำเต็มติดกัน: เต็ม 100% ครั้งที่ 1 = +2, ติดกัน 2 ครั้ง = +4, 3 ครั้ง = +6 ... ไม่เต็มเมื่อไรเริ่มนับใหม่ (ชุดต้องมีอย่างน้อย 5 ข้อ) */
+  const perfect=n>=5&&score===n;P.streak=perfect?(P.streak||0)+1:0;
+  const pts=perfect?2*P.streak:passed?1:0;
+  if(pts)awardPass(pts);
+  save();Object.assign(R,{status:'done',score,pct,passed,before,after:myLevel(),pts,streak:P.streak});recordCards(R.items,R.picks);logQs(R.items,R.picks);
   const sn=(SUBJ.find(s=>s.id===R.subject)||subj()).name,t0=R.t0||Date.now();
   addHist({at:t0,kind:'practice',title:`ฝึก · ${sn}`,n,score,pct,used:(Date.now()-t0)/1000,groups:[{name:sn,ok:score,n}],viol:0,auto:''});
   render();
@@ -302,7 +305,7 @@ function verdict(p){
 }
 function renderDone(el){
   const n=R.items.length,v=verdict(R.pct);
-  const li=levelInfo(P.pass),lvTxt=R.passed?(R.after>R.before?`ผ่าน! +1 คะแนน 🎉 ขึ้นเป็นระดับ ${R.after}`:`ผ่าน! +1 คะแนน (รวม ${P.pass}) · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`):`ยังไม่ผ่าน (ต้องได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป จึงได้ 1 คะแนน) · ระดับ ${li.lv} · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`;
+  const li=levelInfo(P.pass),pts=R.pts||1,bonus=R.streak?`🔥 เต็มติดกัน ${R.streak} ครั้ง +${pts} คะแนน (เต็มอีกรอบได้ +${2*(R.streak+1)})`:'',lvTxt=R.passed?(R.after>R.before?`${bonus||`ผ่าน! +${pts} คะแนน`} 🎉 ขึ้นเป็นระดับ ${R.after}`:`${bonus||`ผ่าน! +${pts} คะแนน`} (รวม ${P.pass}) · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`):`ยังไม่ผ่าน (ต้องได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป จึงได้ 1 คะแนน) · ระดับ ${li.lv} · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`;
   el.innerHTML=fx(`<div class="result">
     <div class="sticker ${v.c}" role="img" aria-label="${esc(v.t)}">${v.s}</div>
     <p class="big">${R.score} / ${n}</p>

@@ -372,15 +372,31 @@ const MOCK_N=[20,40,60,80,100],MOCK_MIN=[15,30,45,60,90,120];
 const MOCK_MIX=[['math',.22],['series',.12],['ineq',.15],['logic',.12],['dir',.06],['data',.08],['spatial',.07],['thai',.1],['eng',.08]];
 let SPEC_TOPICS=SPEC.map(x=>x[1]);
 function refreshSpecTopics(){SPEC_TOPICS=SPEC.map(x=>x[1])}
-let MS={cat:'gen',n:40,min:60,custom:60,limit:3,action:'warn'};
+let MS={cat:'gen',n:40,min:60,custom:60,limit:3,action:'warn',pick:{gen:[],spec:[]}};
 try{const s=JSON.parse(localStorage.getItem(MSKEY)||'null');if(s)MS={...MS,...s}}catch(e){}
 const saveMS=()=>{try{localStorage.setItem(MSKEY,JSON.stringify(MS))}catch(e){}};
 try{M=JSON.parse(localStorage.getItem(MKEY)||'null');if(!M||!['run','done'].includes(M.status)||!Array.isArray(M.items))M=null}catch(e){M=null}
 const saveM=()=>{try{if(M)localStorage.setItem(MKEY,JSON.stringify(M));else localStorage.removeItem(MKEY)}catch(e){}};
+/* ---------- รายวิชาในหมวดที่ใช้ออกข้อสอบ (ไม่เลือก = ทุกวิชาในหมวด) ---------- */
+if(!MS.pick||typeof MS.pick!=='object')MS.pick={gen:[],spec:[]};
+const mockSubjs=cat=>SUBJ.filter(x=>x.group===cat&&x.id!=='specall');
+/* วิชานี้ออกข้อสอบได้ไหมตอนนี้ (มีคลังข้อสอบ / มีตัวสร้างโจทย์ในเครื่อง / มี AI) */
+function mockOK(s,useAI){return bankFor(s).length>0||(s.figOnly&&!LOCAL[s.id]?useAI&&canVision()&&figCards().some(c=>inSubj(c,s.name)):useAI||!s.ai)}
+const mockPicked=cat=>{const ids=new Set(mockSubjs(cat).map(x=>x.id));return (MS.pick[cat]||[]).filter(id=>ids.has(id))};
+function pickPlan(n,ids){
+  /* ทุกวิชาที่เลือกอยู่ในสัดส่วนข้อสอบจริง → ใช้สัดส่วนนั้น · มีวิชาอื่นปน → แบ่งเท่ากัน */
+  const w=new Map(MOCK_MIX),real=ids.every(id=>w.has(id));
+  const raw=ids.map(id=>({id,x:real?w.get(id):1}));const tot=raw.reduce((a,r)=>a+r.x,0);
+  raw.forEach(r=>{r.x=n*r.x/tot;r.k=Math.floor(r.x)});
+  let left=n-raw.reduce((a,r)=>a+r.k,0);
+  [...raw].sort((a,b)=>(b.x-b.k)-(a.x-a.k)).forEach(r=>{if(left>0){r.k++;left--}});
+  return raw.filter(r=>r.k>0);
+}
 const mockMins=()=>MS.min==='custom'?Math.max(1,Math.min(300,Math.round(+MS.custom||60))):+MS.min;
 
 function genPlan(n,useAI){
-  const ok=id=>{const s=SUBJ.find(x=>x.id===id);return bankFor(s).length>0||(s.figOnly&&!LOCAL[s.id]?useAI&&canVision()&&figCards().some(c=>inSubj(c,s.name)):useAI||!s.ai)};
+  /* วิชาที่แอดมินซ่อนไว้ (ไม่อยู่ใน SUBJ) ข้ามไป ไม่ให้ทั้งชุดล้ม */
+  const ok=id=>{const s=SUBJ.find(x=>x.id===id);return !!s&&mockOK(s,useAI)};
   const mix=MOCK_MIX.filter(([id])=>ok(id)),tot=mix.reduce((a,[,w])=>a+w,0);
   const raw=mix.map(([id,w])=>({id,x:n*w/tot}));raw.forEach(r=>r.k=Math.floor(r.x));
   let left=n-raw.reduce((a,r)=>a+r.k,0);
@@ -414,7 +430,18 @@ async function buildMock(){
   const prog=k=>{const el=document.getElementById('mgenp');if(el)el.textContent=`ได้แล้ว ${Math.min(k,n)} จาก ${n} ข้อ`};
   try{
     let items=[];
-    if(cat==='gen'){
+    const picked=mockPicked(cat).filter(id=>mockOK(SUBJ.find(x=>x.id===id),useAI));
+    if(picked.length){
+      /* เลือกรายวิชาไว้: ออกข้อสอบเฉพาะวิชาที่เลือก แบ่งจำนวนข้อตามสัดส่วน */
+      for(const p of pickPlan(n,picked)){
+        const s=SUBJ.find(x=>x.id===p.id),base=items.length;
+        const qs=await makeItems(s,cat==='gen'?3:0,p.k,{signal:ctl.signal,onProg:d=>prog(base+d)});
+        items.push(...qs.map(q=>({...q,sub:q.sub||s.id,subName:s.name})));prog(items.length);
+        await new Promise(r=>setTimeout(r,0));
+        if(G&&G.ctl!==ctl)return;
+      }
+      items=shuffle(items);
+    }else if(cat==='gen'){
       for(const p of genPlan(n,useAI)){
         const s=SUBJ.find(x=>x.id===p.id),base=items.length;
         const qs=await makeItems(s,3,p.k,{signal:ctl.signal,onProg:d=>prog(base+d)});
@@ -422,14 +449,14 @@ async function buildMock(){
         await new Promise(r=>setTimeout(r,0));
         if(G&&G.ctl!==ctl)return;
       }
-      if(items.length<n){const s=SUBJ.find(x=>x.id==='math');items.push(...LOCAL.math(3,n-items.length).map(q=>({...q,sub:'math',subName:s.name})))}
+      if(items.length<n){const s=SUBJ.find(x=>x.id==='math');items.push(...LOCAL.math(3,n-items.length).map(q=>({...q,sub:'math',subName:s?s.name:'คณิตศาสตร์ทั่วไป'})))}
     }else{
       items=(await makeItems(SUBJ.find(x=>x.id==='specall'),0,n,{signal:ctl.signal,onProg:prog}))
         .map(q=>({...q,sub:'spec',subName:SPEC_TOPICS.includes(q.topic)?q.topic:'อื่นๆ'}));
     }
     if(!G||G.ctl!==ctl)return;
     if(!items.length)throw{code:'empty'};
-    G={status:'ready',cat,n,items:items.slice(0,n)};
+    G={status:'ready',cat,n,items:items.slice(0,n),subs:picked.map(id=>SUBJ.find(x=>x.id===id).name)};
   }catch(e){
     if(!G||G.ctl!==ctl)return;
     if(e&&e.code==='cancelled'){G=null}else G={status:'error',err:e&&e.code==='empty'?'ได้ข้อสอบที่ใช้ไม่ได้ ลองสร้างใหม่อีกครั้ง':errCopy(e&&e.code,'สร้างข้อสอบ')};
@@ -439,7 +466,7 @@ async function buildMock(){
 let graceUntil=0,tickT=null;
 function beginMock(){
   const mins=mockMins(),now=Date.now();
-  M={status:'run',cat:G.cat,catName:CATS[G.cat],items:G.items,picks:Array(G.items.length).fill(null),i:0,startAt:now,endAt:now+mins*60000,mins,viol:[],warned:[],limit:MS.limit,action:MS.action,away:false};
+  M={status:'run',cat:G.cat,catName:CATS[G.cat]+((G.subs||[]).length?` · ${G.subs.length>2?`${G.subs.slice(0,2).join(', ')} และอีก ${G.subs.length-2} วิชา`:G.subs.join(', ')}`:''),items:G.items,picks:Array(G.items.length).fill(null),i:0,startAt:now,endAt:now+mins*60000,mins,viol:[],warned:[],limit:MS.limit,action:MS.action,away:false};
   G=null;graceUntil=now+1500;saveM();startTick();renderMock();
 }
 function startTick(){clearInterval(tickT);tickT=setInterval(tick,250);tick()}
@@ -521,6 +548,13 @@ function renderMock(){
   }
   renderSetup(el);
 }
+function mockPickHTML(ai){
+  const list=mockSubjs(MS.cat),picked=new Set(mockPicked(MS.cat));
+  return `<div class="field"><span class="fl">รายวิชาที่ใช้ออกข้อสอบ</span>
+    <p class="src" style="margin:0">${picked.size?`เลือกไว้ ${picked.size} วิชา · ออกข้อสอบเฉพาะวิชาที่เลือก`:'ยังไม่ได้เลือก · ออกข้อสอบจากทุกวิชาในหมวดนี้'}</p>
+    <div class="mpick">${list.map(s=>{const ok=mockOK(s,ai);return `<button type="button" class="mchip" data-mpick="${esc(s.id)}" aria-pressed="${picked.has(s.id)}"${ok?'':' disabled title="ต้องตั้งค่า AI หรือยังไม่มีข้อมูลวิชานี้"'}>${picked.has(s.id)?'✓ ':''}${esc(s.name)}</button>`}).join('')}</div>
+    <div class="btnrow" style="justify-content:flex-start;margin:0"><button type="button" class="ghost" id="mpall">เลือกทั้งหมด</button>${picked.size?'<button type="button" class="ghost" id="mpclear">ล้างที่เลือก (ใช้ทุกวิชา)</button>':''}</div></div>`;
+}
 function renderSetup(el){
   const ai=!!activeAI(),opt=(v,t,cur)=>`<option value="${v}"${String(v)===String(cur)?' selected':''}>${t}</option>`;
   const note=MS.cat==='gen'
@@ -529,6 +563,7 @@ function renderSetup(el){
     :`<p class="catnote">${SPEC_TOPICS.join(' · ')}</p><p class="catnote warn">${!ai?'หมวดนี้ต้องใช้ AI สร้างข้อสอบ ตั้งค่า AI ในแถบซ้ายก่อน':activeCards().some(c=>SPEC_TOPICS.includes(c.topic))?`ออกข้อสอบจากบัตรความรู้ ${activeCards().filter(c=>SPEC_TOPICS.includes(c.topic)).length} ใบที่ AI ย่อยจากเอกสารในคลัง เน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด หัวข้อที่ยังไม่มีบัตร AI ใช้หลักการทั่วไป`:DOCS.length?`AI ใช้เอกสาร ${DOCS.length} ไฟล์ในคลังความรู้ประกอบ ข้อที่มาจากเอกสารจะมีอ้างอิงหน้า หัวข้อที่เอกสารไม่ครอบคลุม AI ใช้ความรู้ทั่วไป`:'ยังไม่มีเอกสารในคลังความรู้ AI สร้างจากความรู้ทั่วไป ตัวเลขหรือระเบียบเฉพาะของ ธ.ก.ส. อาจไม่ตรงกับปัจจุบัน อัปโหลดเอกสารได้ที่เมนูคลังความรู้'}</p>`;
   el.innerHTML=`<div class="form">
     <div class="field"><span class="fl" id="mcat-l">วิชา</span><div class="seg" role="group" aria-labelledby="mcat-l"><button data-cat="gen" aria-pressed="${MS.cat==='gen'}">${CATS.gen}</button><button data-cat="spec" aria-pressed="${MS.cat==='spec'}">${CATS.spec}</button></div></div>
+    ${mockPickHTML(ai)}
     ${note}
     <div class="grid2">
       <div class="field"><label for="mn">จำนวนข้อ</label><select id="mn">${MOCK_N.map(v=>opt(v,v+' ข้อ',MS.n)).join('')}</select></div>
@@ -546,6 +581,9 @@ function renderSetup(el){
   </div>`;
   const $=id=>document.getElementById(id);
   el.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{MS.cat=b.dataset.cat;saveMS();renderMock()});
+  el.querySelectorAll('[data-mpick]').forEach(b=>b.onclick=()=>{const id=b.dataset.mpick,l=new Set(MS.pick[MS.cat]||[]);if(l.has(id))l.delete(id);else l.add(id);MS.pick[MS.cat]=[...l];saveMS();renderMock()});
+  const mc=$('mpclear');if(mc)mc.onclick=()=>{MS.pick[MS.cat]=[];saveMS();renderMock()};
+  const ma=$('mpall');if(ma)ma.onclick=()=>{MS.pick[MS.cat]=mockSubjs(MS.cat).filter(s=>mockOK(s,!!activeAI())).map(s=>s.id);saveMS();renderMock()};
   $('mn').onchange=e=>{MS.n=+e.target.value;saveMS()};
   $('mmin').onchange=e=>{const v=e.target.value;MS.min=v==='custom'?'custom':+v;saveMS();$('mcustw').hidden=MS.min!=='custom';if(MS.min==='custom')$('mcust').focus()};
   $('mcust').onchange=e=>{MS.custom=Math.max(1,Math.min(300,Math.round(+e.target.value||60)));e.target.value=MS.custom;saveMS()};

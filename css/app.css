@@ -482,3 +482,8 @@ body.exam-on .aifab,body.exam-on .aipanel{display:none}
 
 .kdoc.kup{border-color:var(--accent);background:var(--accent-soft)}
 .kdanger{color:var(--bad);border-color:var(--bad)}
+
+.mpick{display:flex;flex-wrap:wrap;gap:6px}
+.mchip{font:500 14px var(--f-body);padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer}
+.mchip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.mchip:disabled{opacity:.45;cursor:not-allowed}

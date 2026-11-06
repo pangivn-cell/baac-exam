@@ -360,7 +360,7 @@ function setView(v){
   document.getElementById('pside').classList.toggle('off',v!=='practice');
   document.getElementById('pctl').hidden=v!=='practice';
   if(v!=='mock'){document.getElementById('tbar').hidden=true;document.querySelector('.app').classList.remove('exam')}
-  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='dev')renderDev();else if(v==='rank')renderRank();else if(v==='home')renderHome();else if(v==='welcome')renderWelcome();else renderHist();
+  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='dev')renderDev();else if(v==='video')renderVideo();else if(v==='rank')renderRank();else if(v==='home')renderHome();else if(v==='welcome')renderWelcome();else renderHist();
 }
 const head=(t,d)=>{document.getElementById('title').textContent=t;document.getElementById('desc').textContent=d||''};
 

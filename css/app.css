@@ -407,3 +407,21 @@ nav.subjects{gap:14px}
 .taglink{border:1px dashed var(--accent);background:transparent}
 .tagbtn{cursor:pointer}
 .tagbtn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* ---------- วิดีโอ ---------- */
+.vbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.vbar .tx{flex:1 1 180px;min-width:0}
+.vplay{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--paper)}
+.vframe{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden}
+.vframe iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.vcard{display:flex;flex-direction:column;gap:4px;text-align:left;padding:0 0 8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);cursor:pointer;overflow:hidden;font:inherit}
+.vcard:hover,.vcard.on{border-color:var(--accent)}
+.vcard>.vt,.vcard>.src{padding:0 10px;overflow-wrap:anywhere}
+.vt{font-weight:600;line-height:1.4}
+.vthumb{position:relative;display:block;aspect-ratio:16/9;background:var(--line)}
+.vthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.vsrc{position:absolute;left:6px;top:6px;font-size:11px;padding:1px 6px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff}
+.vpi{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.vprog{height:6px;border-radius:999px;background:var(--line);overflow:hidden}.vprog span{display:block;height:100%;background:var(--accent)}
+.vplay p{margin:0}.vplay .kn{font-size:17px}

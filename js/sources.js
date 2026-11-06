@@ -270,7 +270,8 @@ async function uploadOriginal(name,buf,mime,onProg,sha){
   if(!ME)throw{why:'ต้องเข้าสู่ระบบก่อน'};
   await ensureSrcDirs();
   const ups=SRC.dirs.filter(d=>d.up);if(!ups.length)throw{why:'แอดมินยังไม่ได้ตั้งตัวรับไฟล์ (Apps Script)'};
-  const f=await fb(),tok=await f.auth.currentUser.getIdToken(),size=buf.byteLength,blob=new Blob([buf],{type:mime||'application/pdf'});
+  /* buf เป็น ArrayBuffer หรือ Blob/File ก็ได้ (วิดีโอใหญ่ส่งเป็น File ไม่ต้องโหลดทั้งไฟล์เข้าหน่วยความจำ) */
+  const f=await fb(),tok=await f.auth.currentUser.getIdToken(),isBlob=buf instanceof Blob,size=isBlob?buf.size:buf.byteLength,blob=isBlob?buf:new Blob([buf],{type:mime||'application/pdf'});
   for(const d of ups){
     const q=await upQuota(d);if(!q)continue;
     if(q.free>=0&&q.free<size+UP_MARGIN)continue;              /* เต็มหรือเกือบเต็ม ใช้โฟลเดอร์ถัดไป */

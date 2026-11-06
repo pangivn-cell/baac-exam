@@ -62,12 +62,16 @@ async function deleteDocSubject(sid){
   toast(`${targets===dups?'ลบชุดที่ซ้ำแล้ว':'ลบวิชาแล้ว'}${n?` ${n} ชุด`:''}${hidden?` · ซ่อน ${hidden} ชุด`:''}`);
 }
 const topicsOf=g=>g==='gen'?GEN_TOPICS:SPEC_TOPICS;
-function subjDesc(s){const nb=bankFor(s).length,bt=nb?` · ข้อสอบจริงในคลัง ${nb} ข้อ`:'';return subjDesc0(s)+bt}
+/* ข้อสอบจริง = ข้อที่ดึงจากไฟล์ข้อสอบตามเอกสาร · ข้อที่ทำถูกแล้วไม่ถูกหยิบมาถามซ้ำ จึงแสดงทั้งจำนวนทั้งหมดและที่เหลือ */
+function subjDesc(s){const tot=bankFor(s,true).length,left=bankFor(s).length;
+  const bt=!tot?'':` · ข้อสอบจริงจากไฟล์ ${tot} ข้อ${left===tot?'':left?` · ยังไม่เคยทำถูก ${left} ข้อ`:' · ทำถูกครบทุกข้อแล้ว (AI จะสร้างโจทย์ใหม่จากเนื้อหาแทน)'}`;
+  return subjDesc0(s)+bt}
 function subjDesc0(s){
   if(s.id==='specall'){const n=activeCards().filter(c=>SPEC_TOPICS.includes(c.topic)).length;return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
   if(s.group==='gen'&&!s.doc){const n=activeCards().filter(c=>inSubj(c,s.name)).length;if(n)return `${s.desc} · ${activeAI()?`ผสมโจทย์จากบัตรความรู้ ${n} ใบ`:`มีบัตรความรู้ ${n} ใบ (ตั้งค่า AI เพื่อใช้)`}`}
   if(s.doc){const d=DOCS.find(x=>x.id===s.doc);if(!d)return 'ไม่พบเอกสาร';const n=activeCards().filter(c=>c.docId===d.id).length;
-    return n?`โจทย์สร้างจากบัตรความรู้ ${n} ใบที่ AI ย่อยจาก ${d.name} มีอ้างอิง${d.unit}ทุกข้อ`:`โจทย์สร้างจากเนื้อหา ${d.name} (ยังไม่ได้ย่อยเป็นบัตรความรู้)`}
+    const nq=CARDS.some(c=>c.docId===d.id&&c.type==='q');
+    return n?`โจทย์สร้างจากบัตรความรู้ ${n} ใบที่ AI ย่อยจาก ${d.name} มีอ้างอิง${d.unit}ทุกข้อ`:nq?`ใช้ข้อสอบจริงจาก ${d.name} และให้ AI สร้างโจทย์เพิ่มจากเนื้อหาไฟล์`:`โจทย์สร้างจากเนื้อหา ${d.name} (ยังไม่ได้ย่อยเป็นบัตรความรู้)`}
   if(s.group==='spec'){const n=activeCards().filter(c=>inSubj(c,s.name)).length;
     return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:kbContext([s.name]).text?'อิงเนื้อหาเอกสารในคลังความรู้':'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
   return s.desc;

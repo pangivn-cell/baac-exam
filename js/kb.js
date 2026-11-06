@@ -11,7 +11,8 @@ function syncDocSubjects(){
     /* ไฟล์ที่ยังไม่มีทั้งเนื้อหาและบัตรความรู้ (เช่น เพิ่งอัปโหลดขึ้น Drive) ยังไม่ต้องแสดงเป็นวิชา */
     if(!docMine(d))continue;
     if(!d.central&&(!d.pages||!d.pages.length)&&!CARDS.some(c=>c.docId===d.id))continue;
-    if(!d.show||hid.has(d.id)||seen.has(docKey(d)))continue;seen.add(docKey(d));
+    /* วิชาจากไฟล์ที่ถูกรวมเข้าวิชาอื่นแล้ว (ซ่อนจากเมนูของทุกคนผ่าน config) */
+    if(!d.show||hid.has(d.id)||(SUBJ_CFG.hide||[]).includes('doc_'+d.id)||seen.has(docKey(d)))continue;seen.add(docKey(d));
     SUBJ.push({id:'doc_'+d.id,name:d.label||docBase(d),desc:'',ai:true,group:d.group||'spec',doc:d.id});
   }
 }

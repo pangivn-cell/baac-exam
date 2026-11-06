@@ -646,6 +646,84 @@ async function renameSubject(id,oldName,newName,opt={}){
   for(const d of dch)if(typeof syncPushMeta==='function')syncPushMeta(d);
   if(opt.reload!==false){toast(`เปลี่ยนชื่อวิชาเป็น "${newName}" แล้ว กำลังโหลดใหม่`);setTimeout(()=>location.reload(),900)}
 }
+/* ---------- รวมรายวิชา (ผู้ตรวจ/แอดมิน) ----------
+   วิชาต้นทางทุกวิชาส่งข้อมูลทั้งหมดไปที่วิชาปลายทาง แล้วเอาวิชาต้นทางออกจากเมนูของทุกคน
+   · บัตรความรู้/ข้อสอบที่ตั้งวิชาต้นทาง → เปลี่ยนเป็นวิชาปลายทาง (ในเครื่อง คลังกลาง และงานรออนุมัติ)
+   · ไฟล์ที่เชื่อมต่อทั้งไฟล์กับวิชาต้นทาง → เชื่อมกับวิชาปลายทางแทน
+   · วิชาจากไฟล์ → ทุกส่วนของไฟล์เชื่อมต่อทั้งไฟล์กับวิชาปลายทาง
+   · โจทย์ที่ AI สร้างไว้ในคลังโจทย์กลาง → ย้ายไปอยู่วิชาปลายทาง
+   · alias ชื่อเดิม → ชื่อปลายทาง: เครื่องอื่นแปลงข้อมูลที่ยังใช้ชื่อเดิมให้เองตอนโหลด */
+async function mergeSubjects(targetId,srcIds){
+  if(!isReviewerMe())throw new Error('ต้องเป็นผู้ตรวจหรือแอดมิน');
+  const T=SUBJ.find(s=>s.id===targetId),S=srcIds.map(id=>SUBJ.find(s=>s.id===id)).filter(s=>s&&s.id!==targetId);
+  if(!T||!S.length)return;
+  const f=await fb(),names=new Set(S.map(s=>s.name)),tn=T.name;
+  const cfg={add:(SUBJ_CFG.add||[]).slice(),hide:(SUBJ_CFG.hide||[]).slice(),rename:{...(SUBJ_CFG.rename||{})},alias:{...(SUBJ_CFG.alias||{})}};
+  for(const s of S){
+    for(const k of Object.keys(cfg.alias))if(cfg.alias[k]===s.name)cfg.alias[k]=tn;
+    if(s.name!==tn)cfg.alias[s.name]=tn;
+    cfg.hide.push(s.doc?'doc_'+s.doc:s.id);
+  }
+  cfg.hide=[...new Set(cfg.hide)];
+  /* 1) บัตร/ข้อสอบในเครื่อง */
+  const centralPacks=new Set(),changed=[];
+  for(const c of CARDS)if(names.has(c.topic)){if(String(c.docId).startsWith('c_'))centralPacks.add(c.docId.slice(2));c.topic=tn;changed.push(c)}
+  if(changed.length)await saveCards(changed);
+  /* 2) ไฟล์: topic / วิชาที่เชื่อมทั้งไฟล์ / ไฟล์ของวิชาจากไฟล์ */
+  const fileOf=new Set();for(const s of S)if(s.doc&&typeof subjDocs==='function')for(const d of subjDocs(s))fileOf.add(d.id);
+  const dch=[];
+  for(const d of DOCS){let ch=false;
+    if(names.has(d.topic)){d.topic=tn;ch=true}
+    const subs=(d.subs||[]).map(n=>names.has(n)?tn:n);if(fileOf.has(d.id))subs.push(tn);
+    const uniq=[...new Set(subs)];if(uniq.join('|')!==(d.subs||[]).join('|')){d.subs=uniq;ch=true}
+    if(ch)dch.push(d)}
+  for(const d of dch){await saveDoc(d);
+    if(d.central){try{await f.fs.updateDoc(fsDoc('kb',d.cloudId),{subs:d.subs,updatedAt:f.fs.serverTimestamp()})}catch(e){console.warn('merge subs',e)}}
+    else if(typeof syncPushMeta==='function')syncPushMeta(d)}
+  /* 3) คลังกลาง + งานรออนุมัติ */
+  for(const pid of centralPacks){
+    try{const s=await f.fs.getDoc(fsDoc('kb',pid));if(!s.exists())continue;
+      await f.fs.updateDoc(fsDoc('kb',pid),{cards:(s.data().cards||[]).map(c=>names.has(c.topic)?{...c,topic:tn}:c),updatedAt:f.fs.serverTimestamp()})}catch(e){console.warn('merge kb',pid,e)}}
+  try{const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'subs'),f.fs.where('status','==','pending')));
+    for(const s of snap.docs){const raw=s.data().cards||[];if(!raw.some(c=>names.has(c.topic)))continue;
+      await f.fs.updateDoc(s.ref,{cards:raw.map(c=>names.has(c.topic)?{...c,topic:tn}:c),updatedAt:f.fs.serverTimestamp()})}}catch(e){console.warn('merge subs',e)}
+  /* 4) คลังโจทย์กลาง */
+  try{for(const s of S){const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'qpool'),f.fs.where('sub','==',s.id)));
+    for(const d of snap.docs)await f.fs.updateDoc(d.ref,{sub:T.id,subName:tn})}
+    if(typeof POOL!=='undefined')POOL.cache.clear()}catch(e){console.warn('merge qpool',e)}
+  for(const did of new Set(changed.filter(c=>!String(c.docId).startsWith('c_')).map(c=>c.docId))){const d=DOCS.find(x=>x.id===did);if(d&&typeof syncPushCards==='function')syncPushCards(d,true)}
+  /* 5) เมนู: บันทึกท้ายสุด (alias + ซ่อนวิชาต้นทาง) */
+  if(S.some(s=>s.id===P.subject)){P.subject=T.id;save()}
+  await saveSubjCfg(cfg);
+}
+async function mergeSubjectsDialog(){
+  if(!isReviewerMe()){toast('รวมรายวิชาได้เฉพาะผู้ตรวจหรือแอดมิน','bad');return}
+  const list=SUBJ.filter(s=>s.id!=='specall');
+  const grp=(g,t)=>{const l=list.filter(s=>(s.group||'spec')===g);return l.length?`<optgroup label="${esc(t)}">${l.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</optgroup>`:''};
+  const SL=typeof SPEC_LABEL!=='undefined'?SPEC_LABEL:'ความรู้เฉพาะตำแหน่ง';
+  const amount=s=>{const q=bankFor(s,true).length,k=activeCards().filter(c=>inSubj(c,s.name)||(s.doc&&typeof subjDocIds==='function'&&subjDocIds(s).has(c.docId))).length;return `${q} ข้อ · ${k} บัตร`};
+  const p=modal(`<p class="mt">🔗 รวมรายวิชา</p>
+    <p class="src">ข้อมูลทั้งหมดของวิชาที่ติ๊ก (ข้อสอบ บัตรความรู้ ไฟล์ที่เชื่อมต่อ และโจทย์ในคลังโจทย์กลาง) จะย้ายไปรวมที่วิชาปลายทาง แล้ววิชาที่ติ๊กจะหายจากเมนูของทุกคน</p>
+    <label class="lbl" for="mg-t">1. วิชาปลายทาง (วิชาที่จะเหลืออยู่)</label>
+    <select class="tx" id="mg-t"><option value="">— เลือกวิชา —</option>${grp('gen','ความรู้ความสามารถทั่วไป')}${grp('spec',SL)}</select>
+    <p class="lbl">2. วิชาที่จะรวมเข้าไป</p>
+    <input class="tx" type="search" id="mg-q" placeholder="ค้นหาวิชา" aria-label="ค้นหาวิชา">
+    <div class="lkchips" id="mg-src">${list.map(s=>`<label class="lkchip" data-mgid="${esc(s.id)}"><input type="checkbox" data-mg="${esc(s.id)}"><span>${esc(s.name)} <small class="src">(${amount(s)})</small></span></label>`).join('')}</div>
+    <p class="src" id="mg-sum"></p>`,[{t:'ยกเลิก'},{t:'รวมรายวิชา',cls:'primary'}]);
+  const $=id=>document.getElementById(id);
+  const upd=()=>{const t=$('mg-t').value;document.querySelectorAll('#mg-src .lkchip').forEach(l=>{const me=l.dataset.mgid===t;l.hidden=me||(!!$('mg-q').value.trim()&&!l.textContent.toLowerCase().includes($('mg-q').value.trim().toLowerCase()));if(me)l.querySelector('input').checked=false});
+    const n=[...document.querySelectorAll('#dlg [data-mg]:checked')].map(x=>(SUBJ.find(s=>s.id===x.dataset.mg)||{}).name);
+    $('mg-sum').textContent=t&&n.length?`รวม ${n.join(', ')} → ${(SUBJ.find(s=>s.id===t)||{}).name}`:''};
+  $('mg-t').onchange=upd;$('mg-q').oninput=upd;document.querySelectorAll('#dlg [data-mg]').forEach(x=>x.onchange=upd);
+  if(await p!==1)return;
+  const t=$('mg-t').value,src=[...document.querySelectorAll('#dlg [data-mg]:checked')].map(x=>x.dataset.mg).filter(id=>id!==t);
+  if(!t||!src.length){toast('เลือกวิชาปลายทางและวิชาที่จะรวมก่อน','bad');return}
+  const T=SUBJ.find(s=>s.id===t),names=src.map(id=>(SUBJ.find(s=>s.id===id)||{}).name);
+  if(await modal(`<p class="mt">ยืนยันรวมรายวิชา?</p><p><b>${esc(names.join(', '))}</b> → <b>${esc(T.name)}</b></p><p class="src">ข้อมูลไม่ถูกลบ แต่ย้ายไปอยู่ที่ ${esc(T.name)} และวิชาต้นทางจะหายจากเมนูของทุกคน (เปิดกลับได้ที่ คลังกลาง → รายวิชาที่ซ่อนอยู่ แต่ข้อมูลจะยังอยู่ที่วิชาปลายทาง)</p>`,[{t:'ยกเลิก'},{t:'รวมเลย',cls:'primary'}])!==1)return;
+  toast('กำลังรวมรายวิชา...');
+  try{await mergeSubjects(t,src);toast(`รวม ${names.length} วิชาเข้า “${T.name}” แล้ว`);syncDocSubjects();renderSide();if(typeof QGEN!=='undefined')QGEN.counts=null;if(VIEW==='qgen'&&typeof renderQGen==='function')renderQGen()}
+  catch(e){toast('รวมไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+}
 /* ปุ่มดินสอข้างวิชาในเมนูซ้าย */
 async function renameSideSubject(id){
   const s=SUBJ.find(x=>x.id===id);if(!s)return;

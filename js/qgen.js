@@ -124,7 +124,7 @@ function renderQGen(){
   el.innerHTML=`<div class="qgtop">
       <label class="rad"><input type="checkbox" id="qg-auto" ${QGEN.auto?'checked':''}><span><b>เติมโจทย์อัตโนมัติเมื่อว่าง</b><span class="src">${host?'เครื่องนี้มี AI ในเครื่อง เติมให้ได้':'ทำงานเฉพาะเครื่องที่เปิด AI ในเครื่องไว้ (ตั้งที่ ตั้งค่า AI → AI ในเครื่องนี้)'}</span></span></label>
       <div class="hopt"><label for="qg-min">ขั้นต่ำต่อวิชา</label><input class="tx" type="number" id="qg-min" min="10" max="500" step="10" value="${QGEN.min}" style="width:90px"><span class="src">ข้อ</span>
-        <button class="ghost" id="qg-re">นับใหม่</button></div>
+        <button class="ghost" id="qg-re">นับใหม่</button>${typeof isReviewerMe==='function'&&isReviewerMe()?'<button class="ghost" id="qg-merge">🔗 รวมรายวิชา</button>':''}</div>
       <p class="src">AI ในเครื่อง: ${host?'<b class="okt">พร้อม</b>':'ไม่พร้อม'} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา${QGEN.busy?` · กำลังสร้าง “${esc((SUBJ.find(s=>s.id===QGEN.busy)||{}).name||'')}”`:''}</p>
     </div>
     ${grp('ความรู้ความสามารถทั่วไป',gen)}${grp(typeof SPEC_LABEL!=='undefined'?SPEC_LABEL:'ความรู้เฉพาะตำแหน่ง',spec)}
@@ -132,6 +132,7 @@ function renderQGen(){
   const $=id=>document.getElementById(id);
   $('qg-auto').onchange=e=>{QGEN.auto=e.target.checked;saveQGen();if(QGEN.auto)qgenTick()};
   $('qg-min').onchange=e=>{QGEN.min=Math.max(10,Math.min(500,Math.round(+e.target.value/10)*10||50));saveQGen();renderQGen()};
+  if($('qg-merge'))$('qg-merge').onclick=()=>mergeSubjectsDialog();
   $('qg-re').onclick=async()=>{QGEN.counts=null;POOL.cache.clear();renderQGen()};
   el.querySelectorAll('[data-qgdel]').forEach(b=>b.onclick=async()=>{await deleteSubject(b.dataset.qgdel);QGEN.counts=null;setTimeout(renderQGen,300)});
   el.querySelectorAll('[data-qg]').forEach(b=>b.onclick=async()=>{const s=SUBJ.find(x=>x.id===b.dataset.qg);if(!s)return;

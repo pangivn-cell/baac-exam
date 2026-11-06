@@ -20,7 +20,7 @@ async function poolTake(s,level,k){
   for(const d of shuffle(docs.slice()))for(const raw of d.items||[]){
     let q;try{q=JSON.parse(raw)}catch(e){continue}
     const key=qKey(q),done=(d.used&&d.used[key])||[];
-    if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
+    if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
     out.push(withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null));
   }
   const pick=shuffle(out).slice(0,k);for(const q of pick)POOL.used.add(qKey(q));

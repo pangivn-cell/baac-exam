@@ -98,7 +98,8 @@ function explainHTML(q,pick){
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
   {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=isMC(q)&&q.stem&&(q.card&&CARDS.some(x=>x.id===q.card&&x.type==='q')||q.poolId||q.pool||q.gen==='ai'||q.orig)?qdelRef(q):'';
-   if(rp||dc)h+=`<div class="btnrow" style="justify-content:flex-start">${rp?`<button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button>`:''}${dc?`<button class="ghost" type="button" data-qdel="${dc}">🗑 ลบข้อสอบข้อนี้</button>`:''}</div>`}
+   const sk=q.card&&CARDS.some(x=>x.id===q.card)?q.card:'',on=sk&&SKIPT['c:'+sk];
+   if(rp||dc||sk)h+=`<div class="btnrow" style="justify-content:flex-start">${sk?`<button class="ghost" type="button" data-qskip="${esc(sk)}" aria-pressed="${!!on}">${on?'↩ ยกเลิกการข้ามแนวนี้':'⏭ ข้ามคำถามแนวนี้'}</button>`:''}${rp?`<button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button>`:''}${dc?`<button class="ghost" type="button" data-qdel="${dc}">🗑 ลบข้อสอบข้อนี้</button>`:''}</div>`}
   return h+`</div>`;
 }
 function askHTML(id,q,pick){
@@ -138,6 +139,12 @@ ${q.srcText?`- อธิบายโดยอิงเนื้อหาจา�
 - ถ้าคำถามไม่เกี่ยวกับข้อนี้ ตอบสั้นๆ แล้วชวนกลับมาที่ข้อนี้`;
 }
 /* บทสนทนาแต่ละข้อเก็บไว้นอกหน้า: หน้าถูกวาดใหม่ (ซิงก์ทุก 3 นาที กลับมาที่แท็บ) แล้วบทสนทนาไม่หาย */
+/* ข้ามคำถามแนวนี้: บัตร/ข้อต้นทางแทบไม่ถูกหยิบมาอีก (เหลือเฉพาะเมื่อวิชานั้นไม่มีข้ออื่นแล้ว) หน้าเอกสารเดียวกันถูกหยิบน้อยลงด้วย */
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-qskip]');if(!b)return;e.preventDefault();
+  const c=CARDS.find(x=>x.id===b.dataset.qskip);if(!c)return;const k='c:'+c.id,pk=pageKey(c);
+  if(SKIPT[k]){delete SKIPT[k];if(pk&&!CARDS.some(x=>x!==c&&SKIPT['c:'+x.id]&&pageKey(x)===pk))delete SKIPT[pk];saveSkipT();toast('ยกเลิกการข้ามแล้ว คำถามแนวนี้จะกลับมาตามปกติ')}
+  else{SKIPT[k]=Date.now();if(pk)SKIPT[pk]=Date.now();saveSkipT();toast('ข้ามคำถามแนวนี้แล้ว จะแทบไม่แสดงอีก')}
+  const on=!!SKIPT[k];document.querySelectorAll(`[data-qskip="${CSS.escape(c.id)}"]`).forEach(x=>{x.setAttribute('aria-pressed',on);x.textContent=on?'↩ ยกเลิกการข้ามแนวนี้':'⏭ ข้ามคำถามแนวนี้'})});
 const ASKST=new Map();
 function askState(q,pick){
   const k=(q.origKey||qKey(q))+'|'+pick;let st=ASKST.get(k);

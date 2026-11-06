@@ -72,11 +72,21 @@ function upBy(c){const d=c&&docOf(c);if(!d)return'';return d.central?(d.owner||'
 function cardSrc(c){const d=docOf(c),pg=d&&d.pages.find(p=>p.n===+c.page);
   const figs=(c.figs||[]).map(id=>FIGS.get(id)||PFIG.get(id)).filter(Boolean);
   return `บัตรความรู้: ${c.title}\n${c.fact}${figs.length?`\nรูปประกอบ: ${figs.map(f=>f.desc||'รูปโจทย์').join(' / ')}${c.ansSrc==='AI'?'\n(เฉลยของรูปนี้ AI ดูจากรูปเอง เอกสารไม่มีเฉลย)':''}`:''}${pg&&pg.text?`\n\nเนื้อหาต้นฉบับ (${cardCite(c)}):\n${pg.text.slice(0,2500)}`:c.src?`\n\nเนื้อหาต้นฉบับ (${cardCite(c)}):\n${c.src}`:''}`}
-function cardScore(c){const s=c.st||{},now=Date.now();
-  return (s.w||0)*3-(s.r||0)*1.2+(s.n?0:2.5)+(c.imp||2)*.8+(s.lw&&now-s.lw<3*864e5?2:0)+Math.random()*2.5}
+/* "ข้ามคำถามแนวนี้": จำบัตร/ข้อที่ผู้ใช้ไม่อยากเจอ (ทั้งหน้าเอกสารนั้นลดลงด้วย) เก็บในเครื่องนี้ */
+const SKIPT_KEY='exam-skipt';let SKIPT={};try{SKIPT=JSON.parse(localStorage.getItem(SKIPT_KEY)||'{}')||{}}catch(e){SKIPT={}}
+const saveSkipT=()=>{try{localStorage.setItem(SKIPT_KEY,JSON.stringify(SKIPT))}catch(e){}};
+const pageKey=c=>c&&c.page!=null?'p:'+c.docId+':'+c.page:'';
+const skipped=c=>!!(c&&SKIPT['c:'+c.id]);
+/* คะแนนเลือกบัตร: ข้อที่เคยผิด/ยังไม่เคยเจอ/สำคัญมาก่อน แต่ข้อที่เพิ่งเจอได้คะแนนลด และสุ่มมากขึ้นให้แนวคำถามเปลี่ยนทุกรอบ */
+function cardScore(c){const s=c.st||{},now=Date.now(),seen=s.ls?now-s.ls:Infinity;
+  return Math.min(s.w||0,3)*2-(s.r||0)*1.2+(s.n?0:2.5)+(c.imp||2)*.6+(s.lw&&now-s.lw<3*864e5?1.5:0)
+    -(seen<864e5?3:seen<3*864e5?1.5:0)-(skipped(c)?60:0)-(SKIPT[pageKey(c)]?3:0)+Math.random()*4}
+/* เลือกบัตรถัดไป: กระจายไปหลายหน้า/หลายไฟล์ · หน้าเดียวกับบัตรที่เลือกไปแล้วในรอบนี้ได้คะแนนลด หน้าใกล้กันลดน้อยกว่า */
 function pickCard(pool,used){
   const fresh=pool.filter(c=>!used.has(c.id)),arr=fresh.length?fresh:pool;if(!arr.length)return null;
-  let best=null,bs=-1e9;for(const c of arr){const sc=cardScore(c);if(sc>bs){bs=sc;best=c}}return best;
+  const pages=new Map();if(used.size)for(const c of pool)if(used.has(c.id)&&c.page!=null){const k=c.docId;(pages.get(k)||pages.set(k,[]).get(k)).push(+c.page)}
+  const spread=c=>{const ps=pages.get(c.docId);if(!ps||c.page==null)return 0;let p=0;for(const n of ps){const d=Math.abs(n-c.page);p+=d===0?4:d<=2?1.5:d<=5?.5:0}return p};
+  let best=null,bs=-1e9;for(const c of arr){const sc=cardScore(c)-spread(c);if(sc>bs){bs=sc;best=c}}return best;
 }
 function recordCards(items,picks){
   const ch=[];
@@ -150,7 +160,7 @@ const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};
-const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
+const pickBank=(pool,k)=>{const used=new Set(),out=[];while(out.length<k){const c=pickCard(pool,used);if(!c||used.has(c.id))break;used.add(c.id);out.push(c)}return out};
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
     fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,calc:!!c.calc,topic:c.topic,sub:s.id,subName:s.name},null);

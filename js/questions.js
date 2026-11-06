@@ -264,8 +264,13 @@ function mixQ(q){
   MIXPOS[k]=ans;
   return{...q,choices:order.map(i=>q.choices[i]),answer:ans};
 }
+/* AI บางครั้งคัดลอก "รหัสชุด xxxx" จากพรอมป์ลงในโจทย์ (มีค้างในคลังกลางด้วย) ตัดออกก่อนแสดงทุกครั้ง */
+const SETCODE=/\s*[(（]?\s*(?:รหัสชุด|เลขสุ่ม)\s*[:：]?\s*[a-z0-9]{3,10}\s*[)）]?/gi;
+const noSetCode=t=>typeof t==='string'?t.replace(SETCODE,'').replace(/\s{2,}/g,' ').trim():t;
+function cleanSetCode(q){if(!q||typeof q.stem!=='string'||!SETCODE.test(q.stem+(q.choices||[]).join(' ')))return q;SETCODE.lastIndex=0;
+  return{...q,stem:noSetCode(q.stem),choices:Array.isArray(q.choices)?q.choices.map(noSetCode):q.choices}}
 function mixAll(a){
-  if(!Array.isArray(a))return a;const out=a.map(mixQ);
+  if(!Array.isArray(a))return a;const out=a.map(q=>mixQ(cleanSetCode(q)));
   const ks=Object.keys(MIXPOS);if(ks.length>4000)for(const k of ks.slice(0,ks.length-4000))delete MIXPOS[k];
   try{localStorage.setItem(MIX_KEY,JSON.stringify(MIXPOS))}catch(e){}
   return out;
@@ -351,7 +356,7 @@ function cardPromptText(slots,level,weak,cs,sent){
   const figLine=c=>{const f=(c.figs||[]).filter(id=>sent.includes(id));return f.length?`\nรูปของบัตรนี้: ${f.map(id=>`${id} (ภาพที่แนบลำดับ ${sent.indexOf(id)+1})`).join(', ')}${c.ansSrc==='AI'?' · เอกสารไม่มีเฉลย ต้องดูรูปและคิดคำตอบเองอย่างรอบคอบ':''}`:''};
   return `สร้างข้อสอบปรนัยใหม่ ${slots.length} ข้อ สำหรับเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)
 ${level?`ระดับความยาก ${level}: ${levelTxt(level)}`:'ระดับข้อสอบจริง'}
-รหัสชุด ${Math.random().toString(36).slice(2,8)} (ใช้เพื่อให้โจทย์ไม่ซ้ำกับชุดก่อน)
+เลขสุ่ม ${Math.random().toString(36).slice(2,8)} ใช้แค่ทำให้โจทย์ชุดนี้ต่างจากชุดก่อน ห้ามใส่เลขนี้หรือคำว่ารหัสชุดลงในโจทย์ ตัวเลือก หรือคำอธิบาย
 สร้างตามรายการนี้ตามลำดับ:
 ${slots.map((s,i)=>`ข้อ ${i+1}: หัวข้อ ${s.topic||'-'} · ${s.card?`ใช้บัตร ${s.card.id}`:'ไม่มีบัตร ใช้หลักการมาตรฐานที่เป็นที่ยอมรับทั่วไป ห้ามแต่งตัวเลขหรือข้อเท็จจริงเฉพาะที่ไม่แน่ใจ'}`).join('\n')}
 

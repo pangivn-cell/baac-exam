@@ -484,12 +484,18 @@ async function renderReview(){
       const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('status','==','open')));
       const list=snap.docs.map(s=>({id:s.id,...s.data()})).filter(r=>r.type!=='delete');
       body.innerHTML=list.length?list.map(r=>`<div class="kdoc" data-rp="${r.id}"><p class="src">รายงานโดย ${esc(r.name||'-')}${r.orig?' · ข้อสอบจริงจากคลัง':' · ข้อที่ AI สร้างจากบัตร'}</p>
-        <p style="white-space:pre-wrap"><b>${esc(r.stem)}</b></p><ol class="kq">${(r.choices||[]).map((x,j)=>`<li${j===r.answer?' class="ok"':''}>${esc(x)}${j===r.answer?' (เฉลยเดิม)':''}${x===r.proposed?' ← ผู้รายงานเสนอ':''}</li>`).join('')}</ol>
+        <div style="white-space:pre-wrap"><b>${figText(r.stem,'qfig sm')}</b></div><ol class="kq">${(r.choices||[]).map((x,j)=>`<li${j===r.answer?' class="ok"':''}>${figText(x,'qfig chfig')}${j===r.answer?' (เฉลยเดิม)':''}${x===r.proposed?' ← ผู้รายงานเสนอ':''}</li>`).join('')}</ol>
         <p><b>เหตุผล:</b> ${esc(r.why)}</p><p class="src">บัตรต้นทาง: ${esc(r.cardFact)}</p>
-        <div class="btnrow" style="justify-content:flex-start"><button class="primary" data-fix>แก้บัตร/ข้อสอบต้นทาง</button><button class="ghost" data-close>ปิดรายงาน (เฉลยถูกแล้ว)</button></div></div>`).join('')
+        <div class="btnrow" style="justify-content:flex-start"><button class="primary" data-fix>แก้บัตร/ข้อสอบต้นทาง</button><button class="ghost" data-close>ปิดรายงาน (เฉลยถูกแล้ว)</button><button class="ghost danger" data-rdel>🗑 ลบข้อสอบข้อนี้</button></div></div>`).join('')
         :'<p class="src" style="text-align:center">ไม่มีรายงานค้าง</p>';
       body.querySelectorAll('[data-rp]').forEach(box=>{const r=list.find(x=>x.id===box.dataset.rp);
         box.querySelector('[data-close]').onclick=async()=>{await f.fs.updateDoc(fsDoc('reports',r.id),{status:'dismissed',by:ME.name});renderReview()};
+        /* ลบข้อนี้ออกจากคลังกลางถาวร (เหมือนอนุมัติคำขอลบ) แล้วปิดรายงาน */
+        box.querySelector('[data-rdel]').onclick=async()=>{
+          if(await modal(`<p class="mt">ลบข้อสอบข้อนี้ออกจากคลังกลางถาวร?</p><div style="white-space:pre-wrap">${figText(r.stem,'qfig sm')}</div><p class="src">ทุกเครื่องจะลบตามตอนซิงก์ และโจทย์ที่ AI สร้างจากข้อนี้ในคลังโจทย์กลางจะถูกลบด้วย</p>`,[{t:'ยกเลิก'},{t:'ลบถาวร',cls:'primary'}])!==1)return;
+          box.querySelectorAll('button').forEach(b=>b.disabled=true);
+          try{await approveDelQ(r);toast('ลบข้อนี้ออกจากคลังกลางแล้ว');await syncCentral(true)}catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+          renderReview()};
         box.querySelector('[data-fix]').onclick=async()=>{const c=CARDS.find(x=>x.id===r.cardId);if(!c){toast('ไม่พบบัตรนี้ในเครื่อง ลองซิงก์ก่อน','bad');return}
           const ok=await editCardDialog(c);if(!ok)return;
           try{await editCloudCard(r.packId,c.id,c.type==='q'?{q:c.q,fact:c.fact,title:c.title,ansSrc:c.ansSrc,topic:c.topic}:{fact:c.fact,title:c.title,topic:c.topic});

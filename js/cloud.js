@@ -365,8 +365,32 @@ document.addEventListener('click',e=>{
    ผู้ใช้กดลบ → ข้อนั้นไม่แสดงในเครื่องนี้ทันที + ส่งคำขอ (reports type:'delete') ให้ผู้ตรวจ
    ผู้ตรวจอนุมัติ = ลบข้อนั้นออกจากชุดในคลังกลาง คลังโจทย์กลาง และรูปที่ไม่ได้ใช้แล้ว (ทุกเครื่องลบตามตอนซิงก์)
    ผู้ตรวจยกเลิก = ข้อนั้นกลับมาแสดงในเครื่องของผู้ขอ · ข้อจากไฟล์ของตัวเองที่ยังไม่อยู่คลังกลาง ลบได้ทันที */
-async function requestDelQ(cardId){
-  const c=CARDS.find(x=>x.id===cardId);if(!c||!c.q)return;
+/* ปุ่มลบอยู่ในหน้าที่วาดเป็นข้อความ: เก็บข้อสอบไว้ในตารางแล้วส่งแค่รหัส */
+const QDEL_REF=new Map();let QDEL_N=0;
+function qdelRef(q){const id='d'+(++QDEL_N);QDEL_REF.set(id,q);if(QDEL_REF.size>400)QDEL_REF.delete(QDEL_REF.keys().next().value);return id}
+/* ข้อที่ไม่ได้มาจากไฟล์ข้อสอบ: โจทย์ในคลังโจทย์กลาง (ขอลบผ่านผู้ตรวจ) หรือโจทย์ที่ AI เพิ่งสร้าง (ซ่อนในเครื่องนี้) */
+async function requestDelGenQ(q){
+  const pooled=!!q.poolId;
+  if(pooled&&!ME&&!(await loginDialog()))return;
+  const r=await modal(`<p class="mt">ลบข้อสอบข้อนี้?</p><div style="white-space:pre-wrap">${figText(q.stem,'qfig sm')}</div>
+    <p class="src">${pooled?'ข้อนี้เป็นโจทย์ที่ AI สร้างไว้ในคลังโจทย์กลาง จะไม่แสดงในเครื่องของคุณทันที และส่งให้ผู้ตรวจยืนยัน ถ้าผู้ตรวจอนุมัติ ข้อนี้จะถูกลบออกจากคลังถาวร ถ้าผู้ตรวจยกเลิก ข้อนี้จะกลับมา':'ข้อนี้เป็นโจทย์ที่ AI เพิ่งสร้างและยังไม่ได้เก็บในคลัง จะไม่แสดงในเครื่องนี้อีก'}</p>
+    <label class="lbl" for="qd-w">เหตุผล</label><textarea id="qd-w" rows="2" class="cetx" placeholder="เช่น เฉลยผิด โจทย์ไม่ครบ ไม่มีตัวเลือกที่ถูก"></textarea>`,[{t:'ยกเลิก'},{t:'ลบข้อนี้',cls:'primary'}]);
+  if(r!==1)return;
+  const why=document.getElementById('qd-w').value.trim(),key=qKey(q);
+  QHIDE['k:'+key]={at:Date.now(),rid:''};saveQHide();
+  if(!pooled){toast('ซ่อนข้อนี้แล้ว');return}
+  try{const f=await fb();
+    const ref=await f.fs.addDoc(f.fs.collection(f.db,'reports'),{type:'delete',uid:ME.uid,name:ME.name,poolId:q.poolId,qkey:key,packId:'',cardId:'',
+      stem:String(q.stem||'').slice(0,1500),choices:q.choices,answer:q.answer,why:why.slice(0,1500),status:'open',createdAt:f.fs.serverTimestamp()});
+    QHIDE['k:'+key].rid=ref.id;saveQHide();
+    toast('ซ่อนข้อนี้แล้ว · ส่งให้ผู้ตรวจยืนยันการลบ');
+  }catch(e){toast('ซ่อนข้อนี้ในเครื่องแล้ว แต่ส่งคำขอลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+}
+async function requestDelQ(ref){
+  const q0=QDEL_REF.get(ref);
+  const cardId=q0?q0.card:ref,c=cardId&&CARDS.find(x=>x.id===cardId&&x.type==='q');
+  if(!c){if(q0)return requestDelGenQ(q0);return}
+  if(!c.q)return;
   const central=String(c.docId).startsWith('c_');
   if(central&&!ME&&!(await loginDialog()))return;
   const r=await modal(`<p class="mt">ลบข้อสอบข้อนี้?</p><div style="white-space:pre-wrap">${figText(c.q.stem,'qfig sm')}</div>
@@ -394,12 +418,23 @@ let QHIDE_AT=0;
 async function refreshQHide(){
   if(!ME||!Object.keys(QHIDE).length||Date.now()-QHIDE_AT<10*60000)return;QHIDE_AT=Date.now();
   try{const f=await fb(),snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('uid','==',ME.uid),f.fs.where('type','==','delete')));
-    let back=0;for(const s of snap.docs){const r=s.data();if(r.status==='dismissed'&&QHIDE[r.cardId]){delete QHIDE[r.cardId];back++}}
+    let back=0;for(const s of snap.docs){const r=s.data();if(r.status!=='dismissed')continue;
+      if(r.cardId&&QHIDE[r.cardId]){delete QHIDE[r.cardId];back++}else if(r.qkey&&QHIDE['k:'+r.qkey]){delete QHIDE['k:'+r.qkey];back++}}
     if(back){saveQHide();toast(`ผู้ตรวจยกเลิกการลบ ${back} ข้อ ข้อสอบกลับมาแล้ว`)}
   }catch(e){}
 }
 async function approveDelQ(r){
-  const f=await fb(),s=await f.fs.getDoc(fsDoc('kb',r.packId));
+  const f=await fb();
+  /* โจทย์ในคลังโจทย์กลาง: เอาข้อนั้นออกจากชุด ชุดที่ไม่เหลือข้อลบทั้งชุด */
+  if(r.poolId){
+    const s=await f.fs.getDoc(fsDoc('qpool',r.poolId));
+    if(s.exists()){const items=s.data().items||[],keep=items.filter(raw=>{try{return qKey(JSON.parse(raw))!==r.qkey}catch(e){return true}});
+      if(!keep.length)await f.fs.deleteDoc(fsDoc('qpool',r.poolId));else if(keep.length!==items.length)await f.fs.updateDoc(fsDoc('qpool',r.poolId),{items:keep,n:keep.length})}
+    if(typeof POOL!=='undefined')POOL.cache.clear();
+    await f.fs.updateDoc(fsDoc('reports',r.id),{status:'resolved',by:ME.name,resolvedAt:f.fs.serverTimestamp()});
+    return;
+  }
+  const s=await f.fs.getDoc(fsDoc('kb',r.packId));
   if(s.exists()&&!s.data().deleted){
     const all=s.data().cards||[],left=all.filter(c=>c.id!==r.cardId);
     if(left.length!==all.length){
@@ -464,7 +499,7 @@ async function renderReview(){
     }else if(RV.tab==='dels'){
       const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('status','==','open')));
       const list=snap.docs.map(s=>({id:s.id,...s.data()})).filter(r=>r.type==='delete');
-      const pk=id=>(DOCS.find(d=>d.cloudId===id)||{}).name||id;
+      const pk=id=>id?(DOCS.find(d=>d.cloudId===id)||{}).name||id:'คลังโจทย์กลาง (AI สร้าง)';
       body.innerHTML=list.length?list.map(r=>`<div class="kdoc" data-dq="${r.id}"><p class="src">ขอลบโดย ${esc(r.name||'-')} · ชุด ${esc(pk(r.packId))}</p>
         <div style="white-space:pre-wrap"><b>${figText(r.stem,'qfig sm')}</b></div><ol class="kq">${(r.choices||[]).map((x,j)=>`<li${j===r.answer?' class="ok"':''}>${figText(x,'qfig chfig')}${j===r.answer?' (เฉลย)':''}</li>`).join('')}</ol>
         <p><b>เหตุผล:</b> ${esc(r.why||'-')}</p>

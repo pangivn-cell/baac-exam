@@ -78,7 +78,7 @@ function questionHTML(q){
   if(q.kind==='ineq2'){const L=q.lines;let g=`<div class="given"><span class="k">ถ้า</span>`;L.forEach((l,i)=>{g+=`${i?'<span></span>':''}<span class="eq">${esc(l)}${i<L.length-1?' &nbsp;<span class="k">และ</span>':''}</span>`});g+=`<span class="note">ทุกตัวอักษรมีค่ามากกว่าศูนย์</span></div>`;
     return g+(q.fmt==='tfu'?`<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`:`<div class="ask"><div class="lab">คำถาม</div><div class="st2">${esc(q.text)}</div></div>`)}
   if(q.kind==='ineq')return `${givenHTML(q.ctx)}<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`;
-  return `${q.pool?'<p class="origtag pooltag">♻ โจทย์จากคลังกลาง (ไม่ใช้เครดิต AI)</p>':''}${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig&&!String(q.stem||'').includes(`[รูป ${q.fig}]`)?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${figText(q.stem)}</div>`;
+  return `${q.pool?'<p class="origtag pooltag">♻ โจทย์จากคลังกลาง (ไม่ใช้เครดิต AI)</p>':''}${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${VIEW==='practice'&&isMC(q)&&(q.card&&CARDS.some(x=>x.id===q.card&&x.type==='q')||q.poolId||q.pool||q.gen==='ai'||q.orig)?`<button class="ghost qdeltop" type="button" data-qdel="${qdelRef(q)}" title="ลบข้อสอบข้อนี้">🗑 ลบข้อนี้</button>`:''}${q.fig&&!String(q.stem||'').includes(`[รูป ${q.fig}]`)?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${figText(q.stem)}</div>`;
 }
 function choicesHTML(q,pick,locked){
   const mc=!isTFU(q),pics=mc&&q.chSvg;
@@ -97,8 +97,8 @@ function explainHTML(q,pick){
   if(q.fixed)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
-  {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=q.card&&CARDS.find(x=>x.id===q.card&&x.type==='q');
-   if(rp||dc)h+=`<div class="btnrow" style="justify-content:flex-start">${rp?`<button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button>`:''}${dc?`<button class="ghost" type="button" data-qdel="${esc(q.card)}">🗑 ลบข้อสอบข้อนี้</button>`:''}</div>`}
+  {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=isMC(q)&&q.stem&&(q.card&&CARDS.some(x=>x.id===q.card&&x.type==='q')||q.poolId||q.pool||q.gen==='ai'||q.orig)?qdelRef(q):'';
+   if(rp||dc)h+=`<div class="btnrow" style="justify-content:flex-start">${rp?`<button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button>`:''}${dc?`<button class="ghost" type="button" data-qdel="${dc}">🗑 ลบข้อสอบข้อนี้</button>`:''}</div>`}
   return h+`</div>`;
 }
 function askHTML(id,q,pick){

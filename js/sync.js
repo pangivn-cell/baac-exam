@@ -199,7 +199,7 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
     if(cards&&!SYNC.pushing.has(doc.id)&&PROC_ID!==doc.id&&((doc.cardsParts||0)>0||(doc.delCards||[]).length||(doc.cardsResetAt||0))){
       const snap=await f.fs.getDocs(f.fs.collection(f.db,...base,'cards'));
       const remote=new Map();
-      for(const s of snap.docs.slice().sort((a,b)=>+a.id-+b.id))for(const c of s.data().cards||[])if(c&&c.id)remote.set(c.id,c);
+      for(const s of snap.docs.slice().sort((a,b)=>+a.id-+b.id))for(const c of s.data().cards||[])if(c&&c.id)remote.set(c.id,vizIn(c));
       const have=new Map(CARDS.filter(c=>c.docId===doc.id).map(c=>[c.id,c])),add=[];
       for(const [id,rc] of remote){
         const old=have.get(id);
@@ -266,6 +266,7 @@ function syncMetaOf(doc){
   };
 }
 async function syncPushMeta(doc){
+  if(doc&&doc.deleted)return;
   if(!syncOk()||!doc||doc.central||!syncMine(doc))return;
   if(!doc.ownerUid){doc.ownerUid=ME.uid;try{await saveDoc(doc)}catch(e){}}
   const f=await fb(),key=syncKey(doc);if(!key)return;
@@ -294,7 +295,7 @@ async function syncPushPages(doc,force){
     doc.pagesParts=parts.length;doc.pagesSig=sig;doc.pagesRev=(doc.pagesRev||0)+1;doc.pagesRemote=false;await saveDoc(doc);await syncPushMeta(doc);
   }catch(e){syErr(e)}
 }
-const syncCardOut=c=>{const {emb,em,st,srcText,...rest}=c;return rest};
+const syncCardOut=c=>{const {emb,em,st,srcText,...rest}=c;return fsClean(vizOut(rest))};
 async function syncPushCards(doc,force){
   if(!syncOk()||!doc||doc.central||!syncMine(doc))return;
   if(doc.cardsRemote&&(doc.cardsParts||0)>0)return;
@@ -347,7 +348,7 @@ function syncQueue(doc,flags){
   SYNC_TIMER[k]=setTimeout(()=>{const f=SYNC_FLAGS[k]||{};delete SYNC_FLAGS[k];delete SYNC_TIMER[k];syncPushDoc(doc,f).catch(e=>syErr(e))},1200);
 }
 async function syncPushDoc(doc,flags){
-  if(!syncOk()||!doc||doc.central)return;
+  if(!syncOk()||!doc||doc.central||doc.deleted)return;
   const fl={pages:true,cards:true,figs:true,...(flags||{})};
   if(SYNC.pushing.has(doc.id)){SYNC.dirty.add(doc.id);return}
   SYNC.pushing.add(doc.id);

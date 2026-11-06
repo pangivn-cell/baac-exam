@@ -143,7 +143,7 @@ async function applyPack(id,p){
   const d={id:docId,central:true,cloudId:id,name:p.title+(p.parts>1?` (ส่วนที่ ${p.part})`:''),type:'pack',size:0,at:p.approvedAtMs||Date.now(),unit:p.unit||'หน้า',
     pages:[],chars:0,group:p.group||'spec',show:old?!!old.show:!!p.show,kind:p.kind||'kb',stage:'ready',summ:p.summ||[],sha:p.sha||'',txtSha:p.txtSha||'',owner:p.ownerName||'',srcFile:p.srcFile||'',figPages:[],bad:[],warn:'',err:'',subs:(p.subs||[]).map(topicName)};
   if(old)DOCS.splice(DOCS.indexOf(old),1);DOCS.push(d);await saveDoc(d);
-  const cs=(p.cards||[]).map(c=>({...c,topic:topicName(c.topic),docId,st:st[c.id]||{},at:c.at||Date.now()}));
+  const cs=(p.cards||[]).map(c=>({...vizIn(c),topic:topicName(c.topic),docId,st:st[c.id]||{},at:c.at||Date.now()}));
   CARDS.push(...cs);await saveCards(cs);
 }
 async function syncCentral(force){
@@ -187,7 +187,7 @@ async function figForCloud(id){
 function packCards(d){
   return CARDS.filter(c=>c.docId===d.id).map(c=>{const pg=d.pages.find(p=>p.n===+c.page);
     const o={id:c.id,title:c.title,topic:c.topic,kind:c.kind,fact:c.fact,page:c.page,imp:c.imp||2,figs:c.figs||[],ansSrc:c.ansSrc||'',src:pg&&pg.text?pg.text.slice(0,600):(c.src||'')};
-    if(c.type==='q'){o.type='q';o.no=c.no||'';o.q=c.q}return o});
+    if(c.type==='q'){o.type='q';o.no=c.no||'';o.q=c.q}return fsClean(vizOut(o))});
 }
 async function submitDoc(d,opt={}){
   if(!ME&&(opt.auto||!(await loginDialog())))return;
@@ -213,19 +213,19 @@ async function submitDoc(d,opt={}){
       catch(e){d.srcErr=e&&e.why||'ส่งไฟล์ต้นฉบับขึ้น Drive ไม่สำเร็จ'}}
     step='ข้อมูล';
     /* keep each document under the 1 MB Firestore limit */
-    const parts=[];let cur=[],size=0;for(const c of cards){const s=JSON.stringify(c).length*1.1;if(cur.length&&size+s>800000){parts.push(cur);cur=[];size=0}cur.push(c);size+=s}if(cur.length)parts.push(cur);
+    const parts=[];let cur=[],size=0;for(const c of cards){const s=utf8Len(c)+20;if(cur.length&&size+s>700000){parts.push(cur);cur=[];size=0}cur.push(c);size+=s}if(cur.length)parts.push(cur);
     const ids=[];
     for(const [i,cs] of parts.entries()){
       const pid=i?`${id}_${i+1}`:id;ids.push(pid);
-      await f.fs.setDoc(fsDoc('subs',pid),{title:d.name,sha:d.sha||'',txtSha:d.txtSha||'',kind:d.kind||'kb',group:d.group||'spec',show:!!d.show,unit:d.unit,summ:(d.summ||[]).filter(Boolean).slice(0,20),
-        cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs))],part:i+1,parts:parts.length,srcFile,subs:(d.subs||[]).slice(0,20),ownerUid:ME.uid,ownerName:ME.name,status:'pending',note:'',
+      await f.fs.setDoc(fsDoc('subs',pid),{title:d.name,sha:d.sha||'',txtSha:d.txtSha||'',kind:d.kind||'kb',group:d.group||'spec',show:!!d.show,unit:d.unit||'หน้า',summ:(d.summ||[]).filter(Boolean).slice(0,20),
+        cards:cs,count:cs.length,figIds:[...new Set(cs.flatMap(c=>c.figs||[]))],part:i+1,parts:parts.length,srcFile:srcFile||'',subs:(d.subs||[]).slice(0,20),ownerUid:ME.uid,ownerName:ME.name||'',status:'pending',note:'',
         createdAt:f.fs.serverTimestamp(),updatedAt:f.fs.serverTimestamp()});
     }
     Object.assign(d,{subId:id,subParts:ids,subStatus:'pending',shareWait:false,shareErr:''});await saveDoc(d);step='อนุมัติ';
     if(isReviewerMe()){for(const pid of ids)await approveSub(pid);d.subStatus='approved';await saveDoc(d);await syncCentral()}
     toast(isReviewerMe()?'อนุมัติเข้าคลังกลางแล้ว':'ส่งแล้ว รอผู้ตรวจอนุมัติ');
   }catch(e){const code=String(e&&e.code||e&&e.message||e).slice(0,80);
-    const why=code==='permission-denied'?(step==='อนุมัติ'?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ ชุดนี้จะรอผู้ตรวจ':'ฐานข้อมูลไม่อนุญาต (ลองออกจากระบบแล้วเข้าใหม่)'):code;
+    const why=code==='invalid-argument'?'ข้อมูลบางส่วนอยู่ในรูปแบบที่ฐานข้อมูลไม่รับ (แก้แล้วในเวอร์ชันนี้ กด ลองส่งเข้าคลังกลางอีกครั้ง)':code==='permission-denied'?(step==='อนุมัติ'?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ ชุดนี้จะรอผู้ตรวจ':'ฐานข้อมูลไม่อนุญาต (ลองออกจากระบบแล้วเข้าใหม่)'):code;
     d.shareErr=`ส่ง${step}เข้าคลังกลางไม่สำเร็จ: ${why}`;try{await saveDoc(d)}catch(x){}
     if(!opt.auto)toast(d.shareErr,'bad');else console.warn(d.name,d.shareErr)}
   finally{d.prog='';renderKB()}
@@ -329,6 +329,13 @@ async function editCloudCard(pid,cardId,patch){
   const cards=(s.data().cards||[]).map(c=>c.id===cardId?{...c,...patch}:c);
   await f.fs.updateDoc(fsDoc('kb',pid),{cards,updatedAt:f.fs.serverTimestamp()});
 }
+
+/* Firestore ไม่รับอาร์เรย์ซ้อนอาร์เรย์ (ตาราง viz.rows) → invalid-argument: เก็บ viz เป็นข้อความ JSON แล้วแปลงกลับตอนโหลด */
+const vizOut=c=>c&&c.q&&c.q.viz&&typeof c.q.viz==='object'?{...c,q:{...c.q,viz:JSON.stringify(c.q.viz)}}:c;
+const vizIn=c=>{if(c&&c.q&&typeof c.q.viz==='string'){let v=null;try{v=JSON.parse(c.q.viz)}catch(e){}return{...c,q:{...c.q,viz:v}}}return c};
+/* ค่า undefined ทำให้ Firestore ปฏิเสธทั้งเอกสาร: ล้างด้วย JSON */
+const fsClean=x=>JSON.parse(JSON.stringify(x));
+const utf8Len=x=>{try{return new TextEncoder().encode(JSON.stringify(x)).length}catch(e){return JSON.stringify(x).length*3}};
 
 /* ---------- report a wrong answer (spec 18–19) ---------- */
 const cloudCardOf=q=>{const c=q&&q.card&&CARDS.find(x=>x.id===q.card);return c&&String(c.docId).startsWith('c_')?c:null};

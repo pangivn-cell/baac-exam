@@ -19,6 +19,8 @@ function syncDocSubjects(){
    ชุดในเครื่องนี้ลบได้เสมอ · ชุดในคลังกลางเฉพาะผู้ตรวจ/แอดมินลบได้ (คนอื่นจะซ่อนจากเมนูของตัวเองแทน) */
 async function delLocalDoc(id){
   const gone=DOCS.find(x=>x.id===id);
+  /* ไฟล์ในคิว/กำลังประมวลผล: เอาออกจากคิว และบอกงานที่กำลังทำให้หยุด (processDoc ตรวจ doc.deleted) */
+  const qi=PROCQ.indexOf(id);if(qi>=0)PROCQ.splice(qi,1);if(gone)gone.deleted=true;
   const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);
   try{await kbDelMany('docs',[id]);await kbDelMany('files',[id]);await kbDelMany('cards',ids)}catch(e){}await dropFigs(docFigs(id).map(f=>f.id));
   DOCS=DOCS.filter(x=>x.id!==id);CARDS=CARDS.filter(c=>c.docId!==id);
@@ -497,12 +499,35 @@ function estCalls(d){
   const dig=['ocr','digest'].includes(d.stage)?Math.max(1,docWindows(d,winOf(d,d.kind==='exam')).length-(d.digDone||0)):0;
   return ocr+dig+(d.stage!=='ready'?2:0);
 }
-function queueDoc(id){if(!PROCQ.includes(id)&&PROC_ID!==id)PROCQ.push(id);runQueue()}
+/* first = ผู้ใช้กดเอง: ทำไฟล์นี้เป็นไฟล์ถัดไป */
+function queueDoc(id,first){if(PROC_ID===id)return;const i=PROCQ.indexOf(id);if(first){if(i>=0)PROCQ.splice(i,1);PROCQ.unshift(id)}else if(i<0)PROCQ.push(id);runQueue()}
+/* เปิดเว็บหลายแท็บในเบราว์เซอร์เดียว: ให้แท็บเดียวประมวลผล (ล็อกใน localStorage ต่ออายุทุก 15 วินาที หมดอายุใน 45 วินาที) */
+const TAB_ID=Math.random().toString(36).slice(2,10),PLOCK='exam-proc-lock';
+function procLock(){
+  try{const l=JSON.parse(localStorage.getItem(PLOCK)||'null');
+    if(l&&l.tab!==TAB_ID&&Date.now()-l.at<45000)return false;
+    localStorage.setItem(PLOCK,JSON.stringify({tab:TAB_ID,at:Date.now()}));return true}catch(e){return true}
+}
+const procUnlock=()=>{try{const l=JSON.parse(localStorage.getItem(PLOCK)||'null');if(l&&l.tab===TAB_ID)localStorage.removeItem(PLOCK)}catch(e){}};
+window.addEventListener('pagehide',procUnlock);
+let LOCK_T=null,OTHER_TAB=false;
 async function runQueue(){
   if(PROC_ID)return;
-  while(PROCQ.length){const id=PROCQ.shift(),doc=DOCS.find(d=>d.id===id);if(!doc)continue;PROC_ID=doc.id;try{await processDoc(doc)}finally{PROC_ID=null}}
+  if(!procLock()){OTHER_TAB=true;renderProcBar();setTimeout(runQueue,20000);return}
+  OTHER_TAB=false;clearInterval(LOCK_T);LOCK_T=setInterval(procLock,15000);
+  try{while(PROCQ.length){const id=PROCQ.shift(),doc=DOCS.find(d=>d.id===id);if(!doc)continue;PROC_ID=doc.id;renderProcBar();try{await processDoc(doc)}finally{PROC_ID=null}}}
+  finally{clearInterval(LOCK_T);procUnlock();renderProcBar()}
 }
-const setProg=(doc,t)=>{doc.prog=t;const e=document.querySelector(`[data-prog="${doc.id}"]`);if(e)e.textContent=t;else renderKB()};
+/* แถบสถานะบนหน้าคลังความรู้: ตอนนี้ทำไฟล์ไหน ด้วย AI ตัวไหน และเหลือในคิวกี่ไฟล์ */
+function procBarHTML(){
+  const cur=PROC_ID&&DOCS.find(x=>x.id===PROC_ID),n=PROCQ.length;
+  if(OTHER_TAB)return '<div class="pbar">⚙ ไฟล์กำลังประมวลผลในอีกแท็บของเบราว์เซอร์นี้ · ปิดแท็บที่ซ้ำ ให้เหลือแท็บเดียว</div>';
+  if(!cur)return '';
+  const who=localUp()?`AI ในเครื่องนี้ (${esc(LLMHOST.model)})`:(AINAME[(aiRoute('proc')||{}).p]||'AI');
+  return `<div class="pbar"><span class="spin sm" aria-hidden="true"></span><span>กำลังประมวลผล <b>${esc(cur.name)}</b> ด้วย ${who}${cur.prog?` · ${esc(cur.prog)}`:''}${n?` · รอคิวอีก ${n} ไฟล์`:''}</span></div>`;
+}
+function renderProcBar(){const b=document.getElementById('kbpbar');if(b)b.innerHTML=procBarHTML()}
+const setProg=(doc,t)=>{doc.prog=t;const e=document.querySelector(`[data-prog="${doc.id}"]`);if(e)e.textContent=t;else kbSoon();renderProcBar()};
 /* ---------- ไฟล์ที่อัปโหลดขึ้น Google Drive ก่อน ----------
    ตอนเลือกไฟล์จะส่งต้นฉบับขึ้น Drive ทันที แล้วสร้างเอกสารสถานะ queued (ยังไม่อ่าน/ยังไม่ย่อย)
    พอถึงคิวประมวลผลจึงดึงไฟล์กลับมาอ่าน ทำให้ผู้ใช้ไม่ต้องรอ AI ตอนอัปโหลด และปิดหน้าไปได้
@@ -549,14 +574,14 @@ async function readDriveDoc(doc){
 }
 /* ใครประมวลผลไฟล์นี้: AI ในเครื่องนี้ (เครื่องหลัก) → รอเครื่องหลักถ้าออนไลน์อยู่ → AI ของเครื่องนี้ → รอคิวเครื่องหลัก */
 const hostKnown=()=>typeof HOSTBEAT!=='undefined'&&!!HOSTBEAT;
-const procMode=()=>localUp()?'local':(typeof hostAlive==='function'&&hostAlive())?'wait':activeAI()?'own':'wait';
+const procMode=d=>localUp()?'local':(d&&d.forceHere&&activeAI())?'own':(typeof hostAlive==='function'&&hostAlive())?'wait':activeAI()?'own':'wait';
 const HOST_WAIT_TXT='รอเครื่องประมวลผลหลัก (AI ในเครื่อง)';
 async function processDoc(doc){
   doc.err='';
-  const mode=procMode();
+  const mode=procMode(doc);doc.forceHere=false;
   if(mode==='wait'){
     if(!hostKnown()){doc.err='ตั้งค่า AI ในแถบซ้ายก่อน แล้วกด ประมวลผลต่อ';await saveDoc(doc);renderKB();return}
-    const first=!doc.waitHost;doc.waitHost=true;doc.prog='';await saveDoc(doc);renderKB();
+    const first=!doc.waitHost;doc.waitHost=true;doc.prog='';await saveDoc(doc);if(first)renderKB();
     /* ส่งเนื้อหาขึ้นบัญชีครั้งแรกที่เข้าคิว ให้เครื่องหลักมีข้อมูลทำต่อ */
     if(first&&typeof syncPushDoc==='function')syncPushDoc(doc,{cards:false,figs:false}).catch(()=>{});
     return;
@@ -613,6 +638,7 @@ async function ocrDoc(doc){
   const buf=await docBuf(doc);if(!buf)throw{code:'no_file'};
   const pdf=await openPDF(buf),bad=new Set(doc.bad||[]),before=doc.ocrDone.length,total=before+todo.length;let fail=0;
   for(let i=0;i<todo.length;i+=4){
+    if(doc.deleted)throw{code:'cancelled'};
     /* นับรวมหน้าที่อ่านไปแล้วในรอบก่อน ผู้ใช้จะเห็นว่าทำต่อ ไม่ได้เริ่มใหม่ */
     const nums=todo.slice(i,i+4);setProg(doc,`AI กำลังอ่านภาพหน้าเอกสาร (ข้อความเพี้ยนหรือมีรูป) ${before+Math.min(i+4,todo.length)} จาก ${total} หน้า${before?` · ทำต่อจากรอบก่อน (${before} หน้าแรกเสร็จแล้ว)`:''}`);
     const imgs=[];for(const n of nums)imgs.push(await pageImage(pdf,n));
@@ -695,9 +721,11 @@ async function digestDoc(doc){
     const seen=new Set(CARDS.map(cardKey)),keep=[];
     for(const c of arr){const k=cardKey(c);if(seen.has(k))continue;seen.add(k);keep.push(c)}
     if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
+    if(doc.deleted)return 0;   /* ลบไฟล์ระหว่างรอคำตอบ AI: ทิ้งบัตรที่ได้ */
     CARDS.push(...keep);await saveCards(keep);return keep.length;
   };
   for(let i=doc.digDone||0;i<W.length;i++){
+    if(doc.deleted)throw{code:'cancelled'};   /* ผู้ใช้ลบไฟล์ระหว่างประมวลผล */
     /* doc.fill = เก็บตกไฟล์ที่ย่อยเสร็จแล้ว: ไม่ย่อยซ้ำ ทำเฉพาะหน้าที่ยังไม่มีบัตร */
     if(!doc.fill){
       setProg(doc,`AI กำลังย่อยความรู้ ช่วงที่ ${i+1} จาก ${W.length}`);
@@ -762,9 +790,11 @@ async function extractDoc(doc){
     const seen=new Set(CARDS.filter(c=>c.type==='q'&&c.q).map(c=>qKey(c.q))),keep=[];
     for(const c of arr){const k=qKey(c.q);if(seen.has(k))continue;seen.add(k);keep.push(c)}
     if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
+    if(doc.deleted)return 0;   /* ลบไฟล์ระหว่างรอคำตอบ AI: ทิ้งบัตรที่ได้ */
     CARDS.push(...keep);await saveCards(keep);
   };
   for(let i=doc.digDone||0;i<W.length;i++){
+    if(doc.deleted)throw{code:'cancelled'};   /* ผู้ใช้ลบไฟล์ระหว่างประมวลผล */
     if(!doc.fill){
       setProg(doc,`AI กำลังดึงข้อสอบออกจากไฟล์ ช่วงที่ ${i+1} จาก ${W.length}`);
       const figIds=canVision('proc')?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okQFig).slice(0,12):[];
@@ -1030,14 +1060,27 @@ function runAll(){
   }
   toast(n?`เริ่มประมวลผลต่อ ${n} ไฟล์ ระบบทำทีละไฟล์ตามคิว`:'ไม่มีไฟล์ที่ต้องทำต่อ');renderKB();
 }
+/* วาดหน้าคลังความรู้ใหม่เฉพาะเมื่อหน้าตาเปลี่ยนจริง: ตัวจับเวลา (ซิงก์/ลองใหม่ทุกนาที) เรียก renderKB บ่อย
+   ถ้า HTML เหมือนเดิมและยังเป็นหน้าเดิมอยู่ ไม่แทนที่ DOM (หน้าไม่กระพริบ ช่องที่เปิด/ตำแหน่งเลื่อนไม่หาย) */
+let KB_HTML='',KB_NODE=null;
+function kbSheet(){
+  const t=document.getElementById('sheet');
+  return new Proxy(t,{
+    set(o,k,v){if(k==='innerHTML'){if(v===KB_HTML&&KB_NODE&&o.firstElementChild===KB_NODE&&o.contains(KB_NODE))return true;o.innerHTML=v;KB_HTML=v;KB_NODE=o.firstElementChild;return true}o[k]=v;return true},
+    get(o,k){const x=o[k];return typeof x==='function'?x.bind(o):x}
+  });
+}
+/* วาดใหม่ไม่เกินทุก 2 วินาที (ความคืบหน้าของไฟล์ที่ไม่ได้แสดงอยู่ เดิมวาดทั้งหน้าทุกครั้งที่ตัวเลขขยับ) */
+let KB_SOON=null;
+const kbSoon=()=>{if(KB_SOON)return;KB_SOON=setTimeout(()=>{KB_SOON=null;renderKB()},2000)};
 function renderKB(){
   if(VIEW!=='kb')return;
   head('คลังความรู้','อัปโหลดไฟล์ได้ 2 ประเภท: เนื้อหา (AI ย่อยเป็นบัตรความรู้แล้วคิดโจทย์ใหม่) และข้อสอบ/ตัวอย่างโจทย์ (ดึงทุกข้อมาใช้ตรงๆ และเป็นแบบอย่าง) · อัปโหลดขึ้น Google Drive ก่อนแล้วค่อยย่อยทีหลังได้');
-  const el=document.getElementById('sheet'),ai=activeAI(),nCards=activeCards().length,nBank=bankItems().length;
+  const el=kbSheet(),ai=activeAI(),nCards=activeCards().length,nBank=bankItems().length;
   const docBox=d=>{const tp=docTopics(d),busy=PROC_ID===d.id||PROCQ.includes(d.id),localN=CARDS.filter(c=>c.docId===d.id).length,nc=d.cardsRemote?Math.max(localN,+d.cardCount||0):localN,ex=d.kind==='exam',unit=ex?'ข้อ':'ใบ',lab=ex?'ข้อสอบ':'บัตรความรู้',summ=(d.summ||[]).filter(Boolean),figN=docFigs(d.id).length||(d.figMeta||[]).length,rb=typeof docBusyElsewhere==='function'&&docBusyElsewhere(d);
       return `<div class="kdoc" data-id="${d.id}">
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length?`${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร`:(nc?`${lab} ${nc} ${unit}`:'ยังไม่ได้อ่านเนื้อหา')}${d.stored==='drive'?` · ☁ อยู่บน Google Drive${d.size?` (${(d.size/1048576).toFixed(1)} MB)`:''}`:''}${figN?` · รูปประกอบ ${figN} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.syncAt?' · ☁ ซิงก์แล้ว':''}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap" title="${d.kindAuto?'ระบบตรวจประเภทไฟล์ให้อัตโนมัติ เปลี่ยนได้ที่ ตั้งค่าประเภท/กลุ่ม/การแสดง':''}">${ex?'ข้อสอบ':'เนื้อหา'}${d.kindAuto?' (ตรวจอัตโนมัติ)':''} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
-      <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||d.stage||'รอประมวลผล'}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''}${['queued','read','ready'].includes(d.stage)?'':` · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}`}</p>
+      <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${PROC_ID===d.id?'กำลังประมวลผล...':'รอคิวประมวลผล'}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||d.stage||'รอประมวลผล'}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''}${['queued','read','ready'].includes(d.stage)?'':` · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}`}</p>
       ${d.stage==='queued'&&!busy?`<p class="src">${rb?'☁ รอคิวอยู่บนคลาวด์':'อัปโหลดขึ้น Google Drive เรียบร้อยแล้ว ปิดหน้านี้ได้'} · กลับมาเปิดเว็บอีกครั้ง (เครื่องเดิม) ระบบจะย่อยต่อให้เอง${ai?'':' (ต้องตั้งค่า AI ก่อน)'}</p>`:''}
       ${rb?`<p class="src">☁ กำลังประมวลผลที่เครื่องอื่น${d.leaseAt?` (เริ่ม ${fmtDate(d.leaseAt)})`:''} · เครื่องนั้นปิดไปแล้วรอ 3 นาทีจะรับงานต่อได้</p>`:''}
       ${d.waitHost&&d.stage!=='ready'&&!busy&&!rb?`<p class="src">⏳ ${HOST_WAIT_TXT} · ${hostAlive()?'เครื่องหลักออนไลน์ จะเริ่มทำภายในไม่กี่นาที':'เครื่องหลักปิดอยู่ จะทำต่อเมื่อเปิดเครื่องและเปิดเว็บไว้'}</p>`:''}
@@ -1058,7 +1101,7 @@ function renderKB(){
         ${!busy&&d.stage==='ready'&&nc&&!d.central&&docMine(d)?'<button class="ghost" data-fill>เก็บตกหน้าที่ยังไม่มีบัตร</button>':''}
         ${!busy&&d.stage!=='queued'&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
-        <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
+        <button class="ghost" data-del>ลบ</button></div>
       ${d.noShare?'<p class="src"><span class="substat">เก็บส่วนตัว ไม่ส่งเข้าคลังกลาง</span></p>':!d.subId&&d.stage==='ready'&&nc&&!ME?'<p class="src"><span class="substat">จะส่งเข้าคลังกลางอัตโนมัติเมื่อเข้าสู่ระบบ</span></p>':''}
       ${d.srcErr?`<p class="kwarn">ไฟล์ต้นฉบับ: ${esc(d.srcErr)}</p>`:''}
       ${d.shareErr?`<p class="kerr">${esc(d.shareErr)}</p><div><button class="ghost" data-sub>ลองส่งเข้าคลังกลางอีกครั้ง</button></div>`:''}
@@ -1074,7 +1117,7 @@ function renderKB(){
   const empty=done.filter(d=>!d.cardCount&&!CARDS.some(c=>c.docId===d.id)&&!sameInCentral(d)).length;KB_DONE_N=done.length;
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
-    el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+    el.innerHTML=`<div id="kbpbar"></div><div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
       ${isReviewerMe()&&dupPacks().length?`<div class="hban"><b>พบชุดซ้ำในคลังกลาง ${dupPacks().length} ชุด</b><span>ไฟล์เดียวกันถูกอนุมัติซ้ำ เก็บชุดที่ข้อมูลครบที่สุดไว้ ลบชุดที่เหลือ</span><button class="ghost" id="kbdedup">🧹 ลบชุดซ้ำ</button></div>`:''}
       <input class="tx" id="kbcq" type="search" placeholder="ค้นหารายวิชา ชื่อไฟล์ หรือหัวข้อ เช่น PDPA, สินเชื่อ" value="${esc(KB_CQ)}" aria-label="ค้นหาในคลังกลาง" style="width:100%">
       ${hiddenSubjHTML()}
@@ -1087,7 +1130,7 @@ function renderKB(){
   }else if(KB_TAB==='hist'){
     head('ประวัติการอัปโหลด','ไฟล์ที่ประมวลผลเสร็จแล้ว · ดู แก้ ตั้งค่า หรือลบได้ที่นี่');
     const fillable=done.filter(d=>CARDS.some(c=>c.docId===d.id)&&docMine(d));
-    el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button>${fillable.length?`<button class="primary" id="kbfillall">🔁 เก็บตกหน้าที่ยังไม่มีบัตร ทุกไฟล์ (${fillable.length})</button>`:''}</div>
+    el.innerHTML=`<div id="kbpbar"></div><div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button>${fillable.length?`<button class="primary" id="kbfillall">🔁 เก็บตกหน้าที่ยังไม่มีบัตร ทุกไฟล์ (${fillable.length})</button>`:''}</div>
       ${fillable.length?`<p class="src">${localUp()?'ใช้ AI ในเครื่องนี้ (ฟรี) ทำทีละไฟล์':'ใช้ AI ที่ตั้งไว้ (เสียเครดิตเฉพาะหน้าที่ขาด)'} · ไฟล์ที่อยู่ในคลังกลางแล้ว ระบบส่งฉบับที่เพิ่มบัตรแทนชุดเดิมให้เอง</p>`:''}
       <p class="lbl">เสร็จแล้ว ${done.length} ไฟล์${empty?` · ในนี้ ${empty} ไฟล์ไม่พบเนื้อหา (ดูคำแนะนำในแต่ละไฟล์)`:''}</p>
       ${done.map(docBox).join('')||'<p class="src" style="text-align:center">ยังไม่มีไฟล์ที่ประมวลผลเสร็จ</p>'}`;
@@ -1099,7 +1142,7 @@ function renderKB(){
       toast(`เริ่มเก็บตก ${fillable.length} ไฟล์ ดูความคืบหน้าที่หน้าคลังความรู้`);KB_TAB='main';renderKB();
     };
   }else{
-  el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
+  el.innerHTML=`<div id="kbpbar"></div><div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
       <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p>
       ${ME&&SRC.dirs.some(d=>d.up)?'<p class="src">☁ อัปโหลดขึ้น Google Drive ก่อน แล้วระบบค่อยย่อยให้เบื้องหลัง — ปิดหน้าระหว่างรอได้</p>':''}</div>
     ${!ai?'<p class="catnote warn">อัปโหลดได้เลย แต่การอ่าน PDF ด้วย AI ย่อยความรู้ และสร้างข้อสอบ ต้องตั้งค่า AI ก่อน (แถบซ้าย)</p>':!canVision()?'<p class="catnote warn">AI ที่ใช้อยู่อ่านภาพ PDF และทำดัชนีความหมายไม่ได้ ใช้ Gemini, OpenAI, Claude API หรือ Meta key</p>':!canEmbed()?'<p class="catnote">AI ที่ใช้อยู่ทำดัชนีค้นหาตามความหมายไม่ได้ (มีเฉพาะ Gemini/OpenAI) ระบบค้นด้วยคำแทน ใช้งานอื่นได้ครบ</p>':''}
@@ -1123,7 +1166,7 @@ function renderKB(){
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');handleFiles(e.dataTransfer.files)};
   }
   el.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>{UPQ.splice(+b.dataset.dismiss,1);renderKB()});
-  el.querySelectorAll('details[data-k]').forEach(x=>x.addEventListener('toggle',()=>{
+  el.querySelectorAll('details[data-k]').forEach(x=>{if(x.dataset.tw)return;x.dataset.tw='1';x.addEventListener('toggle',()=>{
     const was=KB_OPEN.has(x.dataset.k);if(x.open)KB_OPEN.add(x.dataset.k);else KB_OPEN.delete(x.dataset.k);
     if(x.dataset.k==='hist'){if(was!==x.open)renderKB();return}
     const box=x.querySelector('.kcards');if(x.open&&box&&!box.innerHTML){const d=DOCS.find(z=>'c'+z.id===x.dataset.k);if(d){box.innerHTML=cardsHTML(d);wireCards(box)}}
@@ -1134,7 +1177,7 @@ function renderKB(){
         const pre=x.querySelector('pre');if(pre)pre.textContent='กำลังโหลดข้อความจากคลาวด์...';
         ensureDocPages(d).then(()=>{const q=x.querySelector('pre');if(q)q.textContent=previewText(d)}).catch(()=>{});
       }}
-  }));
+  })});
   el.querySelectorAll('.kcards').forEach(wireCards);
   el.querySelectorAll('.kdoc[data-id]').forEach(box=>{
     const id=box.dataset.id,d=DOCS.find(x=>x.id===id);
@@ -1159,7 +1202,11 @@ function renderKB(){
       if(regroup&&typeof syncPushCards==='function')syncPushCards(d,true);
       if(regroup&&activeAI())queueDoc(id);renderSide();renderKB();
     };
-    const run=box.querySelector('[data-run]');if(run)run.onclick=()=>{d.err='';queueDoc(id);renderKB()};
+    const run=box.querySelector('[data-run]');if(run)run.onclick=()=>{
+      d.err='';d.waitHost=false;d.forceHere=true;d.nextTry=0;
+      const cur=PROC_ID&&DOCS.find(x=>x.id===PROC_ID);
+      queueDoc(id,true);
+      toast(cur&&cur.id!==id?`ไฟล์นี้ต่อคิวถัดไป · ตอนนี้กำลังทำ "${cur.name.slice(0,40)}" อยู่`:'เริ่มประมวลผลแล้ว');renderKB()};
     const dfb=box.querySelector('[data-dropfile]');if(dfb)dfb.onclick=async()=>{
       if(await modal(`<p class="mt">ลบไฟล์ต้นฉบับ?</p><p>${esc(d.name)} · ${d.fileMB} MB</p><p class="src">ข้อความ บัตรความรู้ ข้อสอบ และรูปที่ตัดไว้แล้วยังอยู่ครบ ใช้ฝึกได้เหมือนเดิม แต่จะสั่ง "ให้ AI อ่านทุกหน้าใหม่" ไม่ได้อีก (ต้องอัปโหลดไฟล์ใหม่แทน)</p>`,[{t:'ยกเลิก'},{t:'ลบไฟล์ต้นฉบับ',cls:'primary'}])!==1)return;
       try{await kbDelMany('files',[id])}catch(e){}d.fileMB=0;await saveDoc(d);renderKB();toast('ลบไฟล์ต้นฉบับแล้ว');
@@ -1190,6 +1237,8 @@ function renderKB(){
       renderSide();renderKB();
     };
   });
+  /* ข้อความความคืบหน้าเติมหลังวาด (ไม่อยู่ใน HTML จึงไม่ทำให้ต้องวาดทั้งหน้าใหม่ทุกครั้งที่ตัวเลขขยับ) */
+  document.querySelectorAll('[data-prog]').forEach(e=>{const x=DOCS.find(d=>d.id===e.dataset.prog);if(x&&x.prog)e.textContent=x.prog});renderProcBar();
   showStorage();wireCloudKB(el);checkSubs();
 }
 /* the central library as seen from the knowledge base page */

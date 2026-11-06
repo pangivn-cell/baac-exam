@@ -98,10 +98,10 @@ function renderQGen(){
   const host=localUp(),cloud=activeAI();
   const row=s=>{const c=cnt[s.id]||{real:0,pool:0,total:0},ok=c.total>=QGEN.min,pct=Math.min(100,c.total/QGEN.min*100);
     const rt=qgenSubj(s)?qgenRoute(s,true):null,lf=QGEN.local[s.id];
-    const note=!s.ai?'ระบบสร้างโจทย์เองด้วยโปรแกรม ไม่จำกัดจำนวน':s.doc?'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่ตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)'
+    const note=!s.ai?'โปรแกรมในเว็บสร้างโจทย์และคำนวณเฉลยเองทันที ไม่ใช้ AI ไม่เสียเครดิต':s.doc?'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่ตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)'
       :QGEN.busy===s.id?'⏳ กำลังสร้าง...':ok?'✓ ครบแล้ว':`ขาด ${QGEN.min-c.total} ข้อ`+(rt?` · จะใช้ ${AINAME[rt.p]||rt.p}`:' · ยังไม่มี AI ให้ใช้')+(s.figOnly?' (ต้องดูรูป ใช้ AI คลาวด์)':lf&&lf.fail>=2?' (AI ในเครื่องสร้างไม่ได้ สลับใช้ AI คลาวด์)':'');
     return `<div class="qgrow${ok?' ok':''}"><div class="qgn"><b>${esc(s.name)}</b><span class="src">${note}</span></div>
-      <div class="qgc">${!s.ai?'<b>ไม่จำกัด</b>':`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>${s.doc?'':`<span title="โจทย์ที่ AI สร้างในคลังกลาง">✨ ${c.pool}</span>`}<b>${s.doc?c.real:c.total}${s.doc?' ข้อ':'/'+QGEN.min}</b>`}</div>
+      <div class="qgc">${!s.ai?`${c.real?`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>`:''}<b>⚙️ ไม่ใช้เครดิต</b>`:`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>${s.doc?'':`<span title="โจทย์ที่ AI สร้างในคลังกลาง">✨ ${c.pool}</span>`}<b>${s.doc?c.real:c.total}${s.doc?' ข้อ':'/'+QGEN.min}</b>`}</div>
       <div class="qgbar"><i style="width:${s.ai&&!s.doc?pct:100}%" class="${ok||!s.ai||s.doc?'ok':''}"></i></div>
       ${qgenSubj(s)?`<button class="ghost" data-qg="${esc(s.id)}" ${QGEN.busy||!rt?'disabled':''}>สร้างเพิ่ม ${QGEN_BATCH} ข้อ</button>`:'<span></span>'}</div>`};
   const grp=(t,l)=>l.length?`<section class="hsec"><div class="hsech"><h2>${t}</h2></div>${l.map(row).join('')}</section>`:'';

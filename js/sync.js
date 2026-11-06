@@ -416,6 +416,25 @@ async function syncRelease(doc){
   try{await saveDoc(doc)}catch(e){}
 }
 
+/* ---------- เครื่องประมวลผลหลัก (AI ในเครื่อง) ----------
+   เครื่องที่เปิดใช้ AI ในเครื่อง และเชื่อมต่อได้ ส่งสัญญาณ "ออนไลน์" ทุกนาทีที่ users/{uid}/qlog/llmhost (สิทธิ์เดียวกับตั้งค่า AI)
+   เครื่องอื่นอ่านสัญญาณนี้: ออนไลน์ = ปล่อยไฟล์ให้เครื่องหลักทำ · ออฟไลน์ = ใช้ AI ของตัวเอง ถ้าใช้ไม่ได้ก็รอคิวเครื่องหลัก */
+const HOST_FRESH=3*60000;
+var HOSTBEAT=null;
+const hostAlive=()=>!!HOSTBEAT&&HOSTBEAT.dev!==syncDevice()&&Date.now()-(+HOSTBEAT.at||0)<HOST_FRESH;
+async function hostTick(){
+  const was=localUp();await pingLocal();
+  if(was!==localUp()){const e=document.getElementById('hstat');if(e){e.textContent=hostStatusText();e.className='hint '+(localUp()?'ok':LLMHOST.on?'err':'')}}
+  if(!syncOk())return;
+  try{const f=await fb(),ref=fsDoc('users',ME.uid,'qlog','llmhost');
+    if(localUp()){HOSTBEAT={at:Date.now(),dev:syncDevice(),model:LLMHOST.model};await f.fs.setDoc(ref,HOSTBEAT);
+      /* เครื่องหลักดึงรายการไฟล์ใหม่จากเครื่องอื่นทุกนาที แม้แท็บอยู่เบื้องหลัง */
+      if(!SYNC.pullBusy&&Date.now()-SYNC.last>55000)syncPull().catch(e=>syErr(e))}
+    else{const s=await f.fs.getDoc(ref);HOSTBEAT=s.exists()?s.data():null}
+  }catch(e){}
+}
+onAppReady(()=>{setTimeout(hostTick,4000);setInterval(hostTick,60000)});
+
 /* ---------- ลบ ---------- */
 const SYNC_DEL_KEY='exam-sync-del';
 function syncDeletedList(){try{return JSON.parse(localStorage.getItem(SYNC_DEL_KEY)||'[]')}catch(e){return[]}}

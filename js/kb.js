@@ -544,9 +544,21 @@ async function readDriveDoc(doc){
   if(typeof syncPushPages==='function'){try{await syncPushPages(doc)}catch(e){}}
   if(typeof syncPushMeta==='function')syncPushMeta(doc);
 }
+/* ใครประมวลผลไฟล์นี้: AI ในเครื่องนี้ (เครื่องหลัก) → รอเครื่องหลักถ้าออนไลน์อยู่ → AI ของเครื่องนี้ → รอคิวเครื่องหลัก */
+const hostKnown=()=>typeof HOSTBEAT!=='undefined'&&!!HOSTBEAT;
+const procMode=()=>localUp()?'local':(typeof hostAlive==='function'&&hostAlive())?'wait':activeAI()?'own':'wait';
+const HOST_WAIT_TXT='รอเครื่องประมวลผลหลัก (AI ในเครื่อง)';
 async function processDoc(doc){
   doc.err='';
-  if(!activeAI()){doc.err='ตั้งค่า AI ในแถบซ้ายก่อน แล้วกด ประมวลผลต่อ';await saveDoc(doc);renderKB();return}
+  const mode=procMode();
+  if(mode==='wait'){
+    if(!hostKnown()){doc.err='ตั้งค่า AI ในแถบซ้ายก่อน แล้วกด ประมวลผลต่อ';await saveDoc(doc);renderKB();return}
+    const first=!doc.waitHost;doc.waitHost=true;doc.prog='';await saveDoc(doc);renderKB();
+    /* ส่งเนื้อหาขึ้นบัญชีครั้งแรกที่เข้าคิว ให้เครื่องหลักมีข้อมูลทำต่อ */
+    if(first&&typeof syncPushDoc==='function')syncPushDoc(doc,{cards:false,figs:false}).catch(()=>{});
+    return;
+  }
+  doc.waitHost=false;
   /* จองงานข้ามเครื่อง: ถ้าเครื่องอื่นกำลังทำ หรือทำเสร็จแล้ว ให้ข้าม ไม่เสียเครดิต AI ซ้ำ */
   let leaseTimer=null;
   if(typeof syncClaim==='function'){
@@ -572,14 +584,14 @@ async function processDoc(doc){
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
-    doc.tries=0;doc.nextTry=0;doc.errCode='';
+    doc.tries=0;doc.nextTry=0;doc.errCode='';doc.errLocal=false;
     if(doc.newSubj)setTimeout(()=>addSubjectFromDoc(doc),20);
     setTimeout(()=>autoShare(doc),50);
     toast(`${doc.name} พร้อมแล้ว · ${doc.kind==='exam'?`ข้อสอบ ${CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length} ข้อ`:`บัตรความรู้ ${CARDS.filter(c=>c.docId===doc.id).length} ใบ`}`);
   }catch(e){
     const code=e&&e.code;
-    doc.errCode=code||'';
-    doc.err=code==='drive'?((e&&e.why)||'ดึงไฟล์จาก Google Drive ไม่ได้')+' · กด ประมวลผลต่อ เพื่อลองใหม่':code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+(e&&e.model?` [${AINAME[e.prov]||e.prov} · โมเดล ${e.model}]`:'')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)';
+    doc.errCode=code||'';doc.errLocal=mode==='local';if(mode==='local')retryLater(doc,code);
+    doc.err=code==='drive'?((e&&e.why)||'ดึงไฟล์จาก Google Drive ไม่ได้')+' · กด ประมวลผลต่อ เพื่อลองใหม่':code==='no_text'?'ไม่มีข้อความให้ย่อย':code==='no_file'?'ไม่พบไฟล์ต้นฉบับ ให้อัปโหลดใหม่':errCopy(code,'ประมวลผลเอกสาร')+(e&&e.model?` [${AINAME[e.prov]||e.prov} · โมเดล ${e.model}]`:'')+' แล้วกด ประมวลผลต่อ (ทำต่อจากจุดเดิม)'+(mode==='own'&&hostKnown()?' · หรือรอเครื่องประมวลผลหลัก (AI ในเครื่อง) ทำต่อให้เมื่อเปิดเครื่อง':'');
     await saveDoc(doc);
   }finally{
     if(leaseTimer)clearInterval(leaseTimer);
@@ -1015,6 +1027,7 @@ function renderKB(){
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${esc(d.prog||'รอคิวประมวลผล')}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||d.stage||'รอประมวลผล'}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''}${['queued','read','ready'].includes(d.stage)?'':` · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}`}</p>
       ${d.stage==='queued'&&!busy?`<p class="src">${rb?'☁ รอคิวอยู่บนคลาวด์':'อัปโหลดขึ้น Google Drive เรียบร้อยแล้ว ปิดหน้านี้ได้'} · กลับมาเปิดเว็บอีกครั้ง (เครื่องเดิม) ระบบจะย่อยต่อให้เอง${ai?'':' (ต้องตั้งค่า AI ก่อน)'}</p>`:''}
       ${rb?`<p class="src">☁ กำลังประมวลผลที่เครื่องอื่น${d.leaseAt?` (เริ่ม ${fmtDate(d.leaseAt)})`:''} · เครื่องนั้นปิดไปแล้วรอ 3 นาทีจะรับงานต่อได้</p>`:''}
+      ${d.waitHost&&d.stage!=='ready'&&!busy&&!rb?`<p class="src">⏳ ${HOST_WAIT_TXT} · ${hostAlive()?'เครื่องหลักออนไลน์ จะเริ่มทำภายในไม่กี่นาที':'เครื่องหลักปิดอยู่ จะทำต่อเมื่อเปิดเครื่องและเปิดเว็บไว้'}</p>`:''}
       ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
       ${d.stage==='ready'&&!busy&&!nc&&!d.dupOf&&!sameInCentral(d)?`<p class="kwarn">ไม่พบ${lab}ในไฟล์นี้ ไฟล์นี้จึงยังไม่ถูกใช้ออกโจทย์ ถ้าคิดว่ามีเนื้อหา ลองกด "ให้ AI อ่านทุกหน้าใหม่" หรือเปลี่ยนประเภทไฟล์ในตั้งค่า</p>`:''}
@@ -1247,13 +1260,16 @@ function retryLater(d,code){d.tries=(d.tries||0)+1;d.nextTry=Date.now()+(code===
 async function withRetry(fn,times=4){let e0;for(let i=0;i<times;i++){try{return await fn()}catch(e){e0=e;if(e&&e.full)break;await new Promise(r=>setTimeout(r,[3000,8000,20000,40000][i]||40000))}}throw e0}
 let retryBusy=false;
 async function autoRetry(){
-  if(retryBusy||document.hidden)return;retryBusy=true;
+  if(retryBusy||(document.hidden&&!localUp()))return;retryBusy=true;
   try{
     const now=Date.now(),mine=DOCS.filter(d=>!d.central&&docMine(d)),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
     for(const d of mine){
-      if(busy(d)||d.stage==='ready'||!activeAI())continue;
+      if(busy(d)||d.stage==='ready'||(!activeAI()&&!localUp()&&!hostKnown()))continue;
       if(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d))continue;
       if((!d.pages||!d.pages.length)&&(d.driveId||d.srcFile)&&!ME)continue;   /* ต้องล็อกอินก่อนดึงไฟล์จาก Drive มาอ่าน */
+      /* เครื่องหลัก: รับทุกไฟล์ที่ค้าง รวมไฟล์ที่เครื่องอื่นทำไม่ได้เพราะเครดิตหมด (ยกเว้นไฟล์ที่ไม่มีเนื้อหา) */
+      if(localUp()&&!['no_text','no_file'].includes(d.errCode)){if(d.errLocal&&d.nextTry>now)continue;queueDoc(d.id);continue}
+      if(d.waitHost&&!d.err){queueDoc(d.id);continue}                       /* รอเครื่องหลักอยู่: ตรวจใหม่ทุกนาที เผื่อเครื่องหลักปิดไปแล้ว */
       if(!d.err){queueDoc(d.id);continue}                                    /* ค้างกลางทาง */
       if(noRetry(d.errCode))continue;
       if(!d.nextTry){retryLater(d,d.errCode);await saveDoc(d);continue}

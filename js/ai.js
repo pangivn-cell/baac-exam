@@ -36,17 +36,37 @@ async function pullAIP(){
     else aiSyncMsg(`☁ ตั้งค่า AI ตรงกับบัญชี ${ME.email||ME.name} แล้ว`);
   }catch(e){aiSyncMsg('ดึงตั้งค่า AI จากบัญชีไม่สำเร็จ: '+syncErr(e),true)}
 }
-const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta',custom:'ผู้ให้บริการอื่น'};
+const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta',custom:'ผู้ให้บริการอื่น',local:'AI ในเครื่อง'};
+/* AI ในเครื่องนี้ (Ollama / LM Studio) สำหรับประมวลผลไฟล์: ตั้งเฉพาะเครื่องนี้ ไม่ซิงก์กับบัญชี เพราะ localhost ของเครื่องอื่นไม่ใช่เครื่องนี้
+   เครื่องที่เปิดไว้ = เครื่องประมวลผลหลัก รับไฟล์ที่รอประมวลผลของทั้งบัญชีมาทำ (ดู hostTick ใน sync.js) */
+/* vision ปิดไว้ก่อน: เทส gemma3:12b ถอดภาษาไทยจากภาพผิดจนความหมายเปลี่ยน (ด้อย→ด้วย) หน้าที่ต้องอ่านภาพจึงส่งให้ AI ตัวหลักแทน */
+let LLMHOST={on:false,url:'http://localhost:11434/v1',model:'gemma3:12b',vision:false};
+try{const h=JSON.parse(localStorage.getItem('exam-llm-host')||'null');if(h)LLMHOST={...LLMHOST,...h}}catch(e){}
+const saveHost=()=>{try{localStorage.setItem('exam-llm-host',JSON.stringify(LLMHOST))}catch(e){}};
+const LOCALAI={up:false,why:'',models:[]};
+const baseURL=u=>String(u||'').trim().replace(/\/+$/,'').replace(/\/chat\/completions$/,'');
+const chatURL=u=>baseURL(u)+'/chat/completions';
+async function pingLocal(){
+  if(!LLMHOST.on){LOCALAI.up=false;LOCALAI.why='';return false}
+  try{const r=await fetch(baseURL(LLMHOST.url)+'/models',{signal:AbortSignal.timeout(5000)});const d=await r.json();
+    LOCALAI.models=(d.data||[]).map(m=>String(m.id));LOCALAI.up=r.ok&&LOCALAI.models.includes(LLMHOST.model);
+    LOCALAI.why=LOCALAI.up?'':`ไม่พบโมเดล ${LLMHOST.model} (มี: ${LOCALAI.models.join(', ')||'-'})`}
+  catch(e){LOCALAI.up=false;LOCALAI.why='เชื่อมต่อ AI ในเครื่องไม่ได้ (โปรแกรม Ollama ยังไม่เปิด หรือยังไม่ได้อนุญาตให้เว็บเรียก)'}
+  return LOCALAI.up;
+}
+const localUp=()=>!!(LLMHOST.on&&LOCALAI.up);
+const cfgOf=prov=>prov==='local'?LLMHOST:AIP[prov];
 const KEY_PROVS=['gemini','openai','anthropic','meta','custom'];
 const provReady=p=>p==='custom'?!!(AIP.custom.url&&AIP.custom.model):!!(AIP[p]&&AIP[p].key);
 /* ผู้ให้บริการ+โมเดลที่ใช้กับงานนั้น: task 'proc' (ประมวลผลไฟล์) ใช้ตัวที่ตั้งแยกไว้ถ้าตั้งไว้ ไม่งั้นใช้ตัวหลัก */
 function aiRoute(task){
+  if(task==='proc'&&localUp())return{p:'local',model:LLMHOST.model};
   if(task==='proc'&&!inViewer){const q=AIP.proc||{};
     if(q.provider&&q.provider!=='same'&&provReady(q.provider))return{p:q.provider,model:q.model||(q.provider==='custom'?AIP.custom.model:AIP[q.provider].model)};
     const p=activeAI();if(p&&q.model&&p!=='claude')return{p,model:q.model};}
   return{p:activeAI(),model:''};
 }
-const visionOK=p=>!!p&&p!=='claude'&&(p!=='custom'||!!AIP.custom.vision);
+const visionOK=p=>p==='local'?!!LLMHOST.vision:!!p&&p!=='claude'&&(p!=='custom'||!!AIP.custom.vision);
 function activeAI(){
   if(inViewer)return SAMPLE?'claude':null;
   const p=AIP.provider;
@@ -71,7 +91,7 @@ const DEAD_MODELS=new Set();
 let LAST_MODEL='';
 const sleep=(ms,signal)=>new Promise((ok,no)=>{const t=setTimeout(ok,ms);if(signal)signal.addEventListener('abort',()=>{clearTimeout(t);no({code:'cancelled'})},{once:true})});
 async function keyCall(prov,input,json,signal,model0){
-  const first=model0||AIP[prov].model;
+  const first=model0||cfgOf(prov).model;
   const models=(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
   let lastErr,keyErr;
   for(const model of models){
@@ -127,10 +147,10 @@ async function keyCallOnce(prov,model,input,json,signal){
         headers:{'Content-Type':'application/json','x-goog-api-key':AIP.gemini.key},
         body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>({inline_data:{mime_type:i.mime,data:i.data}}))]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})})});
     }else{
-      const meta=prov==='meta',cus=prov==='custom';
+      const meta=prov==='meta',cus=prov==='custom'||prov==='local',cf=cfgOf(prov);
       /* custom: ไม่ส่ง response_format เพราะหลายเจ้า/โมเดลในเครื่องไม่รองรับ (looseJSON แกะ JSON จากข้อความให้) */
-      res=await fetch(cus?customURL():meta?'https://api.meta.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions',{method:'POST',signal,
-        headers:{'Content-Type':'application/json',...(AIP[prov].key?{'Authorization':'Bearer '+AIP[prov].key}:{})},
+      res=await fetch(cus?chatURL(cf.url):meta?'https://api.meta.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions',{method:'POST',signal,
+        headers:{'Content-Type':'application/json',...(cf.key?{'Authorization':'Bearer '+cf.key}:{})},
         body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{})})});
     }
   }catch(e){if(e&&e.name==='AbortError')throw{code:'cancelled'};throw{code:'network',message:String(e)}}
@@ -144,8 +164,6 @@ async function keyCallOnce(prov,model,input,json,signal){
   if(json&&(fin==='MAX_TOKENS'||fin==='length'))throw{code:'truncated'};
   return text;
 }
-/* รับได้ทั้ง base URL (…/v1) และ URL เต็ม (…/chat/completions) */
-const customURL=()=>{const u=String(AIP.custom.url||'').trim().replace(/\/+$/,'');return /\/chat\/completions$/.test(u)?u:u+'/chat/completions'};
 function looseJSON(t){
   try{return JSON.parse(t)}catch(e){}
   const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}
@@ -190,6 +208,12 @@ function renderAISet(){
    <div class="field"><label for="cmodel">ชื่อโมเดล</label><input class="tx" id="cmodel" type="text" autocomplete="off" placeholder="เช่น deepseek-chat, qwen3:14b"></div>
    <label class="rad"><input type="checkbox" id="cvis"><span>โมเดลนี้อ่านรูปได้ (ใช้อ่านหน้า PDF ที่ข้อความเพี้ยนและรูปประกอบ)</span></label>
    <p class="hint">Ollama: ต้องเปิดให้เว็บเรียกได้ก่อน โดยตั้งตัวแปร OLLAMA_ORIGINS=* แล้วเปิด Ollama ใหม่ · AI ในเครื่องใช้ได้เฉพาะเครื่องที่รันอยู่</p></details>
+   <details class="howto"${LLMHOST.on?' open':''}><summary>AI ในเครื่องนี้ (เครื่องประมวลผลหลัก)</summary>
+   <label class="rad"><input type="checkbox" id="hon"><span><b>ใช้เครื่องนี้ประมวลผลไฟล์ด้วย AI ในเครื่อง</b><span class="src">ตั้งเฉพาะเครื่องนี้ · ขณะเปิดเว็บไว้ เครื่องนี้จะรับไฟล์ที่รอประมวลผลของทั้งบัญชีมาทำฟรี เครื่องอื่นจะรอให้เครื่องนี้ทำ ถ้าเครื่องนี้ปิดอยู่ เครื่องอื่นใช้ AI ของตัวเองแทน ถ้าใช้ไม่ได้จะเข้าคิวรอเครื่องนี้</span></span></label>
+   <div class="field"><label for="hurl">URL</label><input class="tx" id="hurl" type="text" autocomplete="off" list="curls"></div>
+   <div class="field"><label for="hmodel">โมเดล</label><input class="tx" id="hmodel" type="text" autocomplete="off" list="hmodels"><datalist id="hmodels">${LOCALAI.models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>
+   <label class="rad"><input type="checkbox" id="hvis"><span>ให้ AI ในเครื่องอ่านรูปด้วย (ไม่แนะนำ: ถอดภาษาไทยจากภาพยังผิดบ่อย ปล่อยว่างไว้ หน้าที่ต้องอ่านภาพจะใช้ AI ตัวหลักแทน)</span></label>
+   <p class="hint ${localUp()?'ok':LLMHOST.on?'err':''}" id="hstat">${hostStatusText()}</p></details>
    <div class="field"><label for="pprov">AI สำหรับประมวลผลไฟล์ (ประหยัดเครดิต)</label><select id="pprov"><option value="same">ผู้ให้บริการเดียวกับด้านบน</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Claude API</option><option value="meta">Meta</option><option value="custom">ผู้ให้บริการอื่น</option></select></div>
    <div class="field"><label for="pmodel">โมเดลสำหรับประมวลผลไฟล์ (เว้นว่าง = โมเดลเดิมของผู้ให้บริการนั้น)</label><input class="tx" id="pmodel" type="text" autocomplete="off" list="pmodels" placeholder="เช่น gemini-flash-lite-latest"><datalist id="pmodels"><option value="gemini-flash-lite-latest"><option value="gpt-5-nano"><option value="gpt-5-mini"><option value="claude-haiku-5-5"><option value="muse-spark-1.3-contributor"></datalist></div>
    <p class="hint">งานอ่านไฟล์ ย่อยบัตรความรู้ และดึงข้อสอบจากไฟล์ ใช้ AI มากที่สุด ตั้งเป็นโมเดลราคาถูกตรงนี้ได้ ส่วนการออกข้อสอบและติวเตอร์ยังใช้ตัวด้านบน${(()=>{const r=aiRoute('proc');return r.p?` · ตอนนี้ประมวลผลไฟล์ด้วย ${AINAME[r.p]}${r.model?' · '+esc(r.model):''}`:''})()}</p>
@@ -226,13 +250,21 @@ function renderAISet(){
   const $=id=>document.getElementById(id);
   $('aiprov').value=AIP.provider;$('gkey').value=g.key;$('gmodel').value=g.model;$('okey').value=o.key;$('omodel').value=o.model;$('akey').value=AIP.anthropic.key;$('amodel').value=AIP.anthropic.model;$('mkey').value=AIP.meta.key;$('mmodel').value=AIP.meta.model;
   $('curl').value=AIP.custom.url;$('ckey').value=AIP.custom.key;$('cmodel').value=AIP.custom.model;$('cvis').checked=!!AIP.custom.vision;$('pprov').value=AIP.proc.provider||'same';$('pmodel').value=AIP.proc.model||'';
+  $('hon').checked=!!LLMHOST.on;$('hurl').value=LLMHOST.url;$('hmodel').value=LLMHOST.model;$('hvis').checked=!!LLMHOST.vision;
   const read=()=>{AIP.provider=$('aiprov').value;AIP.gemini={key:$('gkey').value.trim(),model:$('gmodel').value.trim()||'gemini-flash-latest'};AIP.openai={key:$('okey').value.trim(),model:$('omodel').value.trim()||'gpt-5-mini'};AIP.anthropic={key:$('akey').value.trim(),model:$('amodel').value.trim()||'claude-opus-5-5'};AIP.meta={key:$('mkey').value.trim(),model:$('mmodel').value.trim()||'muse-spark-1.3'};
-    AIP.custom={url:$('curl').value.trim(),key:$('ckey').value.trim(),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()}};
+    AIP.custom={url:$('curl').value.trim(),key:$('ckey').value.trim(),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()};
+    LLMHOST={on:$('hon').checked,url:$('hurl').value.trim()||'http://localhost:11434/v1',model:$('hmodel').value.trim()||'gemma3:12b',vision:$('hvis').checked};saveHost()};
   const stat=(t,c)=>{const e=$('aistat');e.textContent=t;e.className='hint '+(c||'')};
-  $('aisave').onclick=()=>{read();saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent=activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
+  $('aisave').onclick=()=>{read();saveAI();if(typeof hostTick==='function')hostTick().then(()=>{renderAISet();if(typeof renderKB==='function'&&VIEW==='kb')renderKB()});renderAISet();aiChanged();document.getElementById('aistat').textContent=activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
   $('aisyncbtn').onclick=async()=>{if(typeof ME==='undefined'||!ME){aiSyncMsg('เข้าสู่ระบบก่อน แล้วกดอีกครั้ง',true);return}aiSyncMsg('กำลังซิงก์...');await pullAIP()};
   $('aiclear').onclick=()=>{for(const x of KEY_PROVS)AIP[x].key='';saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent='ลบ key แล้ว'};
-  $('aitest').onclick=async()=>{read();saveAI();const a2=activeAI();if(!a2){stat('ยังไม่มี key ให้ทดสอบ','err');return}
+  $('aitest').onclick=async()=>{read();saveAI();
+    if(LLMHOST.on){stat('กำลังทดสอบ AI ในเครื่อง...');await pingLocal();
+      if(!localUp()){stat(LOCALAI.why,'err');return}
+      try{const t0=Date.now(),j=await aiJSON('ตอบเป็น JSON เท่านั้น: {"ok":true,"word":"พร้อม"}',{task:'proc'});stat(`AI ในเครื่องใช้งานได้ (${LLMHOST.model}) ตอบใน ${((Date.now()-t0)/1000).toFixed(1)} วินาที: ${j&&j.word||JSON.stringify(j).slice(0,40)}`,'ok');if(typeof hostTick==='function')hostTick()}
+      catch(e){stat('AI ในเครื่องใช้ไม่ได้: '+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message?` (${String(e.message).slice(0,120)})`:''),'err')}
+      if(!activeAI())return;await new Promise(r=>setTimeout(r,1500))}
+    const a2=activeAI();if(!a2){stat('ยังไม่มี key ให้ทดสอบ','err');return}
     stat(`กำลังทดสอบ ${AINAME[a2]}...`);
     try{const t=await aiText('ตอบกลับคำว่า พร้อม เพียงคำเดียว');let msg=`${AINAME[a2]} ใช้งานได้ (โมเดล ${LAST_MODEL}) ตอบว่า: ${t.trim().slice(0,40)}`;
       const r=aiRoute('proc');if(r.p!==a2||r.model){stat(msg+' · กำลังทดสอบ AI ประมวลผลไฟล์...','ok');
@@ -240,6 +272,11 @@ function renderAISet(){
         catch(e2){stat(msg+' · AI ประมวลผลไฟล์ใช้ไม่ได้: '+errCopy(e2&&e2.code,'ทดสอบ')+(r.p==='custom'&&e2&&e2.code==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''),'err');return}}
       stat(msg,'ok');renderAISetPill();aiChanged()}
     catch(e){const cr=e&&(e.code==='no_credit'||e.code==='quota');stat((cr?'💳 ':'')+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message&&!cr?` (${String(e.message).slice(0,120)})`:''),cr?'':'err')}};
+}
+function hostStatusText(){
+  if(LLMHOST.on)return localUp()?`✓ AI ในเครื่องพร้อม (${LLMHOST.model}) · เครื่องนี้เป็นเครื่องประมวลผลหลัก`:(LOCALAI.why||'กำลังตรวจการเชื่อมต่อ...');
+  const h=typeof HOSTBEAT!=='undefined'&&HOSTBEAT;
+  return h?`เครื่องประมวลผลหลักของบัญชีนี้ (${esc(h.model||'')}): ${hostAlive()?'ออนไลน์':'ออฟไลน์'} · ล่าสุด ${fmtDate(+h.at)}`:'ยังไม่ได้ตั้งเครื่องประมวลผลหลัก';
 }
 function renderAISetPill(){const a=activeAI(),p=document.getElementById('aipill');if(p)p.textContent=a?AINAME[a]:'ยังไม่ตั้ง'}
 function aiChanged(){document.querySelectorAll('.askbox').forEach(b=>b.hidden=!activeAI());if(typeof VIEW!=='undefined'&&VIEW==='mock'&&!M&&!G)renderMock();if(R&&(R.status==='needai'||R.status==='idle')){R.status=activeAI()?'idle':'needai';render()}}

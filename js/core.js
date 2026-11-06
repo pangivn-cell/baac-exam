@@ -111,3 +111,12 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
   document.getElementById('fsdn').onclick=()=>set(+r.value-10);
   document.getElementById('fsup').onclick=()=>set(+r.value+10);
 })();
+
+/* ซ่อน/แสดงเมนูด้านซ้าย (จอคอม) จำไว้ในเครื่องนี้ · มือถือใช้ปุ่มเมนูด้านบนตามเดิม */
+(function(){
+  const b=document.getElementById('sidetog');if(!b)return;
+  const set=off=>{document.body.classList.toggle('side-off',off);b.setAttribute('aria-pressed',off);b.textContent=off?'☰ แสดงเมนู':'☰ ซ่อนเมนู';
+    try{localStorage.setItem('exam-side-off',off?'1':'')}catch(e){}};
+  let off=false;try{off=localStorage.getItem('exam-side-off')==='1'}catch(e){}
+  set(off);b.onclick=()=>set(!document.body.classList.contains('side-off'));
+})();

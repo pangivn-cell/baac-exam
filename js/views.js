@@ -113,31 +113,56 @@ function aiTag(s){return s&&s.ai?`<span class="aitag" title="วิชานี�
 function subjBtns(list){return list.map(s=>`<button class="hsub" data-hs="${s.id}"><span class="hsn">${esc(s.name)}${aiTag(s)}</span></button>`).join('')}
 function renderHome(){
   if(VIEW!=='home')return;
-  const last=SUBJ.find(s=>s.id===P.subject);
-  head(ME?`สวัสดี ${ME.name}`:'หน้าแรก',ME?`ระดับผู้สอบ ${myLevel()} · ${nf(P.pass||0)} คะแนน · อีก ${levelInfo(P.pass).left} คะแนนขึ้นระดับ ${myLevel()+1}`:'เลือกสิ่งที่อยากทำ');
+  const last=SUBJ.find(s=>s.id===P.subject),li=levelInfo(P.pass),pct=Math.max(0,Math.min(100,((P.pass||0)-li.from)/Math.max(1,li.to-li.from)*100));
+  head(ME?`สวัสดี ${ME.name}`:'หน้าแรก',ME?'พร้อมฝึกต่อวันนี้หรือยัง เลือกได้เลยด้านล่าง':'เลือกสิ่งที่อยากทำ');
   const el=document.getElementById('sheet'),gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec');
+  const H=typeof HIST!=='undefined'?HIST:[],rec=H.slice(-10),avg=rec.length?rec.reduce((a,h)=>a+(h.pct||0),0)/rec.length:null;
+  const mock=H.filter(h=>h.kind==='mock').pop(),day=new Date().toDateString(),today=H.filter(h=>new Date(h.at).toDateString()===day).length;
+  const days=new Set(H.map(h=>new Date(h.at).toDateString()));let streak=0;for(const d=new Date();days.has(d.toDateString());d.setDate(d.getDate()-1))streak++;
+  const pc=v=>v==null?'-':Math.round(v*100)+'%';
+  const tile=(ic,t,v,sub)=>`<div class="hstat"><span class="hi">${ic}</span><div><span>${t}</span><b>${v}</b>${sub?`<small>${sub}</small>`:''}</div></div>`;
+  const act=(go,ic,t,d,c)=>`<button class="hact ${c}" data-go="${go}"><span class="hico">${ic}</span><b>${t}</b><span>${d}</span></button>`;
+  const recent=H.slice(-4).reverse();
   el.innerHTML=`${!activeAI()?`<div class="hban"><b>ยังไม่ได้ใส่ AI key</b><span>วิชาภาษาไทย อังกฤษ ${SPEC_LABEL} และการถาม AI ต้องใช้ key (Gemini ใช้ฟรี)</span><button class="ghost" id="hkey">ตั้งค่าตอนนี้</button></div>`:''}
     ${!ME&&CLOUD.ok!==false?`<div class="hban"><b>ยังไม่ได้เข้าสู่ระบบ</b><span>คะแนนจะเก็บแค่ในเครื่องนี้ และยังไม่ขึ้นอันดับ</span><button class="ghost" id="hlog">เข้าสู่ระบบ</button></div>`:''}
-    <div class="hgrid">
-      <button class="hcard main" id="hc-sub" aria-expanded="${HOME_PICK}"><span class="hi">📝</span><b>ทดสอบรายวิชา</b><span>เลือกวิชา ระบบสร้างโจทย์ตามระดับของคุณ</span></button>
-      <button class="hcard" data-go="mock"><span class="hi">⏱</span><b>สอบจริง</b><span>จับเวลาเหมือนห้องสอบ</span></button>
-      <button class="hcard" data-go="study"><span class="hi">💬</span><b>สอบถาม AI</b><span>ถามได้ทุกเรื่อง ตรวจจากคลังก่อน</span></button>
-      <button class="hcard" data-go="kb"><span class="hi">📤</span><b>อัปเดตความรู้</b><span>อัปโหลดเอกสารเข้าคลังกลาง</span></button>
-      <button class="hcard sm" data-go="rank"><span class="hi">🏆</span><b>อันดับ</b></button>
-      <button class="hcard sm" data-go="hist"><span class="hi">🕘</span><b>ประวัติสอบ</b></button>
+    <div class="hhero">
+      <div class="hlv">
+        <div class="hlvb"><span>ระดับ</span><b>${li.lv}</b></div>
+        <div class="hlvt"><b>${nf(P.pass||0)} คะแนน</b><span>อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}</span>
+          <div class="hbar" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100" aria-label="ความคืบหน้าสู่ระดับถัดไป"><i style="width:${pct}%"></i></div></div>
+      </div>
+      <div class="hcta">
+        ${last?`<button class="primary big" id="hlast">▶ ทำต่อ: ${esc(last.name)}</button>`:`<button class="primary big" id="hstart">▶ เริ่มฝึกรายวิชา</button>`}
+        <button class="ghost big" data-go="mock">⏱ สอบจริง (จับเวลา)</button>
+      </div>
     </div>
-    <div class="hpick" id="hpick" ${HOME_PICK?'':'hidden'}>
-      <div class="hopt"><label for="hcount">จำนวนข้อ</label><select id="hcount">${[5,10,20,50,100].map(v=>`<option value="${v}"${P.count===v?' selected':''}>${v} ข้อ</option>`).join('')}</select>
-        <span class="fl">การเฉลย</span><div class="seg" role="group"><button data-hm="now" aria-pressed="${P.mode==='now'}">ทันที</button><button data-hm="end" aria-pressed="${P.mode==='end'}">ตอนท้าย</button></div></div>
-      ${last?`<button class="primary" id="hlast">ทำต่อ: ${esc(last.name)}</button>`:''}
-      <p class="src">ป้าย <span class="aitag">AI</span> = วิชาที่ใช้ AI สร้างโจทย์ ต้องใส่ AI key ก่อน · วิชาที่ไม่มีป้าย ระบบสร้างโจทย์เองได้ทันที</p>
+    <div class="hstats">
+      ${tile('📚','สอบไปแล้ว',nf(H.length)+' ชุด',today?`วันนี้ ${today} ชุด`:'วันนี้ยังไม่ได้สอบ')}
+      ${tile('🎯','คะแนนเฉลี่ย',pc(avg),rec.length?`จาก ${rec.length} ชุดล่าสุด`:'')}
+      ${tile('⏱','สอบจริงล่าสุด',mock?pc(mock.pct):'-',mock?fmtDate(mock.at):'ยังไม่เคยสอบจริง')}
+      ${tile('🔥','ฝึกต่อเนื่อง',streak+' วัน',streak?'ทำต่อให้ครบทุกวัน':'เริ่มวันนี้เลย')}
+    </div>
+    <div class="hacts">
+      ${act('video','🎬','วิดีโอ','ดูคลิปติวตามรายวิชา','c1')}
+      ${act('study','✨','สอบถาม AI','ถามได้ทุกเรื่อง พร้อมที่มา','c2')}
+      ${act('kb','📤','อัปเดตความรู้','อัปโหลดเอกสารเข้าคลังกลาง','c3')}
+      ${act('rank','🏆','อันดับ','ดูว่าอยู่อันดับที่เท่าไร','c4')}
+    </div>
+    <section class="hsec" id="hpick">
+      <div class="hsech"><h2>📝 ฝึกรายวิชา</h2>
+        <div class="hopt"><label for="hcount">จำนวนข้อ</label><select id="hcount">${[5,10,20,50,100].map(v=>`<option value="${v}"${P.count===v?' selected':''}>${v} ข้อ</option>`).join('')}</select>
+          <div class="seg" role="group" aria-label="การเฉลย"><button data-hm="now" aria-pressed="${P.mode==='now'}">เฉลยทันที</button><button data-hm="end" aria-pressed="${P.mode==='end'}">เฉลยตอนท้าย</button></div></div></div>
       <p class="lbl">ความรู้ความสามารถทั่วไป</p><div class="hsubs">${subjBtns(gen)}</div>
-      <p class="lbl">${SPEC_LABEL}</p><input class="tx" type="search" id="hq" placeholder="ค้นหาหัวข้อ เช่น หนี้, PDPA" aria-label="ค้นหาหัวข้อ"><div class="hsubs" id="hspec">${subjBtns(spec)}</div>
-    </div>`;
+      <div class="hsech2"><p class="lbl">${SPEC_LABEL}</p><input class="tx" type="search" id="hq" placeholder="ค้นหาหัวข้อ เช่น หนี้, PDPA" aria-label="ค้นหาหัวข้อ"></div>
+      <div class="hsubs" id="hspec">${subjBtns(spec)}</div>
+      <p class="src">ป้าย <span class="aitag">AI</span> = วิชาที่ใช้ AI สร้างโจทย์ ต้องใส่ AI key ก่อน · วิชาที่ไม่มีป้าย ระบบสร้างโจทย์เองได้ทันที</p>
+    </section>
+    ${recent.length?`<section class="hsec"><div class="hsech"><h2>🕘 สอบล่าสุด</h2><button class="ghost" data-go="hist">ดูทั้งหมด →</button></div>
+      <div class="hrec">${recent.map(h=>{const v=Math.round((h.pct||0)*100),c=v>=60?'ok':'bad';return `<div class="hrecr"><div><b>${esc(h.title)}</b><span class="src">${fmtDate(h.at)} · ${h.score}/${h.n} ข้อ</span></div><div class="hrecb"><i class="${c}" style="width:${v}%"></i></div><b class="${c}t">${v}%</b></div>`}).join('')}</div></section>`:''}`;
   const $=id=>document.getElementById(id);
   if($('hkey'))$('hkey').onclick=()=>{welcomeSkip=false;setView('welcome')};
   if($('hlog'))$('hlog').onclick=()=>loginDialog();
-  $('hc-sub').onclick=()=>{HOME_PICK=!HOME_PICK;renderHome();if(HOME_PICK)$('hpick').scrollIntoView({behavior:'smooth',block:'start'})};
+  if($('hstart'))$('hstart').onclick=()=>$('hpick').scrollIntoView({behavior:'smooth',block:'start'});
   el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>setView(b.dataset.go));
   const go=id=>{P.subject=id;if(SUBJ.find(s=>s.id===id).group==='spec')P.lastSpec=id;save();setView('practice');renderSide();start(true)};
   el.querySelectorAll('[data-hs]').forEach(b=>b.onclick=()=>go(b.dataset.hs));

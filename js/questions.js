@@ -243,7 +243,33 @@ const avoidFor=s=>Object.values(QLOG).filter(e=>e.sub===s.id&&e.st).sort((a,b)=>
 
 /* one place that turns a subject into questions: local generator, AI from cards, AI general, or a mix */
 /* ทุกชุดผ่านตัวแก้เฉลย (qfix.js): ข้อที่เคยถูกแย้งและแก้แล้ว ได้ฉบับแก้ทุกครั้ง */
-async function makeItems(s,level,n,o={}){return (typeof fixAll==='function'?fixAll:x=>x)(await makeItems1(s,level,n,o))}
+async function makeItems(s,level,n,o={}){return mixAll((typeof fixAll==='function'?fixAll:x=>x)(await makeItems1(s,level,n,o)))}
+/* ---------- สลับตำแหน่งตัวเลือก: ทุกครั้งที่โจทย์ถูกหยิบมาแสดง ตำแหน่งคำตอบที่ถูกจะไม่ซ้ำกับครั้งก่อน ----------
+   จำตำแหน่งคำตอบครั้งล่าสุดของแต่ละข้อไว้ในเครื่อง (สูงสุด 4000 ข้อ)
+   ไม่สลับข้อที่ลำดับตัวเลือกมีความหมาย: "ถูกทุกข้อ / ไม่มีข้อใดถูก / ทั้ง ก และ ข / ข้อ 1 และ 2"
+   ตัวเลือกที่เป็นป้าย ก ข ค ง ของรูป หรือเฉลยที่อ้างตัวอักษรตัวเลือก (เช่น "ตอบ ค.") */
+const MIX_KEY='exam-ans-pos';let MIXPOS={};try{MIXPOS=JSON.parse(localStorage.getItem(MIX_KEY)||'{}')}catch(e){}
+const ORDER_WORDS=/ทุกข้อ|ไม่มีข้อ|ไม่มีคำตอบ|ถูกทั้ง|ผิดทั้ง|ทั้งหมด|ทั้งสอง|ทั้งคู่|ทั้ง\s*[กขคง1-4](?![ก-๙])|ข้อ\s*[กขคง1-4](?![ก-๙])|^\s*[กขคง1-4]\s*[.)]?\s*(และ|หรือ|,)|all of|none of|both|neither/i;
+function canMix(q){
+  if(!q||(q.kind&&q.kind!=='mc')||!Array.isArray(q.choices)||q.choices.length<2||!(q.answer>=0&&q.answer<q.choices.length))return false;
+  if(q.choices.some(c=>ORDER_WORDS.test(String(c))||/^\s*[กขคง1-4]\s*\.?\s*$/.test(String(c))))return false;
+  const st=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).join(' ');
+  return !/(ตอบ|ข้อ|ตัวเลือก)\s*[กขคง](?![ก-๙])|(^|[\s(])[กขคง]\s*\.\s/.test(st);
+}
+function mixQ(q){
+  if(!canMix(q))return q;
+  const k=q.origKey||qKey(q),last=MIXPOS[k],n=q.choices.length;
+  let order;for(let t=0;t<12;t++){order=shuffle([...Array(n).keys()]);if(order.indexOf(q.answer)!==last||n<2)break}
+  const ans=order.indexOf(q.answer);
+  MIXPOS[k]=ans;
+  return{...q,choices:order.map(i=>q.choices[i]),answer:ans};
+}
+function mixAll(a){
+  if(!Array.isArray(a))return a;const out=a.map(mixQ);
+  const ks=Object.keys(MIXPOS);if(ks.length>4000)for(const k of ks.slice(0,ks.length-4000))delete MIXPOS[k];
+  try{localStorage.setItem(MIX_KEY,JSON.stringify(MIXPOS))}catch(e){}
+  return out;
+}
 async function makeItems1(s,level,n,o={}){
   const seen=new Set(),retry=dedupeQs(retryItems(s,Math.ceil(n*.4)),seen);
   if(retry.length>=n)return shuffle(retry.slice(0,n));

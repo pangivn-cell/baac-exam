@@ -26,7 +26,7 @@ async function start(go){
   const ai=!!activeAI(),nb=bankFor(s).length;
   if(!ai||(!s.ai&&!cardMixCount(s,n)&&!nb)){
     if(s.ai&&!nb){R.status='needai';render();return}
-    R.items=offlineItems(s,level,n);R.status='play';R.t0=Date.now();render();return}
+    R.items=mixAll(offlineItems(s,level,n));R.status='play';R.t0=Date.now();render();return}
   if(!R.go){R.status='idle';render();return}
   render();
   const my=R;genCtl=new AbortController();

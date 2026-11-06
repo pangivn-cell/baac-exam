@@ -132,10 +132,12 @@ const figCards=()=>activeCards().filter(c=>(c.figs||[]).some(id=>hasFig(id)&&!ju
 const docSubsOf=id=>{const d=DOCS.find(x=>x.id===id);return (d&&Array.isArray(d.subs))?d.subs:[]};
 const inSubj=(c,name)=>c.topic===name||docSubsOf(c.docId).includes(name);
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
-const BUILTIN_RAW=[...(typeof BUILTIN_BANK!=='undefined'?BUILTIN_BANK:[]),...(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[])];
-const BUILTIN_CARDS=BUILTIN_RAW.map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]}}));
+const BUILTIN_RAW=[...(typeof BUILTIN_BANK!=='undefined'?BUILTIN_BANK:[]),...(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[]),...(typeof AGE_BANK!=='undefined'?AGE_BANK:[]),...(typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[])];
+const BUILTIN_CARDS=BUILTIN_RAW.map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]},level:q.level||0}));
 const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
 function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
+/* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
+const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
@@ -144,7 +146,7 @@ function bankQ(c,s){
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
 function offlineItems(s,level,n){
-  const pool=bankFor(s),k=s.ai?Math.min(n,pool.length):Math.min(pool.length,Math.round(n*.4));
+  const pool=atLevel(bankFor(s),level),k=s.ai?Math.min(n,pool.length):Math.min(pool.length,Math.round(n*.4));
   const q=pickBank(pool,k).map(c=>bankQ(c,s));
   return shuffle([...q,...(s.ai?[]:localItems(s,level,n-q.length))]);
 }
@@ -253,7 +255,7 @@ async function makeItems(s,level,n,o={}){
 }
 async function makeItems0(s,level,n,o={}){
   /* real questions from the bank first (up to half; all of them for picture subjects), the rest newly generated in the same style */
-  const pool=bankFor(s);
+  const pool=atLevel(bankFor(s),level);
   if(!activeAI())return offlineItems(s,level,n);
   const orig=pickBank(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));
   if(orig.length>=n)return shuffle(orig);

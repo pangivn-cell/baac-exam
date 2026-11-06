@@ -133,7 +133,7 @@ const docSubsOf=id=>{const d=DOCS.find(x=>x.id===id);return (d&&Array.isArray(d.
 const inSubj=(c,name)=>c.topic===name||docSubsOf(c.docId).includes(name);
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
 const BUILTIN_RAW=[...(typeof BUILTIN_BANK!=='undefined'?BUILTIN_BANK:[]),...(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[]),...(typeof AGE_BANK!=='undefined'?AGE_BANK:[]),...(typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[])];
-const BUILTIN_CARDS=BUILTIN_RAW.map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]},level:q.level||0}));
+const BUILTIN_CARDS=BUILTIN_RAW.map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]},level:q.level||0,calc:!!q.level}));   /* calc = คลังที่สร้างและตรวจเฉลยด้วยโค้ด (บวกเลข นับอายุ นับขาสัตว์) */
 const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length);return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
 function bankFor(s){const b=bankItems().filter(c=>QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc):s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
@@ -141,14 +141,14 @@ const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
-    fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,topic:c.topic,sub:s.id,subName:s.name},null);
+    fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,calc:!!c.calc,topic:c.topic,sub:s.id,subName:s.name},null);
   q.ansAI=c.ansSrc==='AI';return q;
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
 function offlineItems(s,level,n){
   const pool=atLevel(bankFor(s),level),k=s.ai?Math.min(n,pool.length):Math.min(pool.length,Math.round(n*.4));
   const q=pickBank(pool,k).map(c=>bankQ(c,s));
-  return shuffle([...q,...(s.ai?[]:localItems(s,level,n-q.length))]);
+  return (typeof fixAll==='function'?fixAll:x=>x)(shuffle([...q,...(s.ai?[]:localItems(s,level,n-q.length))]));
 }
 /* a few real questions of the same kind, so newly generated ones copy their style and difficulty */
 function styleEx(pool,k=3){
@@ -239,7 +239,9 @@ let GEN_AVOID=[],QLOG_OFF=false;
 const avoidFor=s=>Object.values(QLOG).filter(e=>e.sub===s.id&&e.st).sort((a,b)=>b.t-a.t).slice(0,25).map(e=>e.st);
 
 /* one place that turns a subject into questions: local generator, AI from cards, AI general, or a mix */
-async function makeItems(s,level,n,o={}){
+/* ทุกชุดผ่านตัวแก้เฉลย (qfix.js): ข้อที่เคยถูกแย้งและแก้แล้ว ได้ฉบับแก้ทุกครั้ง */
+async function makeItems(s,level,n,o={}){return (typeof fixAll==='function'?fixAll:x=>x)(await makeItems1(s,level,n,o))}
+async function makeItems1(s,level,n,o={}){
   const seen=new Set(),retry=dedupeQs(retryItems(s,Math.ceil(n*.4)),seen);
   if(retry.length>=n)return shuffle(retry.slice(0,n));
   GEN_AVOID=avoidFor(s);

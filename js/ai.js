@@ -171,6 +171,48 @@ function looseJSON(t){
   if(isFinite(a)&&b>a){try{return JSON.parse(t.slice(a,b+1))}catch(e){}}
   throw{code:'invalid_json',text:t};
 }
+/* ---------- ค้นข้อมูลจากเว็บ (ติวเตอร์ใต้เฉลย / ตรวจเฉลยที่ถูกแย้ง) ----------
+   Gemini = Google Search grounding · Claude API = web_search tool · OpenAI = Responses API web_search
+   คืน {text, sources:[{url,title}]} · ผู้ให้บริการอื่นค้นเว็บไม่ได้ (code no_web) ผู้เรียกใช้ aiText แทน */
+const WEB_PROVS=['gemini','anthropic','openai'];
+const canWeb=()=>!inViewer&&WEB_PROVS.includes(activeAI());
+const textOnly=turns=>normTurns(turns).map(t=>({role:t.role,content:typeof t.content==='string'?t.content:t.content.text}));
+function uniqSrc(list){const seen=new Set(),out=[];for(const s of list){if(!s||!s.url||seen.has(s.url))continue;seen.add(s.url);out.push({url:String(s.url),title:String(s.title||s.url).slice(0,120)})}return out.slice(0,6)}
+async function aiWeb(input,{signal}={}){
+  const p=activeAI();if(!WEB_PROVS.includes(p))throw{code:'no_web'};
+  const turns=textOnly(input);
+  if(p==='anthropic'){
+    const c=await anthClient();let msg;
+    try{msg=await c.messages.create({model:AIP.anthropic.model,max_tokens:4000,messages:turns,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3}]},{signal})}
+    catch(e){if(signal&&signal.aborted)throw{code:'cancelled'};const s=e&&e.status;throw{code:!s?'network':s===401||s===403?'bad_key':s===404?'bad_model':s===429?'rate_limited':s>=500?'overloaded':'upstream_error',message:String(e&&e.message||'').slice(0,300)}}
+    const text=msg.content.filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    const src=[];for(const b of msg.content){if(b.type==='web_search_tool_result'&&Array.isArray(b.content))for(const r of b.content)src.push({url:r.url,title:r.title});if(b.type==='text'&&Array.isArray(b.citations))for(const ci of b.citations)src.push({url:ci.url,title:ci.title})}
+    if(!text)throw{code:'empty_completion'};return{text,sources:uniqSrc(src)};
+  }
+  let res;
+  try{
+    if(p==='gemini'){
+      const models=[AIP.gemini.model,...GEMINI_FALLBACK.filter(m=>m!==AIP.gemini.model)].filter(m=>!DEAD_MODELS.has('gemini:'+m));
+      for(const model of models){
+        res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal,
+          headers:{'Content-Type':'application/json','x-goog-api-key':AIP.gemini.key},
+          body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:[{text:t.content}]})),tools:[{google_search:{}}]})});
+        if(res.status!==404)break;DEAD_MODELS.add('gemini:'+model);
+      }
+    }else{
+      res=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':'Bearer '+AIP.openai.key},
+        body:JSON.stringify({model:AIP.openai.model,input:turns,tools:[{type:'web_search'}]})});
+    }
+  }catch(e){if(e&&e.name==='AbortError')throw{code:'cancelled'};throw{code:'network',message:String(e)}}
+  if(!res.ok)await httpFail(res);
+  const d=await res.json();let text='',src=[];
+  if(p==='gemini'){const c=d.candidates&&d.candidates[0]||{};text=((c.content&&c.content.parts)||[]).map(x=>x.text||'').join('');
+    src=((c.groundingMetadata&&c.groundingMetadata.groundingChunks)||[]).map(g=>g.web&&{url:g.web.uri,title:g.web.title})}
+  else{for(const o of d.output||[])for(const c of o.content||[]){if(c.type==='output_text'){text+=c.text||'';for(const a of c.annotations||[])if(a.type==='url_citation')src.push({url:a.url,title:a.title})}}
+    if(!text&&d.output_text)text=d.output_text}
+  if(!text.trim())throw{code:'empty_completion'};
+  return{text:text.trim(),sources:uniqSrc(src)};
+}
 async function aiText(input,{signal,onText}={}){
   const p=activeAI();if(!p)throw{code:'no_ai'};
   if(p==='claude')return(await SAMPLE(input,{cache:false,signal,onText})).text;

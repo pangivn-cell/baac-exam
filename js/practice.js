@@ -94,6 +94,7 @@ function explainHTML(q,pick){
   if(q.expViz)h+=renderViz(q.expViz);
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
+  if(q.fixed)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
   if(typeof cloudCardOf==='function'&&cloudCardOf(q))h+=`<div><button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button></div>`;
@@ -103,9 +104,9 @@ function askHTML(id,q,pick){
   const ok=pick===q.answer;
   return `<div class="askbox" id="ab-${id}" ${activeAI()?'':'hidden'}>
    <p class="lbl">สงสัยตรงไหน ถามแย้งได้เลย</p>
-   <div class="quick">${!ok&&pick!=null?`<button type="button" class="qk" data-q="ทำไมไม่ตอบว่า ${esc(q.choices[pick])}">ทำไมไม่ตอบว่า ${esc(q.choices[pick])}</button>`:''}<button type="button" class="qk" data-q="อธิบายข้อนี้ให้ง่ายกว่านี้อีก">อธิบายให้ง่ายกว่านี้</button></div>
+   <div class="quick">${!ok&&pick!=null?`<button type="button" class="qk" data-q="ทำไมไม่ตอบว่า ${esc(q.choices[pick])}">ทำไมไม่ตอบว่า ${esc(q.choices[pick])}</button>`:''}<button type="button" class="qk" data-q="อธิบายข้อนี้ให้ง่ายกว่านี้อีก">อธิบายให้ง่ายกว่านี้</button><button type="button" class="qk" data-verify>⚖ ตรวจว่าเฉลยถูกไหม</button></div>
    <div class="thread"></div>
-   <form class="askform"><label for="ai-${id}" class="lbl">พิมพ์คำถามของคุณ</label><textarea id="ai-${id}" rows="2" placeholder="เช่น ถ้าคิดอีกแบบ ข้อนี้น่าจะตอบอีกข้อไม่ใช่เหรอ"></textarea><div class="askrow"><span class="asknote"></span><button type="button" class="stop" hidden>หยุด</button><button type="submit" class="send">ถาม</button></div></form>
+   <form class="askform"><label for="ai-${id}" class="lbl">พิมพ์คำถามของคุณ</label><textarea id="ai-${id}" rows="2" placeholder="เช่น ถ้าคิดอีกแบบ ข้อนี้น่าจะตอบอีกข้อไม่ใช่เหรอ"></textarea><div class="askrow"><label class="webt"${canWeb()?'':' hidden'}><input type="checkbox" class="webchk"> ค้นเว็บประกอบ</label><span class="asknote"></span><button type="button" class="stop" hidden>หยุด</button><button type="submit" class="send">ถาม</button></div></form>
   </div>`;
 }
 function rulesFor(q,pick){
@@ -125,41 +126,94 @@ ${q.srcText}
 `:''}
 วิธีตอบ:
 ${q.srcText?`- อธิบายโดยอิงเนื้อหาจากเอกสารอ้างอิงข้างบนเป็นหลัก ปิดท้ายทุกคำตอบด้วยบรรทัด "อ้างอิง: ${q.cite}" ถ้าเอกสารไม่ได้พูดถึงสิ่งที่ถาม ให้บอกตรงๆ ว่าเอกสารไม่ได้ระบุ\n`:isSpecSub(q.sub)||(q.subName&&SPEC.some(x=>x[1]===q.subName))?'- ปิดท้ายทุกคำตอบด้วยบรรทัด "อ้างอิง: " ตามด้วยชื่อกฎหมาย มาตรา หรือหลักการที่ใช้ และบอกว่าไม่ได้มาจากเอกสารในคลังความรู้\n':''}
+- ตอบคำถามทันทีตั้งแต่ประโยคแรก ห้ามชม ห้ามปลอบ ห้ามทักทาย ห้ามขึ้นต้นด้วยคำอย่าง "หนูทำได้ดีแล้ว" "คำถามดีมาก" "เข้าใจได้ที่สงสัย" และห้ามเรียกผู้ถามว่าหนู
+- ถ้าถูกถามซ้ำหรือยังไม่เข้าใจ ห้ามตอบซ้ำแบบเดิม ให้อธิบายด้วยวิธีใหม่ ยกตัวอย่างหรือหลักฐานใหม่ ถ้าไม่มีข้อมูลเพิ่มให้บอกตรงๆ
+- ถ้ามีข้อมูลจากการค้นเว็บ ใช้เฉพาะแหล่งที่เชื่อถือได้ และบอกว่ามาจากไหน
 - ตอบเป็นภาษาไทย สั้น กระชับ ไม่เกินประมาณ 8 บรรทัด ภาษาพูดง่ายๆ
 - ห้ามใช้ markdown เช่น ** หรือ # หรือตาราง ถ้าแบ่งขั้นให้ขึ้นบรรทัดใหม่ขึ้นต้นด้วย ① ② ③
 - ห้ามข้ามขั้น ทุกครั้งที่มีค่าหรือพจน์ที่ไม่ได้อยู่ในโจทย์ตรงๆ ต้องบอกว่ามาจากไหน
-- ถ้าเฉลยถูกต้อง และนักเรียนแย้ง ให้ชี้อย่างสุภาพว่าเหตุผลพลาดตรงไหน ถ้าตรวจแล้วพบว่าเฉลยผิดจริง ให้ยอมรับตรงๆ และบอกคำตอบที่ถูก
+- ถ้าเฉลยถูกต้อง และนักเรียนแย้ง ให้ชี้ตรงๆ ว่าเหตุผลพลาดตรงไหน ถ้าตรวจแล้วพบว่าเฉลยผิดจริง ให้ยอมรับตรงๆ และบอกคำตอบที่ถูก
 - ไม่ต้องแทนตัวเลขสมมติ เว้นแต่นักเรียนขอ
 - ถ้าคำถามไม่เกี่ยวกับข้อนี้ ตอบสั้นๆ แล้วชวนกลับมาที่ข้อนี้`;
 }
+/* บทสนทนาแต่ละข้อเก็บไว้นอกหน้า: หน้าถูกวาดใหม่ (ซิงก์ทุก 3 นาที กลับมาที่แท็บ) แล้วบทสนทนาไม่หาย */
+const ASKST=new Map();
+function askState(q,pick){
+  const k=(q.origKey||qKey(q))+'|'+pick;let st=ASKST.get(k);
+  if(!st){st={k,msgs:[],turns:[],rules:rulesFor(q,pick),ctxDone:!!q.srcText||!CARDS.length,web:canWeb(),draft:'',busy:false,ctl:null,note:''};ASKST.set(k,st)}
+  return st;
+}
+function paintAsk(id,st){
+  const box=document.getElementById('ab-'+id);if(!box||box.dataset.k!==st.k)return;
+  const thread=box.querySelector('.thread');thread.textContent='';
+  for(const m of st.msgs){
+    const d=document.createElement('div');d.className='msg '+m.cls;d.textContent=m.text;
+    if(m.sources&&m.sources.length){const sd=document.createElement('div');sd.className='msrc';sd.append('แหล่งข้อมูล: ');
+      m.sources.forEach((x,i)=>{if(i)sd.append(' · ');const a=document.createElement('a');a.href=x.url;a.target='_blank';a.rel='noopener';a.textContent=x.title||x.url;sd.append(a)});d.append(sd)}
+    thread.append(d);
+  }
+  box.querySelector('.asknote').textContent=st.note;
+  box.querySelector('.send').disabled=st.busy;box.querySelector('.stop').hidden=!st.busy;
+  box.querySelectorAll('.qk').forEach(k=>k.disabled=st.busy);
+}
 function wireAsk(id,q,pick){
   const box=document.getElementById('ab-'+id);if(!box||box.dataset.w)return;box.dataset.w='1';
-  const thread=box.querySelector('.thread'),form=box.querySelector('form'),inp=box.querySelector('textarea'),send=box.querySelector('.send'),stop=box.querySelector('.stop'),note=box.querySelector('.asknote');
-  let RULES=rulesFor(q,pick),turns=[],ctl=null;
+  const st=askState(q,pick);box.dataset.k=st.k;
+  const form=box.querySelector('form'),inp=box.querySelector('textarea'),stop=box.querySelector('.stop'),web=box.querySelector('.webchk');
+  inp.value=st.draft;inp.oninput=()=>{st.draft=inp.value};
+  if(web){web.checked=st.web;web.onchange=()=>{st.web=web.checked}}
+  const paint=()=>paintAsk(id,st);
   /* questions without their own source: pull related knowledge cards (meaning-based) on the first question asked */
-  let ctxDone=!!q.srcText||!CARDS.length;
-  const bubble=(cls,t)=>{const d=document.createElement('div');d.className='msg '+cls;d.textContent=t;thread.append(d);return d};
-  async function ask(text){
-    text=text.trim();if(!text||!activeAI()||send.disabled)return;
-    note.textContent='';bubble('me',text);turns.push({role:'user',content:text});turns=turns.slice(-10);
-    const b=bubble('ai wait','กำลังคิด...');ctl=new AbortController();send.disabled=true;stop.hidden=false;
-    try{
-      if(!ctxDone){ctxDone=true;try{const hits=await searchCards(`${q.stem||qLabel(q)}\n${text}`,4);
-        if(hits.length)RULES+=`\n\nความรู้จากคลังความรู้ที่อาจเกี่ยวข้อง (ใช้เฉพาะถ้าเกี่ยวข้องจริง ถ้าใช้ให้ปิดท้ายด้วย "อ้างอิง:" ตามด้วยป้ายในวงเล็บเหลี่ยม):\n${hits.map(c=>`[${cardCite(c)}] ${c.title}: ${c.fact}`).join('\n')}`}catch(e){}}
-      let first=RULES;if(q.fig&&canVision()){const im=await figForAI(q.fig);if(im)first={text:RULES+'\n\nภาพที่แนบคือรูปประกอบของโจทย์ข้อนี้ ดูรูปจริงก่อนตอบ',images:[im]}}
-      const t=await aiText([{role:'user',content:first},...turns],{signal:ctl.signal,onText:({text})=>{b.classList.remove('wait');b.textContent=text}});
-      b.classList.remove('wait');b.textContent=t;turns.push({role:'assistant',content:t});
-    }catch(e){
-      b.classList.remove('wait');if(e&&e.text)b.textContent=e.text;else b.remove();
-      const code=e&&e.code;
-      if(HIDE_CODES.includes(code)||code==='no_ai'){box.hidden=true;return}
-      note.textContent=code==='cancelled'?'':errCopy(code,'ถาม');
-    }finally{send.disabled=false;stop.hidden=true}
+  async function addCtx(text){
+    if(st.ctxDone)return;st.ctxDone=true;
+    try{const hits=await searchCards(`${q.stem||qLabel(q)}\n${text}`,4);
+      if(hits.length)st.rules+=`\n\nความรู้จากคลังความรู้ที่อาจเกี่ยวข้อง (ใช้เฉพาะถ้าเกี่ยวข้องจริง ถ้าใช้ให้ปิดท้ายด้วย "อ้างอิง:" ตามด้วยป้ายในวงเล็บเหลี่ยม):\n${hits.map(c=>`[${cardCite(c)}] ${c.title}: ${c.fact}`).join('\n')}`}catch(e){}
   }
-  form.onsubmit=e=>{e.preventDefault();const t=inp.value;inp.value='';ask(t)};
+  async function ask(text,force){
+    text=text.trim();if(!text||!activeAI()||st.busy)return;
+    st.note='';st.msgs.push({cls:'me',text});st.turns.push({role:'user',content:text});st.turns=st.turns.slice(-10);
+    const m={cls:'ai wait',text:'กำลังคิด...'};st.msgs.push(m);st.busy=true;st.ctl=new AbortController();paint();
+    const signal=st.ctl.signal;
+    try{
+      await addCtx(text);
+      if(force||(isMC(q)&&DISPUTE.test(text))){
+        /* ผู้ใช้แย้งเฉลย: ตรวจ 2 รอบ ถ้าผิดจริงแก้ทั้งระบบ */
+        const res=await verifyDispute(q,pick,text,{signal,onStep:t=>{m.text=t;paint()}});
+        m.sources=res.sources;
+        if(res.verdict==='correct')m.text=`ตรวจแล้ว เฉลยถูก: ${q.choices[q.answer]}\n${res.reason}`;
+        else if(res.verdict==='unsure')m.text=`ตรวจ 2 รอบแล้วผลไม่ตรงกัน ยังสรุปไม่ได้ว่าเฉลยผิด จึงยังไม่แก้\n${res.reason}${typeof cloudCardOf==='function'&&cloudCardOf(q)?'\nถ้ามั่นใจ กด "รายงานเฉลยผิด" ให้ผู้ตรวจดูอีกครั้ง':''}`;
+        else if(computedQ(q))m.text=`ผลตรวจบอกว่า${res.verdict==='bad_question'?'โจทย์มีปัญหา':'เฉลยอาจผิด'}: ${res.reason}\nข้อนี้ระบบคำนวณเฉลยด้วยโปรแกรม จึงไม่แก้อัตโนมัติ แจ้งผู้พัฒนาผ่านเมนูติดต่อผู้พัฒนาได้`;
+        else{
+          const shared=await applyCorrection(q,res);const p=res.prop;
+          m.text=`ตรวจ 2 รอบตรงกัน: ${res.verdict==='bad_question'?'โจทย์/ตัวเลือกเดิมมีปัญหา แก้โจทย์แล้ว':'เฉลยเดิมผิด'}\nคำตอบที่ถูก: ${p.choices[p.answer]}\n${res.reason}\n${shared?'แก้ในระบบแล้ว ทุกคนจะได้ข้อที่แก้แล้ว':(typeof ME!=='undefined'&&ME)?'แก้ในเครื่องนี้แล้ว แต่ส่งให้ทุกคนไม่สำเร็จ (ฐานข้อมูลยังไม่เปิดสิทธิ์ส่วนนี้)':'แก้ในเครื่องนี้แล้ว (เข้าสู่ระบบเพื่อแก้ให้ทุกคน)'}`;
+          st.rules=rulesFor(q,pick);
+          setTimeout(()=>{if(typeof render==='function'&&R&&R.items&&R.items.includes(q))render()},50);
+        }
+      }else{
+        let first=st.rules;if(q.fig&&canVision()){const im=await figForAI(q.fig);if(im)first={text:st.rules+'\n\nภาพที่แนบคือรูปประกอบของโจทย์ข้อนี้ ดูรูปจริงก่อนตอบ',images:[im]}}
+        const input=[{role:'user',content:first},...st.turns];
+        let done=false;
+        if(st.web&&canWeb()){
+          m.text='กำลังค้นข้อมูลจากเว็บ...';paint();
+          try{const r=await aiWeb(input,{signal});m.text=r.text;m.sources=r.sources;done=true}
+          catch(e){if(e&&['cancelled','no_credit','quota','bad_key'].includes(e.code))throw e;st.note='ค้นเว็บไม่สำเร็จ ตอบจากความรู้ของ AI แทน'}
+        }
+        if(!done)m.text=await aiText(input,{signal,onText:({text})=>{m.cls='ai';m.text=text;paint()}});
+      }
+      m.cls='ai';st.turns.push({role:'assistant',content:m.text});
+    }catch(e){
+      if(e&&e.text){m.cls='ai';m.text=e.text}else st.msgs.splice(st.msgs.indexOf(m),1);
+      const code=e&&e.code;
+      if(HIDE_CODES.includes(code)||code==='no_ai'){const b2=document.getElementById('ab-'+id);if(b2)b2.hidden=true;return}
+      st.note=code==='cancelled'?'':errCopy(code,'ถาม');
+    }finally{st.busy=false;st.ctl=null;paint()}
+  }
+  form.onsubmit=e=>{e.preventDefault();const t=inp.value;inp.value='';st.draft='';ask(t)};
   inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit()}};
-  stop.onclick=()=>ctl&&ctl.abort();
-  box.querySelectorAll('.qk').forEach(k=>k.onclick=()=>ask(k.dataset.q));
+  stop.onclick=()=>st.ctl&&st.ctl.abort();
+  box.querySelectorAll('.qk[data-q]').forEach(k=>k.onclick=()=>ask(k.dataset.q));
+  const vb=box.querySelector('[data-verify]');if(vb){if(!isMC(q))vb.hidden=true;vb.onclick=()=>ask(`ตรวจว่าเฉลยข้อนี้ถูกไหม${pick!=null&&pick!==q.answer?` (คำตอบที่เลือก: ${q.choices[pick]})`:''}`,true)}
+  paint();
 }
 
 var SIDE_OPEN=null;

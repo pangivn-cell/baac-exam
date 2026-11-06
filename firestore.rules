@@ -104,6 +104,16 @@ service cloud.firestore {
       allow update, delete: if isReviewer();
     }
 
+    // แก้เฉลย/โจทย์ที่ผิด หลังผู้ใช้แย้งและ AI ตรวจซ้ำ 2 รอบ (qfix.js) · ทุกคนอ่านได้ · ผู้ใช้ที่ล็อกอินบันทึกได้ในรูปแบบที่ถูกต้อง · ผู้ตรวจลบ (ยกเลิกการแก้) ได้
+    match /qfix/{id} {
+      allow read: if true;
+      allow create, update: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.choices is list && request.resource.data.choices.size() >= 2 && request.resource.data.choices.size() <= 6
+        && request.resource.data.answer is int && request.resource.data.answer >= 0 && request.resource.data.answer < request.resource.data.choices.size()
+        && request.resource.data.stem is string && request.resource.data.stem.size() <= 4000;
+      allow delete: if isReviewer();
+    }
+
     // รายงานเฉลยผิด
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'open';

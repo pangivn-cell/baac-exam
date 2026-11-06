@@ -135,6 +135,8 @@ ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
 .msg.me{align-self:flex-end;background:var(--accent);color:var(--sheet)}
 .msg.ai{align-self:flex-start;background:var(--paper);border:1px solid var(--line)}
 .msg.wait{color:var(--ink-2);font-style:italic}
+.msg .msrc{margin-top:6px;font-size:13px;color:var(--ink-2);white-space:normal}.msg .msrc a{color:var(--accent)}
+.webt{display:flex;align-items:center;gap:4px;font-size:14px;color:var(--ink-2);margin-right:auto;cursor:pointer}
 .askform{display:flex;flex-direction:column;gap:8px;margin:0}
 .askform textarea{width:100%;box-sizing:border-box;font-size:16px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--ink);resize:vertical}
 .askrow{display:flex;gap:8px;align-items:center;justify-content:flex-end}

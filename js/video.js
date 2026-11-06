@@ -2,7 +2,7 @@
    - ลิงก์ YouTube: เก็บแค่รหัสคลิป เล่นผ่าน youtube-nocookie
    - ไฟล์วิดีโอ: ส่งขึ้น Google Drive ผ่านตัวรับไฟล์ของแอดมิน (uploadOriginal ใน sources.js ตั้งแชร์ "ทุกคนที่มีลิงก์ดูได้" ให้เอง) เล่นผ่านหน้า preview ของ Drive
    videos/{id} = {src:'yt'|'drive', vid, title, desc, subject, uid, name, at} · ทุกคนดูได้ · ล็อกอินแล้วเพิ่มได้ · เจ้าของ/ผู้ตรวจลบได้ */
-const VIDEO={list:null,at:0,err:'',q:'',play:'',auto:false,ups:[],watchT:null};
+const VIDEO={list:null,at:0,err:'',q:'',play:'',auto:false,ups:[],watchT:null,manage:false,pick:new Set()};
 const VIDEO_CACHE='exam-videos';
 const VIDEO_MAX=1024*1024*1024;
 try{const c=JSON.parse(localStorage.getItem(VIDEO_CACHE)||'null');if(Array.isArray(c))VIDEO.list=c}catch(e){}
@@ -57,11 +57,12 @@ function setWatched(id,on){
 
 /* ---------- รายวิชา = กลุ่มคลิปตามวิชา ---------- */
 const NO_SUBJ='ไม่ระบุวิชา';
+const vOrd=v=>typeof v.ord==='number'?v.ord:(+v.at||0);
 function vidCourses(){
   const m=new Map();
   for(const v of VIDEO.list||[]){const k=v.subject||NO_SUBJ;if(!m.has(k))m.set(k,[]);m.get(k).push(v)}
   return [...m].map(([name,clips])=>{
-    clips.sort((a,b)=>(+a.at||0)-(+b.at||0));                      /* ลำดับบทเรียน = ลำดับที่เพิ่ม */
+    clips.sort((a,b)=>vOrd(a)-vOrd(b));                            /* ลำดับบทเรียน: ที่จัดไว้ (ord) หรือลำดับที่เพิ่ม */
     const s=(typeof SUBJ!=='undefined'?SUBJ:[]).find(x=>x.name===name);
     const done=clips.filter(v=>VWATCH.has(v.id)).length;
     const cover=[...clips].reverse().find(v=>v.src==='yt')||clips[clips.length-1];
@@ -131,19 +132,30 @@ function renderVideo(){
             <button class="${VWATCH.has(cur.id)?'ghost':'primary'}" id="vdone">${VWATCH.has(cur.id)?'✓ ดูจบแล้ว (กดเพื่อยกเลิก)':'ทำเครื่องหมายว่าดูจบแล้ว'}</button>
             ${n<course.clips.length-1?'<button class="ghost" id="vnext">คลิปถัดไป →</button>':''}
             <a class="ghost" href="${esc(vidOpen(cur))}" target="_blank" rel="noopener">เปิดใน${cur.src==='yt'?' YouTube':' Google Drive'} ↗</a>
-            ${canDelVid(cur)?`<button class="ghost" data-vdel="${esc(cur.id)}">ลบคลิปนี้</button>`:''}
+            ${canDelVid(cur)?`<button class="ghost" data-vedit="${esc(cur.id)}">✎ แก้ไข / ย้ายรายวิชา</button><button class="ghost" data-vdel="${esc(cur.id)}">ลบคลิปนี้</button>`:''}
           </div>
         </div>
-        <ol class="vlessons">${course.clips.map((v,i)=>`<li><button type="button" class="vles${v.id===cur.id?' on':''}" data-vplay="${esc(v.id)}">
+        <div class="vside">
+        ${course.clips.some(canDelVid)?`<div class="vmanage">${VIDEO.manage?`<button class="primary" id="vmovesel" ${VIDEO.pick.size?'':'disabled'}>ย้ายที่เลือก (${VIDEO.pick.size}) ไปรายวิชา…</button><button class="ghost" id="vmanage">เสร็จ</button>`
+          :'<button class="ghost" id="vmanage">⚙ จัดการบทเรียน (เลือกหลายคลิป · เรียงลำดับ)</button>'}</div>`:''}
+        <ol class="vlessons">${course.clips.map((v,i)=>{const ed=VIDEO.manage&&canDelVid(v);return `<li class="${ed?'ed':''}">${ed?`<input type="checkbox" data-vpick="${esc(v.id)}" aria-label="เลือก ${esc(v.title)}"${VIDEO.pick.has(v.id)?' checked':''}>`:''}<button type="button" class="vles${v.id===cur.id?' on':''}" data-vplay="${esc(v.id)}">
           <span class="vlthumb"><img src="${esc(vidThumb(v))}" alt="" loading="lazy" onerror="this.remove()"></span>
-          <span class="vlt"><span>${i+1}. ${esc(v.title)}</span><span class="src">${v.src==='yt'?'YouTube':'ไฟล์'}${VWATCH.has(v.id)?' · <b class="vok">✓ ดูแล้ว</b>':''}</span></span></button></li>`).join('')}</ol>
+          <span class="vlt"><span>${i+1}. ${esc(v.title)}</span><span class="src">${v.src==='yt'?'YouTube':'ไฟล์'}${VWATCH.has(v.id)?' · <b class="vok">✓ ดูแล้ว</b>':''}</span></span></button>
+          ${ed?`<span class="vupdn"><button class="ghost" data-vup="${esc(v.id)}" ${i?'':'disabled'} aria-label="เลื่อนขึ้น">↑</button><button class="ghost" data-vdn="${esc(v.id)}" ${i<course.clips.length-1?'':'disabled'} aria-label="เลื่อนลง">↓</button></span>`:''}</li>`}).join('')}</ol>
+        </div>
       </div>`;
-    $('vback').onclick=()=>{VIDEO.course=null;VIDEO.play='';renderVideo();window.scrollTo(0,0)};
+    $('vback').onclick=()=>{VIDEO.course=null;VIDEO.play='';VIDEO.manage=false;VIDEO.pick=new Set();renderVideo();window.scrollTo(0,0)};
     $('vaddyt').onclick=addYouTube;$('vaddfile').onclick=addVideoFile;
     el.querySelectorAll('[data-vplay]').forEach(b=>b.onclick=()=>{VIDEO.play=b.dataset.vplay;VIDEO.auto=true;renderVideo();el.querySelector('.vplay').scrollIntoView({behavior:'smooth',block:'start'})});
     $('vdone').onclick=()=>{setWatched(cur.id,!VWATCH.has(cur.id));renderVideo()};
     const nx=$('vnext');if(nx)nx.onclick=()=>{setWatched(cur.id,true);VIDEO.play=course.clips[n+1].id;VIDEO.auto=true;renderVideo()};
     el.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=()=>delVideo(b.dataset.vdel));
+    el.querySelectorAll('[data-vedit]').forEach(b=>b.onclick=()=>editVideo(b.dataset.vedit));
+    const mg=$('vmanage');if(mg)mg.onclick=()=>{VIDEO.manage=!VIDEO.manage;VIDEO.pick=new Set();renderVideo()};
+    const ms=$('vmovesel');if(ms)ms.onclick=()=>moveManyVideos(course.clips.filter(v=>VIDEO.pick.has(v.id)).map(v=>v.id));
+    el.querySelectorAll('[data-vpick]').forEach(c=>c.onchange=()=>{if(c.checked)VIDEO.pick.add(c.dataset.vpick);else VIDEO.pick.delete(c.dataset.vpick);const b=$('vmovesel');if(b){b.disabled=!VIDEO.pick.size;b.textContent=`ย้ายที่เลือก (${VIDEO.pick.size}) ไปรายวิชา…`}});
+    el.querySelectorAll('[data-vup]').forEach(b=>b.onclick=()=>moveVideo(b.dataset.vup,-1));
+    el.querySelectorAll('[data-vdn]').forEach(b=>b.onclick=()=>moveVideo(b.dataset.vdn,1));
     /* เปิดเล่นคลิปนานเกิน 1 นาที = นับว่าดูแล้ว */
     clearTimeout(VIDEO.watchT);
     if(VIDEO.auto&&!VWATCH.has(cur.id))VIDEO.watchT=setTimeout(()=>{if(VIEW==='video'&&VIDEO.play===cur.id&&!VWATCH.has(cur.id)){setWatched(cur.id,true);renderVideo()}},60000);
@@ -152,11 +164,32 @@ function renderVideo(){
 }
 
 async function needLogin(){if(ME)return true;toast('เข้าสู่ระบบก่อนจึงเพิ่มวิดีโอได้','bad');if(typeof loginDialog==='function')return !!(await loginDialog())&&!!ME;return false}
-const vidForm=(extra,title)=>`${extra}
-  <label class="lbl" for="vt">ชื่อคลิป</label><input class="tx" id="vt" maxlength="150" value="${esc(title||'')}" style="width:100%">
-  <label class="lbl" for="vd">คำอธิบาย (ไม่บังคับ)</label><textarea class="cetx" id="vd" rows="3" maxlength="2000" style="width:100%"></textarea>
-  <label class="lbl" for="vs">วิชา</label><select class="tx" id="vs" style="width:100%">${vidSubOpts(VIDEO.course&&VIDEO.course!==NO_SUBJ?VIDEO.course:'')}</select>`;
-const readVidForm=()=>({title:(document.getElementById('vt').value||'').trim().slice(0,150),desc:(document.getElementById('vd').value||'').trim().slice(0,2000),subject:document.getElementById('vs').value||''});
+/* เลือกรายวิชา (บังคับ): รายวิชาวิดีโอที่มีอยู่ · วิชาในระบบ · สร้างรายวิชาใหม่ */
+function courseSelHTML(cur){
+  const have=vidCourses().map(c=>c.name).filter(n=>n!==NO_SUBJ).sort((a,b)=>a.localeCompare(b,'th'));
+  const sys=vidSubjects().filter(n=>!have.includes(n));
+  const o=n=>`<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}</option>`;
+  return `<label class="lbl" for="vs">รายวิชา <span class="kerr">*</span></label>
+  <select class="tx" id="vs" style="width:100%"><option value="">— เลือกรายวิชา —</option>${have.length?`<optgroup label="รายวิชาวิดีโอที่มีอยู่">${have.map(o).join('')}</optgroup>`:''}<optgroup label="วิชาในระบบ">${sys.map(o).join('')}</optgroup><option value="__new">＋ สร้างรายวิชาใหม่…</option></select>
+  <input class="tx" id="vsnew" maxlength="80" placeholder="ชื่อรายวิชาใหม่ เช่น ติว TGAT" style="width:100%" hidden>`;
+}
+const curCourse=()=>VIDEO.course&&VIDEO.course!==NO_SUBJ?VIDEO.course:'';
+const vidForm=(extra,v)=>`${extra}
+  <label class="lbl" for="vt">ชื่อคลิป</label><input class="tx" id="vt" maxlength="150" value="${esc(v&&v.title||'')}" style="width:100%">
+  <label class="lbl" for="vd">คำอธิบาย (ไม่บังคับ)</label><textarea class="cetx" id="vd" rows="3" maxlength="2000" style="width:100%">${esc(v&&v.desc||'')}</textarea>
+  ${courseSelHTML(v?(v.subject||''):curCourse())}<p class="kerr" id="vferr" hidden></p>`;
+const readCourse=()=>{const v=document.getElementById('vs').value;return v==='__new'?(document.getElementById('vsnew').value||'').trim().slice(0,80):v};
+const readVidForm=()=>({title:(document.getElementById('vt').value||'').trim().slice(0,150),desc:(document.getElementById('vd').value||'').trim().slice(0,2000),subject:readCourse()});
+/* เปิดหน้าต่าง แล้วตรวจก่อนปิด: ช่องที่ผิดแจ้งในหน้าต่าง ไม่ต้องกรอกใหม่ทั้งหมด */
+function vidModal(html,okText,check){
+  const pr=modal(html,[{t:'ยกเลิก'},{t:okText,cls:'primary'}]);
+  const sel=document.getElementById('vs'),nw=document.getElementById('vsnew');
+  if(sel&&nw)sel.onchange=()=>{nw.hidden=sel.value!=='__new';if(!nw.hidden)nw.focus()};
+  const ok=document.querySelector('#dlg .dlgbtns .primary'),err=document.getElementById('vferr');
+  if(ok)ok.onclick=()=>{const m=check?check():'';if(m){if(err){err.textContent=m;err.hidden=false}else toast(m,'bad');return}closeModal(1)};
+  return pr;
+}
+const needCourse=()=>readCourse()?'':document.getElementById('vs').value==='__new'?'ใส่ชื่อรายวิชาใหม่':'เลือกรายวิชาก่อน';
 
 async function saveVideo(rec){
   const f=await fb(),doc={...rec,uid:ME.uid,name:ME.name||'',at:Date.now()};
@@ -167,9 +200,9 @@ async function saveVideo(rec){
 
 async function addYouTube(){
   if(!(await needLogin()))return;
-  if(await modal(`<p class="mt">เพิ่มคลิปจาก YouTube</p>${vidForm('<label class="lbl" for="vu">ลิงก์ YouTube</label><input class="tx" id="vu" style="width:100%" placeholder="https://www.youtube.com/watch?v=... หรือ https://youtu.be/...">','')}<p class="src">ถ้าเว้นชื่อคลิป ระบบใช้ชื่อจาก YouTube</p>`,[{t:'ยกเลิก'},{t:'เพิ่มคลิป',cls:'primary'}])!==1)return;
+  if(await vidModal(`<p class="mt">เพิ่มคลิปจาก YouTube</p>${vidForm('<label class="lbl" for="vu">ลิงก์ YouTube</label><input class="tx" id="vu" style="width:100%" placeholder="https://www.youtube.com/watch?v=... หรือ https://youtu.be/...">',null)}<p class="src">ถ้าเว้นชื่อคลิป ระบบใช้ชื่อจาก YouTube</p>`,'เพิ่มคลิป',
+    ()=>!ytId(document.getElementById('vu').value)?'ลิงก์ YouTube ไม่ถูกต้อง':needCourse())!==1)return;
   const id=ytId(document.getElementById('vu').value),o=readVidForm();
-  if(!id){toast('ลิงก์ YouTube ไม่ถูกต้อง','bad');return}
   if((VIDEO.list||[]).some(v=>v.src==='yt'&&v.vid===id)){toast('มีคลิปนี้ในรายการแล้ว','bad');const ex=VIDEO.list.find(v=>v.src==='yt'&&v.vid===id);VIDEO.play=ex.id;VIDEO.course=ex.subject||NO_SUBJ;renderVideo();return}
   if(!o.title){try{const r=await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent('https://www.youtube.com/watch?v='+id)}`);if(r.ok)o.title=String((await r.json()).title||'').slice(0,150)}catch(e){}}
   if(!o.title){toast('ใส่ชื่อคลิปด้วย (ดึงชื่อจาก YouTube ไม่ได้)','bad');return}
@@ -179,11 +212,10 @@ async function addYouTube(){
 
 async function addVideoFile(){
   if(!(await needLogin()))return;
-  if(await modal(`<p class="mt">อัปโหลดไฟล์วิดีโอ</p>${vidForm(`<label class="lbl" for="vf">ไฟล์วิดีโอ (ไม่เกิน 1 GB)</label><input id="vf" type="file" accept="video/*" style="width:100%">`,'')}<p class="src">ไฟล์จะถูกเก็บใน Google Drive ของระบบ และตั้งให้ทุกคนที่มีลิงก์ดูได้ ไฟล์ใหญ่ใช้เวลาส่งนาน ระหว่างส่งเปิดเมนูอื่นได้แต่อย่าปิดหน้าเว็บ</p>`,[{t:'ยกเลิก'},{t:'อัปโหลด',cls:'primary'}])!==1)return;
+  const isVid=f=>/^video\//.test(f.type||'')||/\.(mp4|mov|m4v|webm|mkv|avi|3gp)$/i.test(f.name);
+  if(await vidModal(`<p class="mt">อัปโหลดไฟล์วิดีโอ</p>${vidForm(`<label class="lbl" for="vf">ไฟล์วิดีโอ (ไม่เกิน 1 GB)</label><input id="vf" type="file" accept="video/*" style="width:100%">`,null)}<p class="src">ไฟล์จะถูกเก็บใน Google Drive ของระบบ และตั้งให้ทุกคนที่มีลิงก์ดูได้ ไฟล์ใหญ่ใช้เวลาส่งนาน ระหว่างส่งเปิดเมนูอื่นได้แต่อย่าปิดหน้าเว็บ</p>`,'อัปโหลด',
+    ()=>{const f=(document.getElementById('vf').files||[])[0];return !f?'เลือกไฟล์วิดีโอก่อน':!isVid(f)?'ไฟล์นี้ไม่ใช่วิดีโอ':f.size>VIDEO_MAX?'ไฟล์ใหญ่เกิน 1 GB ลองย่อขนาดหรืออัปขึ้น YouTube แล้วใช้ลิงก์แทน':needCourse()})!==1)return;
   const file=(document.getElementById('vf').files||[])[0],o=readVidForm();
-  if(!file){toast('เลือกไฟล์วิดีโอก่อน','bad');return}
-  if(!/^video\//.test(file.type||'')&&!/\.(mp4|mov|m4v|webm|mkv|avi|3gp)$/i.test(file.name)){toast('ไฟล์นี้ไม่ใช่วิดีโอ','bad');return}
-  if(file.size>VIDEO_MAX){toast('ไฟล์ใหญ่เกิน 1 GB ลองย่อขนาดหรืออัปขึ้น YouTube แล้วใช้ลิงก์แทน','bad');return}
   if(!o.title)o.title=file.name.replace(/\.[^.]+$/,'').slice(0,150);
   const up={title:o.title,p:0,err:''};VIDEO.ups.push(up);renderVideo();
   const tick=()=>{if(VIEW==='video'){const bar=[...document.querySelectorAll('.vprog span')][VIDEO.ups.indexOf(up)];if(bar){bar.style.width=Math.round(up.p*100)+'%';bar.closest('.cloudbox').querySelector('.src').firstChild.textContent=`กำลังส่งขึ้น Google Drive ${Math.round(up.p*100)}% · เปิดเมนูอื่นได้ แต่อย่าปิดหน้าเว็บจนกว่าจะเสร็จ`}}};
@@ -192,10 +224,41 @@ async function addVideoFile(){
     /* ชื่อไม่ซ้ำ: ตัวรับไฟล์ถือว่าชื่อเดิมที่ไม่มี sha คือไฟล์เดิม */
     const name=`video_${Date.now().toString(36)}_${file.name}`.slice(0,200);
     const r=await uploadOriginal(name,file,file.type||'video/mp4',p=>{up.p=p;tick()});
-    await saveVideo({src:'drive',vid:r.id,...o});
+    const nid=await saveVideo({src:'drive',vid:r.id,...o});if(VIEW==='video'&&!VIDEO.course){VIDEO.course=o.subject;VIDEO.play=nid}
     VIDEO.ups.splice(VIDEO.ups.indexOf(up),1);toast(`อัปโหลด "${o.title}" แล้ว ทุกคนดูได้ (Drive อาจใช้เวลาสักครู่ก่อนเล่นได้)`);
   }catch(e){up.err=e&&e.why||String(e&&e.code||e)}
   finally{window.removeEventListener('beforeunload',busy);renderVideo()}
+}
+
+/* ---------- แก้ไขคลิป · จัดลำดับ · ย้ายหลายคลิป (เจ้าของคลิปหรือผู้ตรวจ) ---------- */
+async function patchVideo(id,patch){
+  const f=await fb();await f.fs.updateDoc(fsDoc('videos',id),patch);
+  const v=(VIDEO.list||[]).find(x=>x.id===id);if(v)Object.assign(v,patch);
+  try{localStorage.setItem(VIDEO_CACHE,JSON.stringify(VIDEO.list))}catch(e){}
+}
+const vErr=e=>String(e&&e.code||e).includes('permission')?'ไม่มีสิทธิ์แก้คลิปนี้':String(e&&e.code||e);
+async function editVideo(id){
+  const v=(VIDEO.list||[]).find(x=>x.id===id);if(!v||!canDelVid(v))return;
+  if(await vidModal(`<p class="mt">แก้ไขคลิป</p>${vidForm('',v)}`,'บันทึก',()=>!(document.getElementById('vt').value||'').trim()?'ใส่ชื่อคลิป':needCourse())!==1)return;
+  const o=readVidForm(),moved=o.subject!==(v.subject||'');
+  try{await patchVideo(id,moved?{...o,ord:Date.now()}:o);if(moved){VIDEO.course=o.subject;toast(`ย้ายไปรายวิชา "${o.subject}" แล้ว`)}else toast('บันทึกแล้ว');renderVideo()}
+  catch(e){toast('บันทึกไม่สำเร็จ: '+vErr(e),'bad')}
+}
+/* เลื่อนบทเรียนขึ้น/ลง: เปลี่ยน ord ของคลิปที่เลื่อนคลิปเดียว (ไว้กึ่งกลางระหว่างคลิปข้างเคียง) จึงไม่ต้องแก้คลิปของคนอื่น */
+async function moveVideo(id,dir){
+  const c=vidCourses().find(x=>x.clips.some(v=>v.id===id));if(!c)return;
+  const cl=c.clips,i=cl.findIndex(v=>v.id===id),j=i+dir;if(j<0||j>=cl.length)return;
+  const a=cl[dir<0?j-1:j],b=cl[dir<0?j:j+1];
+  const ord=!a?vOrd(b)-60000:!b?vOrd(a)+60000:(vOrd(a)+vOrd(b))/2;
+  try{await patchVideo(id,{ord});renderVideo()}catch(e){toast('เลื่อนไม่สำเร็จ: '+vErr(e),'bad')}
+}
+async function moveManyVideos(ids){
+  if(!ids.length)return;
+  if(await vidModal(`<p class="mt">ย้าย ${ids.length} คลิปไปรายวิชา</p>${courseSelHTML('')}<p class="kerr" id="vferr" hidden></p>`,'ย้าย',needCourse)!==1)return;
+  const to=readCourse();let ok=0,bad=0,base=Date.now();
+  for(const [k,id] of ids.entries()){try{await patchVideo(id,{subject:to,ord:base+k});ok++}catch(e){bad++}}
+  VIDEO.pick=new Set();VIDEO.manage=false;VIDEO.course=to;VIDEO.play='';
+  toast(`ย้ายไป "${to}" แล้ว ${ok} คลิป${bad?` · ย้ายไม่ได้ ${bad} คลิป (ไม่มีสิทธิ์)`:''}`,bad?'bad':'');renderVideo();
 }
 
 async function delVideo(id){

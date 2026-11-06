@@ -472,3 +472,10 @@ body.exam-on .aifab,body.exam-on .aipanel{display:none}
   .aifab{right:14px;bottom:calc(30px + env(safe-area-inset-bottom));padding:11px 15px}
   .aipanel{right:0;left:0;bottom:0;width:100%;height:calc(100dvh - 40px);border-radius:16px 16px 0 0}
 }
+
+.vside{display:flex;flex-direction:column;gap:8px;min-width:0}
+.vmanage{display:flex;flex-wrap:wrap;gap:6px}
+.vlessons li{display:flex;align-items:center;gap:6px}
+.vlessons li>.vles{flex:1;min-width:0}
+.vlessons input[type=checkbox]{width:18px;height:18px;flex:0 0 auto}
+.vupdn{display:flex;flex-direction:column;gap:2px}.vupdn .ghost{padding:2px 8px;min-height:0;line-height:1.2}

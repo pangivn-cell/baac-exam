@@ -253,7 +253,7 @@ async function genAIChunks(promptFn,n,{signal,onProg}={}){
   while(out.length<n&&fails<3){
     const k=Math.min(20,n-out.length),base=out.length;let items;
     try{const pr=await promptFn(k,base);items=cleanAI(typeof pr!=='string'?await aiVisionJSON(pr.text,pr.images,{signal}):await aiJSON(pr,{signal,onText:({text})=>{const m=(text.match(/"stem"/g)||[]).length;if(onProg)onProg(base+Math.min(m,k))}}))}
-    catch(e){if(e&&e.code==='invalid_json'){fails++;continue}throw e}
+    catch(e){if(e&&(e.code==='invalid_json'||e.code==='truncated')){fails++;continue}throw e}
     let add=0;for(const q of shuffle(items))if(out.length<n&&!seen.has(q.stem)){seen.add(q.stem);out.push(q);add++}
     if(!add)fails++;if(onProg)onProg(out.length);
   }

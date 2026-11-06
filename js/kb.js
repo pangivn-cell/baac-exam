@@ -264,8 +264,35 @@ async function linkDocSubjects(id){
 }
 function docWindows(doc,max=12000){
   const w=[];let cur=[],len=0;
-  for(const pg of doc.pages){if(!pg.text)continue;const t=pg.text.slice(0,max);if(len+t.length>max&&cur.length){w.push(cur);cur=[];len=0}cur.push({n:pg.n,text:t});len+=t.length}
+  /* หน้าที่ยาวเกินช่วง แบ่งเป็นหลายท่อน (เลขหน้าเดิม) ไม่ตัดท้ายทิ้ง */
+  for(const pg of doc.pages){if(!pg.text)continue;for(let o=0;o<pg.text.length;o+=max){const t=pg.text.slice(o,o+max);if(len+t.length>max&&cur.length){w.push(cur);cur=[];len=0}cur.push({n:pg.n,text:t});len+=t.length}}
   if(cur.length)w.push(cur);return w;
+}
+/* ขนาดช่วงที่ส่งให้ AI ย่อยต่อครั้ง: ช่วงใหญ่ (เดิม 10,000 ตัวอักษร ~20–30 หน้า) AI ทำบัตรได้ไม่กี่ใบแล้วข้ามเนื้อหาส่วนใหญ่ หรือคำตอบยาวจนขาด
+   ไฟล์ที่เริ่มย่อยด้วยขนาดเดิมไปแล้ว (doc.win ว่าง แต่ digDone>0) ใช้ขนาดเดิมต่อ เพื่อให้นับช่วงที่ทำแล้วตรงกัน */
+const DIG_WIN=4500,EXAM_WIN=4000;
+const winOf=(doc,exam)=>doc.win||(doc.digDone?(exam?9000:10000):(exam?EXAM_WIN:DIG_WIN));
+const PROC={task:'proc'};
+/* AI ตอบขาด (ยาวเกิน) หรือ JSON เสีย: แบ่งช่วงครึ่งหนึ่งแล้วทำใหม่ทีละครึ่ง แทนที่จะทิ้งทั้งช่วง */
+function splitWin(win){
+  if(win.length>1){const h=Math.ceil(win.length/2);return[win.slice(0,h),win.slice(h)]}
+  const p=win[0];if(!p||p.text.length<600)return[win];
+  let m=p.text.lastIndexOf('\n',p.text.length>>1);if(m<p.text.length*.25)m=p.text.length>>1;
+  return[[{n:p.n,text:p.text.slice(0,m)}],[{n:p.n,text:p.text.slice(m)}]];
+}
+async function aiWin(win,mk,depth=0){
+  let r=null;
+  for(let att=0;att<2&&!r;att++){try{r=await mk(win)}catch(e){if(!(e&&(e.code==='invalid_json'||e.code==='truncated')))throw e;if(e.code==='truncated')break}}
+  const parts=r||depth>=2?[win]:splitWin(win);
+  if(parts.length<2)return[{win,r}];
+  const out=[];for(const p of parts)out.push(...await aiWin(p,mk,depth+1));return out;
+}
+/* หน้าที่มีเนื้อหาพอสมควรแต่ยังไม่มีบัตร/ข้อสอบจากไฟล์นี้เลย (ไม่นับสารบัญ) → ให้ AI เก็บตกอีกรอบ */
+const QLIKE=/(^|\n)\s*\d{1,3}\s*[.)]\s*\S[\s\S]*?(^|\n|\s)[กขคง1-4]\s*[.)]/m;
+function uncovered(doc,win,exam){
+  const has=new Set(CARDS.filter(c=>c.docId===doc.id&&(!exam||c.type==='q')).map(c=>+c.page)),len={};
+  for(const p of win)len[p.n]=(len[p.n]||0)+p.text.replace(/\[รูป F[a-z0-9]+\][^\n]*/g,'').replace(/\s/g,'').length;
+  return win.filter(p=>!has.has(p.n)&&len[p.n]>=350&&!/สารบัญ|table of contents/i.test(p.text.slice(0,200))&&(!exam||QLIKE.test(p.text)));
 }
 function docPrompt(doc,level,k,base,weak){
   const W=docWindows(doc),win=W[(DOC_OFF+Math.floor(base/20))%W.length];
@@ -299,7 +326,8 @@ function withCite(q,doc){const r=lookupRef(q.ref,doc);if(r){q.cite=r.cite;if(r.t
 /* ---------- embeddings: meaning-based search ---------- */
 const canEmbed=()=>{const p=activeAI();return p==='gemini'||p==='openai'};
 /* อ่านรูปได้: ทุกตัวที่ใช้ key (Claude API และ Meta อ่านรูปได้ แต่ไม่มีดัชนีความหมาย) */
-const canVision=()=>KEY_PROVS.includes(activeAI());
+/* AI ประมวลผลไฟล์ที่อ่านรูปไม่ได้ (เช่นโมเดลข้อความล้วนในเครื่อง): งานที่มีรูปส่งให้ตัวหลักแทน */
+const canVision=task=>visionOK(aiRoute(task).p)||(task==='proc'&&visionOK(activeAI()));
 const dot=(a,b)=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s};
 function unit(v){let s=0;for(const x of v)s+=x*x;s=Math.sqrt(s)||1;return Float32Array.from(v,x=>x/s)}
 async function embedOnce(p,batch,task){
@@ -339,9 +367,9 @@ async function searchCards(q,k=4){
   const words=q.split(/\s+/).filter(w=>w.length>1);
   return act.map(c=>({c,s:countHits((c.title+' '+c.fact).toLowerCase(),words)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,k).map(x=>x.c);
 }
-async function aiVisionJSON(text,images,{signal}={}){
-  const p=activeAI();if(!KEY_PROVS.includes(p))throw{code:'no_vision'};
-  return looseJSON(await keyCall(p,[{role:'user',content:{text,images}}],true,signal));
+async function aiVisionJSON(text,images,{signal,task}={}){
+  let {p,model}=aiRoute(task);if(!visionOK(p)){p=activeAI();model=''}if(!visionOK(p))throw{code:'no_vision'};
+  return looseJSON(await keyCall(p,[{role:'user',content:{text,images}}],true,signal,model));
 }
 
 /* ---------- reading files (PDF via pdf.js, DOCX via JSZip, TXT/HTML natively) ---------- */
@@ -465,7 +493,7 @@ const visionTodo=d=>[...new Set([...(d.bad||[]),...(d.figPages||[])])].filter(n=
 const STAGE_TXT={queued:'อยู่ใน Google Drive แล้ว · รอเริ่มย่อย',read:'รออ่านไฟล์จาก Google Drive',ocr:'รอ AI อ่านหน้าที่ข้อความเพี้ยนและหน้าที่มีรูป',digest:'รอ AI ย่อยความรู้',embed:'รอทำดัชนีค้นหาตามความหมาย',conflict:'รอเทียบกับเอกสารเดิม',ready:'พร้อมใช้'};
 function estCalls(d){
   const ocr=d.stage==='ocr'?Math.ceil(visionTodo(d).length/4):0;
-  const dig=['ocr','digest'].includes(d.stage)?Math.max(1,docWindows(d,10000).length-(d.digDone||0)):0;
+  const dig=['ocr','digest'].includes(d.stage)?Math.max(1,docWindows(d,winOf(d,d.kind==='exam')).length-(d.digDone||0)):0;
   return ocr+dig+(d.stage!=='ready'?2:0);
 }
 function queueDoc(id){if(!PROCQ.includes(id)&&PROC_ID!==id)PROCQ.push(id);runQueue()}
@@ -539,8 +567,8 @@ async function processDoc(doc){
     if((doc.driveId||doc.srcFile)&&(!doc.pages||!doc.pages.length))await readDriveDoc(doc);
     if(doc.dupOf){toast(`${doc.name} มีเนื้อหาเดียวกับเอกสารเดิม · ข้ามการประมวลผลซ้ำ`);return}
     if(doc.stage==='queued')doc.stage='digest';
-    if(doc.stage==='ocr'){if(canVision())await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
-    if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
+    if(doc.stage==='ocr'){if(canVision('proc'))await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
+    if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone&&!doc.fill){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
@@ -578,9 +606,9 @@ async function ocrDoc(doc){
    - ถ้าโจทย์และตัวเลือกเป็นข้อความที่อ่านได้ (เช่น ภาพหน้าจอแบบทดสอบ สไลด์คำถาม) ให้ถอดเป็นข้อความใน text อย่างเดียว ห้ามตัดเป็นรูป เพราะรูปแบบนี้มักมีเฉลยติดมา (เช่น ตัวเลือกที่ถูกไฮไลต์สีต่าง) ตัดรูปเฉพาะเมื่อโจทย์อ้างถึงรูป ตาราง กราฟ แผนภูมิ หรือตัวเลือกเป็นรูป
    - ห้ามตัดลายเซ็น ลายมือชื่อ โลโก้ ตราสัญลักษณ์ ตราประทับ รูปถ่ายบุคคล QR code ลายน้ำ และภาพตกแต่ง เพราะใช้ออกข้อสอบไม่ได้
    - หน้าที่ไม่มีรูปแบบนี้ให้ figures เป็น []
-ตอบเป็น JSON เท่านั้น: {"pages":[{"n":${nums[0]},"text":"ข้อความทั้งหน้า","figures":[{"box_2d":[100,80,600,920],"desc":"คำอธิบายรูป"}]}]}`,imgs.map(({mime,data})=>({mime,data})));
+ตอบเป็น JSON เท่านั้น: {"pages":[{"n":${nums[0]},"text":"ข้อความทั้งหน้า","figures":[{"box_2d":[100,80,600,920],"desc":"คำอธิบายรูป"}]}]}`,imgs.map(({mime,data})=>({mime,data})),{task:'proc'});
       got=r&&Array.isArray(r.pages)?r.pages:[]}
-    catch(e){if(e&&(e.code==='empty_completion'||e.code==='invalid_json'))fail+=nums.length;else throw e}
+    catch(e){if(e&&(e.code==='empty_completion'||e.code==='invalid_json'||e.code==='truncated'))fail+=nums.length;else throw e}
     for(let j=0;j<nums.length;j++){
       const n=nums[j],g=got.find(x=>+x.n===n)||got[j]||{},pg=doc.pages.find(p=>p.n===n)||(doc.pages.push({n,text:''}),doc.pages.find(p=>p.n===n));
       let t=bad.has(n)?tidy(String(g.text||'')):'';
@@ -602,13 +630,15 @@ async function ocrDoc(doc){
   }
   doc.warn=fail?`AI อ่านภาพไม่ได้ ${fail} หน้า (ใช้ข้อความที่ดึงได้แทน)`:'';
 }
-function digestPrompt(doc,win,figs,onlyFigs){
+function digestPrompt(doc,win,figs,onlyFigs,fill){
   return `คุณเป็นผู้เชี่ยวชาญเตรียมสอบเข้าทำงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) อ่านเนื้อหาจากเอกสาร "${doc.name}" ด้านล่างให้เข้าใจ แล้วสกัดเป็น "บัตรความรู้" สำหรับใช้ออกข้อสอบภายหลัง
 กติกา:
 - 1 บัตร = 1 ความรู้ที่สมบูรณ์ในตัว อ่านบัตรเดียวแล้วเข้าใจได้โดยไม่ต้องเห็นเอกสาร ระบุบริบทให้ครบ เช่น ชื่อกฎหมาย ผลิตภัณฑ์ หน่วยงาน
 - fact เขียน 2–5 ประโยคเป็นภาษาที่คนเพิ่งเริ่มเรียนอ่านเข้าใจ ขยายคำย่อ อธิบายศัพท์เฉพาะ เรียงเหตุผลให้ต่อเนื่อง ยกตัวอย่างสั้นๆ ถ้าช่วยให้เข้าใจ ห้ามเขียนเป็นวลีห้วนๆ หรือรหัสย่อที่ไม่อธิบาย
 - เก็บเฉพาะสาระที่ออกสอบได้: นิยาม หลักการ เงื่อนไข ข้อยกเว้น ขั้นตอน ตัวเลข ระยะเวลา อัตรา สิทธิและหน้าที่ บทลงโทษ ความแตกต่างของสิ่งที่คล้ายกัน
-- ข้ามสารบัญ คำนำ หัวกระดาษ ท้ายกระดาษ และข้อความซ้ำ ไม่ต้องทำบัตรเรื่องเล็กน้อยที่ไม่มีทางออกสอบ
+- ข้ามสารบัญ คำนำ หัวกระดาษ ท้ายกระดาษ และข้อความซ้ำ
+- เก็บให้ครบทุกหัวข้อตั้งแต่ต้นจนจบเนื้อหา ทุกหน้าที่มีสาระต้องมีอย่างน้อย 1 บัตร หัวข้อที่มีรายละเอียดมากให้แยกเป็นหลายบัตร ไม่จำกัดจำนวนบัตร ห้ามหยุดก่อนถึงหน้าสุดท้าย${fill?`
+- รอบนี้เป็นการเก็บตก: หน้าในเนื้อหาด้านล่างยังไม่มีบัตรเลย ให้ทำบัตรจากทุกสาระในหน้าเหล่านี้`:''}
 - ห้ามเติมความรู้ที่ไม่มีในเนื้อหา ตัวเลขต้องตรงตามเอกสาร ถ้าข้อความต้นฉบับพิมพ์ผิดหรือวรรณยุกต์เพี้ยนแต่ความหมายชัด ให้เขียนให้ถูก
 - topic เลือกจาก: ${topicsOf(doc.group).join(', ')} หรือ อื่นๆ
 - kind เลือกจาก: นิยาม, หลักการ, เงื่อนไข, ข้อยกเว้น, ขั้นตอน, ตัวเลข, สิทธิหน้าที่, บทลงโทษ, เปรียบเทียบ, ข้อเท็จจริง, สูตรหรือวิธีคิด, ไวยากรณ์หรือการใช้ภาษา${doc.group==='gen'?`
@@ -631,35 +661,48 @@ ${win.map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n\n')}
 }
 async function digestDoc(doc){
   if(doc.kind==='exam')return extractDoc(doc);
-  const W=docWindows(doc,10000);doc.summ=doc.summ||[];
+  if(!doc.digDone)doc.win=winOf(doc);
+  const W=docWindows(doc,winOf(doc));doc.summ=doc.summ||[];
+  /* ช่วงหนึ่ง (หรือครึ่งช่วงที่แบ่งตอน AI ตอบขาด) → บัตรความรู้ */
+  const toCards=(r,win,sent)=>{const pages=win.map(p=>p.n);
+    return (r&&Array.isArray(r.cards)?r.cards:[]).filter(c=>c&&typeof c.fact==='string'&&c.fact.trim().length>8).map(c=>{
+      const figs=(Array.isArray(c.figs)?c.figs:[]).map(String).filter(id=>sent.includes(id));
+      return{id:newId(),docId:doc.id,title:String(c.title||c.fact).slice(0,120),topic:doc.topic||(topicsOf(doc.group).includes(c.topic)?c.topic:'อื่นๆ'),kind:String(c.kind||'ข้อเท็จจริง'),
+        fact:c.fact.trim(),page:pages.includes(+c.page)?+c.page:(figs.length?FIGS.get(figs[0]).page:pages[0]),imp:Math.max(1,Math.min(3,Math.round(+c.importance||2))),at:Date.now(),st:{},
+        figs,ansSrc:figs.length?(String(c.answerSource||'').includes('เอกสาร')?'doc':'AI'):''}})};
+  const keepNew=async arr=>{
+    const seen=new Set(CARDS.map(cardKey)),keep=[];
+    for(const c of arr){const k=cardKey(c);if(seen.has(k))continue;seen.add(k);keep.push(c)}
+    if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
+    CARDS.push(...keep);await saveCards(keep);return keep.length;
+  };
   for(let i=doc.digDone||0;i<W.length;i++){
-    setProg(doc,`AI กำลังย่อยความรู้ ช่วงที่ ${i+1} จาก ${W.length}`);
-    const pages=W[i].map(p=>p.n);
-    /* figures referenced in this window go along as images, 8 per call; later calls only make figure cards */
-    const figIds=canVision()?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okFig):[];
-    const batches=[];for(let b=0;b<figIds.length;b+=8)batches.push(figIds.slice(b,b+8));if(!batches.length)batches.push([]);
-    for(const [bi,ids] of batches.entries()){
-      const images=[],sent=[];for(const id of ids){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
-      const prompt=digestPrompt(doc,W[i],sent,bi>0);
-      let r=null;
-      for(let att=0;att<2&&!r;att++){try{r=images.length?await aiVisionJSON(prompt,images):await aiJSON(prompt)}catch(e){if(!(e&&e.code==='invalid_json'))throw e}}
-      const arr=(r&&Array.isArray(r.cards)?r.cards:[]).filter(c=>c&&typeof c.fact==='string'&&c.fact.trim().length>8).map(c=>{
-        const figs=(Array.isArray(c.figs)?c.figs:[]).map(String).filter(id=>sent.includes(id));
-        return{id:newId(),docId:doc.id,title:String(c.title||c.fact).slice(0,120),topic:doc.topic||(topicsOf(doc.group).includes(c.topic)?c.topic:'อื่นๆ'),kind:String(c.kind||'ข้อเท็จจริง'),
-          fact:c.fact.trim(),page:pages.includes(+c.page)?+c.page:(figs.length?FIGS.get(figs[0]).page:pages[0]),imp:Math.max(1,Math.min(3,Math.round(+c.importance||2))),at:Date.now(),st:{},
-          figs,ansSrc:figs.length?(String(c.answerSource||'').includes('เอกสาร')?'doc':'AI'):''}});
-      const seen=new Set(CARDS.map(cardKey)),keep=[];
-      for(const c of arr){const k=cardKey(c);if(seen.has(k))continue;seen.add(k);keep.push(c)}
-      if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
-      CARDS.push(...keep);await saveCards(keep);
-      if(bi===0&&r&&r.summary)doc.summ[i]=String(r.summary);
+    /* doc.fill = เก็บตกไฟล์ที่ย่อยเสร็จแล้ว: ไม่ย่อยซ้ำ ทำเฉพาะหน้าที่ยังไม่มีบัตร */
+    if(!doc.fill){
+      setProg(doc,`AI กำลังย่อยความรู้ ช่วงที่ ${i+1} จาก ${W.length}`);
+      /* figures referenced in this window go along as images, 8 per call; later calls only make figure cards */
+      const figIds=canVision('proc')?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okFig):[];
+      const batches=[];for(let b=0;b<figIds.length;b+=8)batches.push(figIds.slice(b,b+8));if(!batches.length)batches.push([]);
+      for(const [bi,ids] of batches.entries()){
+        const images=[],sent=[];for(const id of ids){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
+        const parts=await aiWin(W[i],w=>{const prompt=digestPrompt(doc,w,sent,bi>0);return images.length?aiVisionJSON(prompt,images,PROC):aiJSON(prompt,PROC)});
+        for(const {win,r} of parts)await keepNew(toCards(r,win,sent));
+        const sm=parts.map(x=>x.r&&x.r.summary).filter(Boolean).join(' ');
+        if(bi===0&&sm)doc.summ[i]=String(sm);
+      }
+    }
+    const gap=uncovered(doc,W[i]);
+    if(gap.length){
+      setProg(doc,`AI กำลังเก็บตกหน้าที่ยังไม่มีบัตร ช่วงที่ ${i+1} จาก ${W.length}`);
+      for(const {win,r} of await aiWin(gap,w=>aiJSON(digestPrompt(doc,w,[],false,true),PROC)))await keepNew(toCards(r,win,[]));
     }
     doc.digDone=i+1;await saveDoc(doc);
     if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
+  doc.fill=false;
 }
 /* exam files: pull every multiple-choice question out as-is (answer key may sit elsewhere in the file, so it rides along) */
-function extractPrompt(doc,win,figs,keyText){
+function extractPrompt(doc,win,figs,keyText,fill){
   return `เอกสาร "${doc.name}" เป็นข้อสอบหรือตัวอย่างโจทย์ ดึงข้อสอบปรนัยทุกข้อในเนื้อหาด้านล่างออกมาตามต้นฉบับ เพื่อเก็บเป็นคลังข้อสอบ
 กติกา:
 ${VIZ_RULE}
@@ -670,7 +713,9 @@ ${VIZ_RULE}
 - explanation คือเหตุผล 1–3 ขั้น ถ้าเอกสารมีคำอธิบายให้ใช้ของเอกสาร
 - topic เลือกจาก: ${topicsOf(doc.group).join(', ')} หรือ อื่นๆ
 - page คือเลขในป้าย [${doc.unit} ...] ของข้อนั้น
-- ข้ามข้อที่ไม่ใช่ปรนัย และข้อที่โจทย์ขาดหายจนทำไม่ได้${figs.length?`
+- ข้ามข้อที่ไม่ใช่ปรนัย และข้อที่โจทย์ขาดหายจนทำไม่ได้
+- ดึงให้ครบทุกข้อตั้งแต่ข้อแรกจนข้อสุดท้ายของเนื้อหา ห้ามหยุดกลางทาง ห้ามสรุปหรือเลือกเฉพาะบางข้อ${fill?`
+- รอบนี้เป็นการเก็บตก: หน้าในเนื้อหาด้านล่างยังดึงข้อสอบไม่ได้เลย ให้ดึงทุกข้อในหน้าเหล่านี้`:''}${figs.length?`
 - มีภาพแนบ ${figs.length} ภาพ เรียงตามลำดับรหัส: ${figs.join(', ')} ในเนื้อหาจะเห็นป้าย [รูป รหัส] ตรงตำแหน่งของรูป ข้อที่ต้องดูรูปให้ใส่ figs เป็นรหัสรูปนั้น (ถ้ารูปเป็นแค่ภาพของตัวโจทย์และตัวเลือกที่เป็นข้อความ ให้ถอดเป็น stem/choices แล้วให้ figs เป็น [] เพราะรูปแบบนี้มักมีเฉลยติดมา) ห้ามทิ้งรูปของโจทย์`:''}
 - ห้ามใช้ markdown
 ${keyText?`\nส่วนเฉลยที่พบในเอกสาร (ใช้จับคู่กับเลขข้อ):\n${keyText}\n`:''}
@@ -681,30 +726,39 @@ ${win.map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n\n')}
 {"questions":[{"no":"1","topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"answerSource":"เอกสาร","explanation":["เหตุผล"],"figs":[],"page":${win[0].n}}]}`;
 }
 async function extractDoc(doc){
-  const W=docWindows(doc,9000);
+  if(!doc.digDone)doc.win=winOf(doc,true);
+  const W=docWindows(doc,winOf(doc,true));
   const keyText=doc.pages.filter(p=>/เฉลย|answer\s*key|คำตอบที่ถูก/i.test(p.text)).map(p=>`[${doc.unit} ${p.n}]\n${p.text}`).join('\n').slice(0,3500);
-  for(let i=doc.digDone||0;i<W.length;i++){
-    setProg(doc,`AI กำลังดึงข้อสอบออกจากไฟล์ ช่วงที่ ${i+1} จาก ${W.length}`);
-    const pages=W[i].map(p=>p.n);
-    const figIds=canVision()?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okQFig).slice(0,12):[];
-    const images=[],sent=[];for(const id of figIds){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
-    const prompt=extractPrompt(doc,W[i],sent,keyText);
-    let r=null;
-    for(let att=0;att<2&&!r;att++){try{r=images.length?await aiVisionJSON(prompt,images):await aiJSON(prompt)}catch(e){if(!(e&&e.code==='invalid_json'))throw e}}
-    const arr=(r&&Array.isArray(r.questions)?r.questions:[]).filter(q=>q&&typeof q.stem==='string'&&q.stem.trim()&&Array.isArray(q.choices)&&q.choices.length>=2).map(q=>{
+  const toQs=(r,win,sent)=>{const pages=win.map(p=>p.n);
+    return (r&&Array.isArray(r.questions)?r.questions:[]).filter(q=>q&&typeof q.stem==='string'&&q.stem.trim()&&Array.isArray(q.choices)&&q.choices.length>=2).map(q=>{
       const figs=(Array.isArray(q.figs)?q.figs:[]).map(String).filter(id=>sent.includes(id)),choices=q.choices.slice(0,6).map(String);
       const ans=Number.isInteger(+q.answer)&&+q.answer>=0&&+q.answer<choices.length?+q.answer:-1;
       const steps=(Array.isArray(q.explanation)?q.explanation:[q.explanation]).filter(Boolean).map(String);
       return{id:newId(),docId:doc.id,type:'q',no:String(q.no||''),title:q.stem.trim().slice(0,90),topic:doc.topic||(topicsOf(doc.group).includes(q.topic)?q.topic:'อื่นๆ'),kind:'ข้อสอบ',
         fact:`${q.stem.trim()}\nตัวเลือก: ${choices.join(' | ')}${ans>=0?`\nตอบ: ${choices[ans]}`:''}`,page:pages.includes(+q.page)?+q.page:pages[0],imp:2,at:Date.now(),st:{},
-        figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps,viz:cleanViz(q.viz)}}});
+        figs,ansSrc:ans<0?'':String(q.answerSource||'').includes('เอกสาร')?'doc':'AI',q:{stem:q.stem.trim(),choices,answer:ans,steps,viz:cleanViz(q.viz)}}})};
+  const keepNew=async arr=>{
     const seen=new Set(CARDS.filter(c=>c.type==='q'&&c.q).map(c=>qKey(c.q))),keep=[];
     for(const c of arr){const k=qKey(c.q);if(seen.has(k))continue;seen.add(k);keep.push(c)}
     if(arr.length>keep.length)doc.dupSkipped=(doc.dupSkipped||0)+(arr.length-keep.length);
     CARDS.push(...keep);await saveCards(keep);
+  };
+  for(let i=doc.digDone||0;i<W.length;i++){
+    if(!doc.fill){
+      setProg(doc,`AI กำลังดึงข้อสอบออกจากไฟล์ ช่วงที่ ${i+1} จาก ${W.length}`);
+      const figIds=canVision('proc')?[...new Set(W[i].flatMap(p=>[...p.text.matchAll(/\[รูป (F[a-z0-9]+)\]/g)].map(m=>m[1])))].filter(okQFig).slice(0,12):[];
+      const images=[],sent=[];for(const id of figIds){const im=await figForAI(id);if(im){images.push(im);sent.push(id)}}
+      for(const {win,r} of await aiWin(W[i],w=>{const prompt=extractPrompt(doc,w,sent,keyText);return images.length?aiVisionJSON(prompt,images,PROC):aiJSON(prompt,PROC)}))await keepNew(toQs(r,win,sent));
+    }
+    const gap=uncovered(doc,W[i],true);
+    if(gap.length){
+      setProg(doc,`AI กำลังเก็บตกหน้าที่ยังดึงข้อสอบไม่ได้ ช่วงที่ ${i+1} จาก ${W.length}`);
+      for(const {win,r} of await aiWin(gap,w=>aiJSON(extractPrompt(doc,w,[],keyText,true),PROC)))await keepNew(toQs(r,win,[]));
+    }
     doc.digDone=i+1;await saveDoc(doc);
     if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
+  doc.fill=false;
 }
 async function findConflicts(doc){
   const mine=CARDS.filter(c=>c.docId===doc.id&&c.emb&&c.type!=='q'),others=CARDS.filter(c=>c.docId!==doc.id&&c.emb&&c.type!=='q');
@@ -719,7 +773,7 @@ async function findConflicts(doc){
 ตอบว่าแต่ละคู่ขัดแย้งกันไหม ขัดแย้ง = พูดถึงเรื่องเดียวกันแต่ตัวเลข เงื่อนไข หรือข้อสรุปต่างกันจนใช้ตอบข้อสอบข้อเดียวกันได้คำตอบต่างกัน
 ถ้าแค่เสริมกัน พูดคนละแง่ หรือเป็นคนละเรื่อง ให้ตอบ false
 ${ch.map((p,j)=>`คู่ ${j}:\nเดิม (${cardCite(p.o)}): ${p.o.fact}\nใหม่ (${cardCite(p.c)}): ${p.c.fact}`).join('\n\n')}
-ตอบเป็น JSON เท่านั้น: {"results":[{"i":0,"conflict":false,"note":"ถ้าขัดกัน บอกสั้นๆ ว่าต่างกันตรงไหน"}]}`);
+ตอบเป็น JSON เท่านั้น: {"results":[{"i":0,"conflict":false,"note":"ถ้าขัดกัน บอกสั้นๆ ว่าต่างกันตรงไหน"}]}`,PROC);
     const changed=[];
     for(const x of (r&&Array.isArray(r.results)?r.results:[])){const p=ch[+x.i];if(p&&x.conflict===true){p.c.conf={other:p.o.id,note:String(x.note||''),use:'new'};changed.push(p.c)}}
     await saveCards(changed);
@@ -975,6 +1029,7 @@ function renderKB(){
       ${det('p'+d.id,'ดูข้อความที่ระบบอ่านได้',`<pre>${esc(previewText(d))}</pre>`)}
       <div class="btnrow" style="justify-content:flex-start">${d.show&&nc?'<button class="primary" data-go>ทำข้อสอบจากเอกสารนี้</button>':''}${nc?'<button class="ghost" data-link>เชื่อมต่อกับรายวิชา</button>':''}<button class="ghost" data-opt ${busy?'disabled':''}>ตั้งค่าประเภท/กลุ่ม/การแสดง</button>
         ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai&&!rb?'':'disabled'}>${d.stage==='queued'?'เริ่มย่อยตอนนี้':d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
+        ${!busy&&d.stage==='ready'&&nc&&!d.central&&docMine(d)?'<button class="ghost" data-fill>เก็บตกหน้าที่ยังไม่มีบัตร</button>':''}
         ${!busy&&d.stage!=='queued'&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
         <button class="ghost" data-del ${busy?'disabled':''}>ลบ</button></div>
@@ -1067,6 +1122,13 @@ function renderKB(){
     const dfb=box.querySelector('[data-dropfile]');if(dfb)dfb.onclick=async()=>{
       if(await modal(`<p class="mt">ลบไฟล์ต้นฉบับ?</p><p>${esc(d.name)} · ${d.fileMB} MB</p><p class="src">ข้อความ บัตรความรู้ ข้อสอบ และรูปที่ตัดไว้แล้วยังอยู่ครบ ใช้ฝึกได้เหมือนเดิม แต่จะสั่ง "ให้ AI อ่านทุกหน้าใหม่" ไม่ได้อีก (ต้องอัปโหลดไฟล์ใหม่แทน)</p>`,[{t:'ยกเลิก'},{t:'ลบไฟล์ต้นฉบับ',cls:'primary'}])!==1)return;
       try{await kbDelMany('files',[id])}catch(e){}d.fileMB=0;await saveDoc(d);renderKB();toast('ลบไฟล์ต้นฉบับแล้ว');
+    };
+    const fl=box.querySelector('[data-fill]');if(fl)fl.onclick=async()=>{
+      if(!activeAI()){toast('ตั้งค่า AI ในแถบซ้ายก่อน');return}
+      if(await modal(`<p class="mt">เก็บตกหน้าที่ยังไม่มีบัตร?</p><p>${esc(d.name)}</p><p class="src">ระบบจะไล่ดูทุกหน้า หน้าที่มีเนื้อหาแต่ยังไม่มี${d.kind==='exam'?'ข้อสอบ':'บัตรความรู้'}เลย จะส่งให้ AI ทำเพิ่ม ของเดิมยังอยู่ครบ ไม่ย่อยซ้ำทั้งไฟล์ ใช้ AI เฉพาะช่วงที่ขาด</p>`,[{t:'ยกเลิก'},{t:'เก็บตก',cls:'primary'}])!==1)return;
+      Object.assign(d,{fill:true,digDone:0,win:0,stage:'digest',err:'',reprocess:true});
+      await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);
+      queueDoc(id);renderKB();
     };
     const re=box.querySelector('[data-reocr]');if(re)re.onclick=async()=>{
       if(await modal(`<p class="mt">ให้ AI อ่านทุกหน้าใหม่?</p><p>${esc(d.name)} · ${d.pages.length} หน้า</p><p class="src">ใช้เมื่อข้อความที่อ่านได้ยังผิดเยอะ ระบบจะอ่านใหม่จากภาพทุกหน้าและย่อยความรู้ใหม่ บัตรความรู้เดิมของไฟล์นี้จะถูกแทนที่ ใช้ AI ประมาณ ${Math.ceil(d.pages.length/4)+Math.ceil(d.chars/10000)+2} ครั้ง</p>`,[{t:'ยกเลิก'},{t:'อ่านใหม่',cls:'primary'}])!==1)return;

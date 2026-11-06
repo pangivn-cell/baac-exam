@@ -612,8 +612,10 @@ async function processDoc(doc){
     if(doc.stage==='ocr'){if(canVision('proc'))await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
     if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone&&!doc.fill){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
-    if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
-    if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
+    /* ดัชนีความหมาย/เทียบเนื้อหาขัดกัน เป็นส่วนเสริม: โควตาหรือเครดิตหมดตรงนี้ไม่ให้ไฟล์ค้าง ข้ามไปพร้อมใช้ (ค้นด้วยคำแทน) */
+    const extra=async(fn,what)=>{try{await fn()}catch(e){if(e&&e.code==='cancelled')throw e;doc.warn=`ข้าม${what} (${errCopy(e&&e.code,what)}) · ไฟล์ใช้งานได้ตามปกติ`}};
+    if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await extra(()=>embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb)),'การทำดัชนีค้นหา')}doc.stage='conflict';await saveDoc(doc)}
+    if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await extra(()=>findConflicts(doc),'การเทียบเนื้อหาขัดกัน')}doc.stage='ready';await saveDoc(doc)}
     doc.tries=0;doc.nextTry=0;doc.errCode='';doc.errLocal=false;
     const added=CARDS.filter(c=>c.docId===doc.id).length-cards0;
     if(added>0&&doc.subStatus==='approved'&&!doc.noShare&&ME&&typeof submitDoc==='function')setTimeout(()=>submitDoc(doc,{auto:true}),80);

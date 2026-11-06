@@ -55,7 +55,7 @@ input.tx,select{font-size:15px;box-sizing:border-box;width:100%;padding:7px 8px;
 .primary:disabled{opacity:.5;cursor:default}
 .ghost{font:500 13px var(--f-body);padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink-2);cursor:pointer}
 .main{padding-block:24px 110px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));min-width:0}
-.col{max-width:1600px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.col{max-width:calc(1280px / var(--fs,1));margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .head h1{font-family:var(--f-display);font-weight:600;font-size:1.5rem;margin:0;text-wrap:balance}
 .head p{margin:0;color:var(--ink-2);font-size:14px}
@@ -492,7 +492,7 @@ body.exam-on .aifab,body.exam-on .aipanel{display:none}
 .pbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--accent);border-radius:10px;background:var(--accent-soft);font-size:14px;overflow-wrap:anywhere}
 
 /* ขนาดตัวอักษร: ขยายทั้งพื้นที่เนื้อหา (zoom ขยายทั้งตัวอักษร ช่องว่าง และรูปตามกัน) */
-.fsbar{display:flex;align-items:center;justify-content:flex-end;gap:6px;max-width:1600px;margin:0 auto 10px;font-size:13px;color:var(--ink-2)}
+.fsbar{display:flex;align-items:center;justify-content:flex-end;gap:6px;max-width:1280px;margin:0 auto 10px;font-size:13px;color:var(--ink-2)}
 .fsbar .ghost{font-weight:700;min-width:36px;padding:4px 8px}
 .fsbar input{width:120px;accent-color:var(--accent)}
 .fsbar span{min-width:3.2em;text-align:right}

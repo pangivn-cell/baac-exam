@@ -214,10 +214,21 @@ async function aiWeb(input,{signal}={}){
   if(!text.trim())throw{code:'empty_completion'};
   return{text:text.trim(),sources:uniqSrc(src)};
 }
+/* ตัวหลักโควตา/เครดิตหมดหรือล่ม: ลอง AI ตัวอื่นที่ตั้งไว้ แล้วค่อย AI ในเครื่อง · จำตัวที่หมดไว้ 30 นาทีจะได้ไม่เสียเวลาลองซ้ำ */
+const FALLBACK_CODES=['quota','no_credit','rate_limited','overloaded','bad_model','network','empty_completion'];
+const PROV_DOWN={};var LAST_AI='';
 async function aiText(input,{signal,onText}={}){
-  const p=activeAI();if(!p)throw{code:'no_ai'};
+  const p=activeAI();if(!p&&!localUp())throw{code:'no_ai'};
   if(p==='claude')return(await SAMPLE(input,{cache:false,signal,onText})).text;
-  const t=await keyCall(p,input,false,signal);if(onText)onText({text:t});return t;
+  const now=Date.now(),order=[...new Set([p,...KEY_PROVS.filter(provReady)].filter(Boolean))].filter(x=>!(PROV_DOWN[x]>now));
+  if(localUp())order.push('local');
+  if(!order.length)order.push(p);
+  let err;
+  for(const x of order){
+    try{const t=await keyCall(x,input,false,signal,x==='local'?LLMHOST.model:undefined);LAST_AI=x;if(onText)onText({text:t});return t}
+    catch(e){if(!e||!FALLBACK_CODES.includes(e.code))throw e;err=err||e;if(['quota','no_credit'].includes(e.code))PROV_DOWN[x]=now+30*60000}
+  }
+  throw err;
 }
 async function aiJSON(input,{signal,onText,task}={}){
   const {p,model}=aiRoute(task);if(!p)throw{code:'no_ai'};

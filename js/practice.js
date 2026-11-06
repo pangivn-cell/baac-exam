@@ -170,7 +170,7 @@ function wireAsk(id,q,pick){
       if(hits.length)st.rules+=`\n\nความรู้จากคลังความรู้ที่อาจเกี่ยวข้อง (ใช้เฉพาะถ้าเกี่ยวข้องจริง ถ้าใช้ให้ปิดท้ายด้วย "อ้างอิง:" ตามด้วยป้ายในวงเล็บเหลี่ยม):\n${hits.map(c=>`[${cardCite(c)}] ${c.title}: ${c.fact}`).join('\n')}`}catch(e){}
   }
   async function ask(text,force){
-    text=text.trim();if(!text||!activeAI()||st.busy)return;
+    text=text.trim();if(!text||(!activeAI()&&!localUp())||st.busy)return;
     st.note='';st.msgs.push({cls:'me',text});st.turns.push({role:'user',content:text});st.turns=st.turns.slice(-10);
     const m={cls:'ai wait',text:'กำลังคิด...'};st.msgs.push(m);st.busy=true;st.ctl=new AbortController();paint();
     const signal=st.ctl.signal;
@@ -196,16 +196,21 @@ function wireAsk(id,q,pick){
         if(st.web&&canWeb()){
           m.text='กำลังค้นข้อมูลจากเว็บ...';paint();
           try{const r=await aiWeb(input,{signal});m.text=r.text;m.sources=r.sources;done=true}
-          catch(e){if(e&&['cancelled','no_credit','quota','bad_key'].includes(e.code))throw e;st.note='ค้นเว็บไม่สำเร็จ ตอบจากความรู้ของ AI แทน'}
+          catch(e){if(e&&e.code==='cancelled')throw e;st.note=e&&['quota','no_credit'].includes(e.code)?'ค้นเว็บไม่ได้ (โควตา AI หลักหมด) ตอบจากความรู้ของ AI แทน':'ค้นเว็บไม่สำเร็จ ตอบจากความรู้ของ AI แทน'}
         }
-        if(!done)m.text=await aiText(input,{signal,onText:({text})=>{m.cls='ai';m.text=text;paint()}});
+        if(!done){m.text=await aiText(input,{signal,onText:({text})=>{m.cls='ai';m.text=text;paint()}});
+          if(LAST_AI&&LAST_AI!==activeAI())st.note=`${AINAME[activeAI()]||'AI หลัก'}ใช้ไม่ได้ตอนนี้ ข้อนี้ตอบโดย ${AINAME[LAST_AI]||LAST_AI}${st.web?' (ไม่ได้ค้นเว็บ)':''}`}
       }
       m.cls='ai';st.turns.push({role:'assistant',content:m.text});
     }catch(e){
-      if(e&&e.text){m.cls='ai';m.text=e.text}else st.msgs.splice(st.msgs.indexOf(m),1);
       const code=e&&e.code;
+      /* ตอบไม่ได้: แสดงในบทสนทนาเลย ไม่ปล่อยคำถามค้างไว้เฉยๆ และไม่เก็บคำถามที่ไม่มีคำตอบไว้ในบริบท */
+      if(e&&e.text){m.cls='ai';m.text=e.text}
+      else if(code==='cancelled')st.msgs.splice(st.msgs.indexOf(m),1);
+      else{m.cls='ai err';m.text='ตอบไม่ได้: '+(code==='quota'?'โควตาฟรีของ AI หมดแล้ว (กลับมาเองทุก 60 นาที หรือวันถัดไป) ลองถามใหม่ภายหลัง หรือเพิ่ม AI ตัวอื่นในตั้งค่า AI ระบบจะสลับไปใช้ให้เอง':errCopy(code,'ถาม'))+(localUp()?'':'\nถ้าเครื่องที่ติดตั้ง AI ในเครื่องเปิดอยู่ ให้ถามจากเครื่องนั้นได้')}
+      if(!(e&&e.text)&&st.turns.length&&st.turns[st.turns.length-1].role==='user')st.turns.pop();
       if(HIDE_CODES.includes(code)||code==='no_ai'){const b2=document.getElementById('ab-'+id);if(b2)b2.hidden=true;return}
-      st.note=code==='cancelled'?'':errCopy(code,'ถาม');
+      st.note='';
     }finally{st.busy=false;st.ctl=null;paint()}
   }
   form.onsubmit=e=>{e.preventDefault();const t=inp.value;inp.value='';st.draft='';ask(t)};

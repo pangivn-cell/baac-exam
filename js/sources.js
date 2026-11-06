@@ -53,7 +53,7 @@ function loadSrcIndex(force){
       }
       SRC.files=files;SRC.at=Date.now();SRC.err=errs.join(' · ');SRC.ready=true;
       try{localStorage.setItem(SRC_IDX_KEY,JSON.stringify({dk,at:SRC.at,err:SRC.err,files:[...files]}))}catch(e){}
-    }catch(e){SRC.err=srcErrText(e)}
+    }catch(e){SRC.err=srcErrText(e);SRC.failAt=Date.now()}   /* ล้มเหลว: หน้าที่เรียกต้องรอก่อนลองใหม่ ไม่งั้นวาดหน้าแล้วโหลดซ้ำวนไม่รู้จบ */
     finally{SRC.loading=null}
   })();
 }

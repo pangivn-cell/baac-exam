@@ -479,3 +479,6 @@ body.exam-on .aifab,body.exam-on .aipanel{display:none}
 .vlessons li>.vles{flex:1;min-width:0}
 .vlessons input[type=checkbox]{width:18px;height:18px;flex:0 0 auto}
 .vupdn{display:flex;flex-direction:column;gap:2px}.vupdn .ghost{padding:2px 8px;min-height:0;line-height:1.2}
+
+.kdoc.kup{border-color:var(--accent);background:var(--accent-soft)}
+.kdanger{color:var(--bad);border-color:var(--bad)}

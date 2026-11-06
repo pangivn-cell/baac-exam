@@ -258,6 +258,38 @@ async function removePack(pid){
   if(s.exists())for(const fid of s.data().figIds||[])try{await f.fs.deleteDoc(fsDoc('kbfigs',fid))}catch(e){}
   await f.fs.setDoc(fsDoc('kb',pid),{deleted:true,title:s.exists()?s.data().title:'',cards:[],figIds:[],updatedAt:f.fs.serverTimestamp()});
 }
+/* ลบชุดออกจากคลังกลางพร้อมทุกอย่างที่มาจากชุดนั้น (ผู้ตรวจ/แอดมิน):
+   ทุกส่วนของไฟล์ (kb/{id}_N) · บัตรความรู้/ข้อสอบ · รูป · โจทย์ที่ AI สร้างจากชุดนี้ในคลังโจทย์กลาง · รายงานเฉลยผิดที่ค้าง
+   เครื่องของทุกคนลบตามเมื่อซิงก์ (kb/{id}.deleted) · ไฟล์ต้นฉบับบน Google Drive ไม่ถูกลบ */
+async function deleteCentralPack(d){
+  if(!isReviewerMe())return;
+  const base=String(d.cloudId).replace(/_\d+$/,''),parts=DOCS.filter(x=>x.central&&String(x.cloudId).replace(/_\d+$/,'')===base);
+  const ids=new Set(parts.map(x=>x.id)),cards=CARDS.filter(c=>ids.has(c.docId)),nq=cards.filter(c=>c.type==='q').length;
+  const r=await modal(`<p class="mt">ลบชุดนี้ออกจากคลังกลาง?</p><p><b>${esc(d.name.replace(/ \(ส่วนที่ \d+\)$/,''))}</b>${parts.length>1?` (${parts.length} ส่วน)`:''}</p>
+    <p class="src">ลบ${nq?`ข้อสอบ ${nq} ข้อ`:''}${nq&&cards.length>nq?' และ':''}${cards.length>nq?`บัตรความรู้ ${cards.length-nq} ใบ`:''} รูปประกอบ โจทย์ที่ AI สร้างจากชุดนี้ในคลังโจทย์กลาง และรายงานเฉลยผิดที่ค้าง · ทุกคนจะไม่เห็นชุดนี้อีกเมื่อซิงก์ · กู้คืนไม่ได้</p>
+    <p class="src">ไฟล์ต้นฉบับบน Google Drive ยังอยู่ ลบเองได้ใน Drive</p>
+    <label class="rad"><input type="checkbox" id="cdelok"><span>เข้าใจแล้ว ลบทั้งหมด</span></label>`,[{t:'ยกเลิก'},{t:'ลบทั้งหมด',cls:'primary'}]);
+  if(r!==1)return;
+  if(!document.getElementById('cdelok').checked){toast('ยังไม่ได้ติ๊ก เข้าใจแล้ว จึงยังไม่ลบ','bad');return}
+  toast('กำลังลบชุดนี้...');
+  try{
+    const f=await fb(),cardIds=new Set(cards.map(c=>c.id));let pool=0,rep=0;
+    for(const x of parts)await removePack(x.cloudId);
+    /* คลังโจทย์กลาง: เอาข้อที่สร้างจากบัตรของชุดนี้ออก ชุดที่ไม่เหลือข้อลบทั้งชุด */
+    try{const snap=await f.fs.getDocs(f.fs.collection(f.db,'qpool'));
+      for(const s of snap.docs){const items=s.data().items||[],keep=items.filter(raw=>{try{return !cardIds.has(JSON.parse(raw).card)}catch(e){return true}});
+        if(keep.length===items.length)continue;pool+=items.length-keep.length;
+        if(keep.length)await f.fs.updateDoc(s.ref,{items:keep,n:keep.length});else await f.fs.deleteDoc(s.ref)}
+      POOL.cache.clear()}catch(e){console.warn('qpool clean',e&&e.code||e)}
+    try{const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('status','==','open')));
+      for(const s of snap.docs)if(String(s.data().packId).replace(/_\d+$/,'')===base){await f.fs.deleteDoc(s.ref);rep++}}catch(e){}
+    /* เครื่องนี้: ลบทันทีไม่ต้องรอซิงก์ */
+    for(const x of parts){DOCS.splice(DOCS.indexOf(x),1);try{await kbDelMany('docs',[x.id])}catch(e){}}
+    CARDS=CARDS.filter(c=>!ids.has(c.docId));try{await kbDelMany('cards',[...cardIds])}catch(e){}
+    rebuildCloudIndex();syncDocSubjects();renderSide();renderKB();
+    toast(`ลบแล้ว · บัตร/ข้อสอบ ${cards.length} รายการ${pool?` · โจทย์ในคลังโจทย์กลาง ${pool} ข้อ`:''}${rep?` · รายงาน ${rep} รายการ`:''}`);
+  }catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+}
 async function editCloudCard(pid,cardId,patch){
   const f=await fb(),s=await f.fs.getDoc(fsDoc('kb',pid));if(!s.exists())throw new Error('ไม่พบชุดนี้');
   const cards=(s.data().cards||[]).map(c=>c.id===cardId?{...c,...patch}:c);

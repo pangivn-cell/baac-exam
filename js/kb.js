@@ -94,7 +94,7 @@ function docTopics(d){
     return out.slice(0,9);
   }
   if(d.group==='gen')return[];
-  const low=d.pages.map(p=>p.text).join('\n').toLowerCase();
+  const low=(d.pages||[]).map(p=>p.text).join('\n').toLowerCase();
   return SPEC.map(x=>({name:x[1],h:countHits(low,x[3])})).filter(x=>x.h>=3).sort((a,b)=>b.h-a.h).slice(0,5).map(x=>({name:x.name,count:0,link:false,guess:true}));
 }
 /* ชิปวิชาของไฟล์: ปุ่ม ✕ เอาไฟล์ออกจากวิชานั้นได้ทันที */
@@ -897,8 +897,11 @@ async function handleFiles(files,opt){
     save();
   }
   const wantDrive=opt.driveFirst===true;
-  for(const f of files){
-    const job={name:f.name,msg:wantDrive?'กำลังเตรียมไฟล์...':'กำลังอ่านไฟล์...'};UPQ.push(job);renderKB();
+  /* ทุกไฟล์ที่เลือกขึ้นคิวทันทีตามลำดับ (ไฟล์สุดท้ายอยู่ล่างสุด) แล้วส่งทีละไฟล์ */
+  const jobs=[...files].map(f=>({name:f.name,msg:'รอคิวอัปโหลด',wait:true}));UPQ.push(...jobs);renderKB();
+  for(const [fi,f] of [...files].entries()){
+    const job=jobs[fi];if(!UPQ.includes(job))continue;   /* ผู้ใช้ปิดออกจากคิวแล้ว */
+    job.wait=false;job.msg=wantDrive?'กำลังเตรียมไฟล์...':'กำลังอ่านไฟล์...';renderKB();
     const say=m=>{job.msg=m;const e=document.querySelector(`[data-job="${UPQ.indexOf(job)}"]`);if(e)e.textContent=m};
     try{
       const ext=extOf(f.name);
@@ -1004,7 +1007,8 @@ function confHTML(d){
       <div class="kcb"><button class="${c.conf.use==='new'?'primary':'ghost'}" data-use="new">ใช้ฉบับใหม่</button><button class="${c.conf.use==='old'?'primary':'ghost'}" data-use="old">ใช้ฉบับเดิม</button></div></div>`}).join('')}</div>`;
 }
 /* หน้าคลังความรู้มี 2 หน้า: main = อัปโหลด + ไฟล์ที่กำลังทำ/มีปัญหา · hist = ประวัติการอัปโหลด (ไฟล์ที่เสร็จแล้ว) */
-var KB_TAB='main',KB_DONE_N=0;
+var KB_TAB='main',KB_DONE_N=0,KB_CQ='';
+const upRank=j=>j.err?2:j.wait?1:0;
 /* ไฟล์ในเครื่องที่มีชุดชื่อเดียวกันอยู่ในคลังกลางแล้ว (เช่น ส่งจากเครื่องอื่น) */
 const baseName=n=>String(n||'').replace(/ \(ส่วนที่ \d+\)$/,'').trim().toLowerCase();
 const sameInCentral=d=>DOCS.some(x=>x.central&&baseName(x.name)===baseName(d.name));
@@ -1059,15 +1063,20 @@ function renderKB(){
      หน้าหลักเหลือเฉพาะไฟล์ที่กำลังประมวลผล ยังไม่เสร็จ ผิดพลาด ส่งไม่สำเร็จ หรือผู้ตรวจไม่ผ่าน */
   const isBusy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
   const isDone=d=>d.stage==='ready'&&!isBusy(d)&&!d.err&&!d.prog&&!d.shareErr&&d.subStatus!=='rejected';
-  const mine=DOCS.filter(d=>!d.central&&docMine(d)).slice().reverse(),doing=mine.filter(d=>!isDone(d)),done=mine.filter(isDone);
+  const mine=DOCS.filter(d=>!d.central&&docMine(d)).slice().reverse(),done=mine.filter(isDone);
+  /* กำลังทำ: ไฟล์ที่ประมวลผลอยู่บนสุด → ตามลำดับคิว → ไฟล์อื่นที่ค้าง/มีปัญหา เรียงเก่าไปใหม่ (ไฟล์ล่าสุดอยู่ล่างสุด) */
+  const doRank=d=>PROC_ID===d.id?-1e15:PROCQ.includes(d.id)?-1e14+PROCQ.indexOf(d.id):(+d.at||0);
+  const doing=mine.filter(d=>!isDone(d)).sort((a,b)=>doRank(a)-doRank(b));
   const empty=done.filter(d=>!d.cardCount&&!CARDS.some(c=>c.docId===d.id)&&!sameInCentral(d)).length;KB_DONE_N=done.length;
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+      <input class="tx" id="kbcq" type="search" placeholder="ค้นหารายวิชา ชื่อไฟล์ หรือหัวข้อ เช่น PDPA, สินเชื่อ" value="${esc(KB_CQ)}" aria-label="ค้นหาในคลังกลาง" style="width:100%">
       ${hiddenSubjHTML()}
       ${srcAdminHTML()}
-      ${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}`;
-    if(ME&&!SRC.ready&&!SRC.loading)loadSrcIndex().then(()=>{if(VIEW==='kb'&&KB_TAB==='central')renderKB()});
+      <div id="kbclist">${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}</div>`;
+    const cq=document.getElementById('kbcq');cq.oninput=()=>{KB_CQ=cq.value;const pos=cq.selectionStart;renderKB();const n=document.getElementById('kbcq');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(e){}}};
+    if(ME&&!SRC.ready&&!SRC.loading&&!(SRC.failAt&&Date.now()-SRC.failAt<60000))loadSrcIndex().then(()=>{if(VIEW==='kb'&&KB_TAB==='central')renderKB()});
     document.getElementById('kbback').onclick=()=>{KB_TAB='main';renderKB();window.scrollTo({top:0})};
   }else if(KB_TAB==='hist'){
     head('ประวัติการอัปโหลด','ไฟล์ที่ประมวลผลเสร็จแล้ว · ดู แก้ ตั้งค่า หรือลบได้ที่นี่');
@@ -1083,7 +1092,7 @@ function renderKB(){
     ${KB_ERR?'<p class="catnote warn">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บเอกสารถาวร เอกสารจะหายเมื่อปิดหน้า</p>':''}
     <p class="catnote" id="kbstore"></p>
     ${cloudBoxHTML()}
-    ${UPQ.map((j,i)=>`<div class="kdoc"><p class="kn">${esc(j.name)}</p>${j.err?`<p class="kerr">${esc(j.err)}</p><div><button class="ghost" data-dismiss="${i}">ปิด</button></div>`:`<p class="src" data-job="${i}">${esc(j.msg)}</p>`}</div>`).join('')}
+    ${UPQ.map((j,i)=>({j,i})).sort((a,b)=>upRank(a.j)-upRank(b.j)||a.i-b.i).map(({j,i})=>`<div class="kdoc${j.wait||j.err?'':' kup'}"><p class="kn">${j.wait||j.err?'':'<span class="spin sm" aria-hidden="true"></span> '}${esc(j.name)}</p>${j.err?`<p class="kerr">${esc(j.err)}</p><div><button class="ghost" data-dismiss="${i}">ปิด</button></div>`:`<p class="src" data-job="${i}">${esc(j.msg)}</p>${j.wait?`<div><button class="ghost" data-dismiss="${i}">เอาออกจากคิว</button></div>`:''}`}</div>`).join('')}
     ${DOCS.some(d=>!d.central)?`<p class="lbl">เอกสารของฉัน ${mine.length} ไฟล์ (กำลังทำ/มีปัญหา ${doing.length} · เสร็จแล้ว ${done.length}) · บัตรความรู้ทั้งหมด ${nCards} ใบ · ข้อสอบในคลัง ${nBank} ข้อ (รวมคลังกลาง) · ระบบเน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด</p>`:(UPQ.length?'':'<p class="src" style="text-align:center;margin:0">ยังไม่มีเอกสารของคุณในเครื่องนี้</p>')}
     ${(c=>c?`<div class="hban"><b>💳 ${DOCS.some(d=>!d.central&&d.errCode==='no_credit')?'เครดิต AI หมด':'โควตาฟรีของ AI หมด'}</b><span>มี ${c} ไฟล์รอประมวลผล ${DOCS.some(d=>!d.central&&d.errCode==='no_credit')?'เติมเงินในบัญชีของ AI ที่ใช้ หรือเปลี่ยนไปใช้ AI ตัวอื่น':'ระบบจะทำต่อเองเมื่อโควตากลับมา หรือเปลี่ยนไปใช้ AI ตัวอื่น'}</span><button class="ghost" id="kbaiset">ตั้งค่า AI</button></div>`:'')(DOCS.filter(d=>!d.central&&(d.errCode==='no_credit'||d.errCode==='quota')).length)}
     ${(n=>n?`<div class="btnrow" style="justify-content:flex-start"><button class="primary" id="runall" ${ai?'':'disabled'}>▶ ประมวลผลต่อทั้งหมด (${n} ไฟล์)</button>${ai?'':'<span class="src">ตั้งค่า AI ก่อน</span>'}</div>`:'')(runAllList().length)}
@@ -1178,14 +1187,17 @@ function cloudBoxHTML(){
     <p class="src">${ME?(typeof SYNC!=='undefined'&&SYNC.err?`☁ คลังส่วนตัว: <span class="kerr">${esc(SYNC.err)}</span>`:`☁ คลังส่วนตัว (ซิงก์ข้ามเครื่อง): ${SYNC.pushN?`กำลังส่ง ${SYNC.pushN} ไฟล์...`:(SYNC.last?`ซิงก์ล่าสุด ${fmtDate(SYNC.last)} · ${SYNC.meta.size} ไฟล์ในบัญชี`:'กำลังซิงก์...')}`):'เข้าสู่ระบบเพื่อซิงก์คิวและผลลัพธ์ข้ามเครื่อง'}</p>
     <div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="cloudsync" ${CLOUD.syncing?'disabled':''}>ซิงก์ตอนนี้</button>${isReviewerMe()?'<button class="ghost" id="gorev">ไปหน้าตรวจอนุมัติ</button>':''}${DOCS.some(d=>d.central)?`<button class="ghost" id="gocentral">☁ ข้อมูลในคลังกลาง (${DOCS.filter(d=>d.central).length})</button>`:''}${KB_DONE_N?`<button class="ghost" id="gohist">📁 ประวัติการอัปโหลด (${KB_DONE_N})</button>`:''}</div></div>`;
 }
+/* ค้นหาในคลังกลาง: ชื่อไฟล์ วิชาที่ผูก หัวข้อของบัตร ผู้ส่ง */
+const packHay=d=>(d.name+' '+(d.owner||'')+' '+docTopics(d).map(t=>Array.isArray(t)?t[0]:t&&t.name||t).join(' ')+' '+(d.subs||[]).join(' ')+' '+(d.group==='gen'?'ความรู้ทั่วไป':'เฉพาะตำแหน่ง')).toLowerCase();
 function centralListHTML(){
-  const packs=DOCS.filter(d=>d.central);if(!packs.length)return '';
-  return `<p class="lbl">ชุดในคลังกลาง ${packs.length} ชุด · อนุมัติแล้วทั้งหมด ทุกคนใช้ร่วมกัน</p><p class="src">ป้ายสีฟ้า = วิชาที่โจทย์/ความรู้ในชุดนั้นไปอยู่ พร้อมจำนวน · "แสดงเป็นรายวิชา" = ให้ชุดนี้ขึ้นเป็นวิชาของตัวเองในเมนูซ้าย</p>`+packs.slice().reverse().map(d=>{const nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',summ=(d.summ||[]).filter(Boolean);
+  const all=DOCS.filter(d=>d.central);if(!all.length)return '';
+  const q=KB_CQ.trim().toLowerCase(),packs=q?all.filter(d=>q.split(/\s+/).every(w=>packHay(d).includes(w))):all;
+  return `<p class="lbl">ชุดในคลังกลาง ${q?`พบ ${packs.length} จาก ${all.length} ชุด`:`${all.length} ชุด`} · อนุมัติแล้วทั้งหมด ทุกคนใช้ร่วมกัน</p>${q&&!packs.length?'<p class="src" style="text-align:center">ไม่พบชุดที่ตรงกับคำค้น</p>':''}<p class="src">ป้ายสีฟ้า = วิชาที่โจทย์/ความรู้ในชุดนั้นไปอยู่ พร้อมจำนวน · "แสดงเป็นรายวิชา" = ให้ชุดนี้ขึ้นเป็นวิชาของตัวเองในเมนูซ้าย</p>`+packs.slice().reverse().map(d=>{const nc=CARDS.filter(c=>c.docId===d.id).length,ex=d.kind==='exam',summ=(d.summ||[]).filter(Boolean);
     return `<div class="kdoc" data-cid="${d.id}"><div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">ประเภท: ${ex?`คลังข้อสอบ ${nc} ข้อ (ใช้ออกข้อสอบตรงๆ และเป็นแบบอย่างโจทย์)`:`บัตรความรู้ ${nc} ใบ (AI ใช้คิดโจทย์ใหม่)`} · กลุ่ม${d.group==='gen'?'ความรู้ทั่วไป':'เฉพาะตำแหน่ง'} · ส่งโดย ${esc(d.owner||'-')}</p></div><span class="substat ok" style="white-space:nowrap">✓ อนุมัติแล้ว</span></div>
       ${docTopics(d).length?`<div class="tags">${chipHTML(d,docTopics(d))}${nc&&isReviewerMe()?'<button class="tag tagadd" type="button" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>`:''}
       ${summ.length?det('s'+d.id,'สรุปเนื้อหา',`<div class="ksum">${summ.map(s=>`<p>${esc(s)}</p>`).join('')}</div>`):''}
       ${nc?det('c'+d.id,`${ex?'ข้อสอบ':'บัตรความรู้'} (${nc})${isReviewerMe()?' · ผู้ตรวจแก้ได้':''}`,`<div class="kcards">${KB_OPEN.has('c'+d.id)?cardsHTML(d):''}</div>`):''}
-      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button>${nc&&isReviewerMe()&&!docTopics(d).length?'<button class="ghost" data-addsubj>＋ เพิ่มวิชา</button>':''}</div>${packSrcHTML(d)}</div>`}).join('');
+      <div class="btnrow" style="justify-content:flex-start">${d.show?'<button class="primary" data-go>ทำข้อสอบจากชุดนี้</button>':''}<button class="ghost" data-cshow>${d.show?'ซ่อนจากรายวิชา':'แสดงเป็นรายวิชา'}</button>${nc&&isReviewerMe()&&!docTopics(d).length?'<button class="ghost" data-addsubj>＋ เพิ่มวิชา</button>':''}${isReviewerMe()?'<button class="ghost kdanger" data-cdel>🗑 ลบชุดนี้ออกจากคลังกลาง</button>':''}</div>${packSrcHTML(d)}</div>`}).join('');
 }
 function wireCloudKB(el){
   const s=document.getElementById('cloudsync');if(s)s.onclick=()=>{syncCentral();if(typeof syncPull==='function')syncPull().catch(()=>{})};
@@ -1193,7 +1205,11 @@ function wireCloudKB(el){
   wireSrcAdmin(el,renderKB);wirePackSrc(el,renderKB);wireHiddenSubj(el,renderKB);
   const gc=document.getElementById('gocentral');if(gc)gc.onclick=()=>{KB_TAB='central';renderKB();window.scrollTo({top:0})};
   const h=document.getElementById('gohist');if(h)h.onclick=()=>{KB_TAB='hist';renderKB();window.scrollTo({top:0})};
+  wireCentralBoxes(el);
+}
+function wireCentralBoxes(el){
   el.querySelectorAll('.kdoc[data-cid]').forEach(box=>{const d=DOCS.find(x=>x.id===box.dataset.cid);if(!d)return;
+    const cd=box.querySelector('[data-cdel]');if(cd)cd.onclick=()=>deleteCentralPack(d);
     const go=box.querySelector('[data-go]');if(go)go.onclick=()=>{P.subject='doc_'+d.id;save();setView('practice');renderSide();start(true)};
     box.querySelector('[data-cshow]').onclick=async()=>{d.show=!d.show;await saveDoc(d);syncDocSubjects();renderSide();renderKB()};
     const ad=box.querySelector('[data-addsubj]');if(ad)ad.onclick=()=>addDocSubject(d.id);

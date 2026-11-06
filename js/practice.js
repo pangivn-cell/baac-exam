@@ -38,7 +38,8 @@ async function start(go){
     if(R!==my)return;
     if(!items.length){R.status='error';R.err='ได้โจทย์ที่ใช้ไม่ได้ ลองสร้างชุดใหม่อีกครั้ง';render();return}
     R.items=items;R.status='play';R.t0=Date.now();
-    if(quick&&items.length<n)loadMore(my,s,level,n);
+    /* ชุดที่ได้ยังไม่ครบตามจำนวนที่ตั้ง (สร้างเร็ว 2 ข้อแรก หรือชุดที่เตรียมไว้ล่วงหน้าไม่ครบ) สร้างเพิ่มเบื้องหลังจนครบ */
+    if(items.length<n)loadMore(my,s,level,n);
     render();
   }catch(e){
     if(R!==my)return;const code=e&&e.code;
@@ -53,12 +54,17 @@ async function start(go){
 async function loadMore(my,s,level,n){
   const ctl=new AbortController();my.more=true;my.target=n;my.moreCtl=ctl;
   try{
-    const have=new Set(my.items.map(qKey));
-    const rest=await makeItems(s,level,n-my.items.length+1,{signal:ctl.signal,weak:(P.weak[s.id]||[]).slice(-5)});
-    if(R!==my)return;
-    const waiting=my.i>=my.items.length-1;
-    for(const q of rest)if(my.items.length<n&&!have.has(qKey(q))){have.add(qKey(q));my.items.push(q)}
+    const have=new Set(my.items.map(qKey));let waiting=false;
+    /* AI อาจได้โจทย์น้อยกว่าที่ขอ หรือซ้ำกับข้อที่มีแล้ว: ลองเพิ่มสูงสุด 3 รอบจนครบ */
+    for(let t=0;t<3&&my.items.length<n;t++){
+      const rest=await makeItems(s,level,n-my.items.length+1,{signal:ctl.signal,weak:(P.weak[s.id]||[]).slice(-5)});
+      if(R!==my)return;
+      waiting=waiting||my.i>=my.items.length-1;let add=0;
+      for(const q of rest)if(my.items.length<n&&!have.has(qKey(q))){have.add(qKey(q));my.items.push(q);add++}
+      if(add&&VIEW==='practice'&&my.status==='play'){if(waiting){render();waiting=false}else{const m=document.getElementById('pmeta');if(m)m.textContent=`ข้อ ${my.i+1} จาก ${my.items.length}`}}
+    }
     my.more=false;my.moreCtl=null;
+    if(my.items.length<n)toast(`สร้างได้ ${my.items.length} จาก ${n} ข้อ (โจทย์ของวิชานี้ไม่พอ หรือ AI สร้างไม่ครบ)`,'bad');
     if(VIEW==='practice'&&my.status==='play'&&waiting)render();else{const m=document.getElementById('pmeta');if(m)m.textContent=`ข้อ ${my.i+1} จาก ${my.items.length}`}
   }catch(e){
     if(R!==my||(e&&e.code==='cancelled'))return;

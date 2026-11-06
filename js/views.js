@@ -258,7 +258,25 @@ function openAI(on){
   p.hidden=!on;b.setAttribute('aria-expanded',String(!!on));document.body.classList.toggle('ai-open',!!on);
   if(on){if(!p.dataset.r){p.dataset.r='1';renderStudy()}setTimeout(()=>{const q=document.getElementById(STU.answer?'askq2':'askq');if(q&&!isPhone())q.focus()},50)}
 }
-document.getElementById('aifab').onclick=()=>openAI(document.getElementById('aipanel').hidden);
+/* ปุ่ม AI ลากย้ายที่ได้ (กดค้างแล้วลาก) จำตำแหน่งไว้ในเครื่องนี้ · ลากไม่ถึง 6px นับเป็นการกด */
+(function(){
+  const b=document.getElementById('aifab');let pos=null,drag=null,moved=false;
+  try{pos=JSON.parse(localStorage.getItem('exam-aifab')||'null')}catch(e){}
+  const place=()=>{if(!pos)return;const m=8,w=b.offsetWidth||80,h=b.offsetHeight||44;
+    pos.r=Math.min(Math.max(m,pos.r),innerWidth-w-m);pos.b=Math.min(Math.max(m,pos.b),innerHeight-h-m);
+    b.style.right=pos.r+'px';b.style.bottom=pos.b+'px'};
+  place();addEventListener('resize',place);
+  b.addEventListener('pointerdown',e=>{if(e.button)return;const r=b.getBoundingClientRect();
+    drag={x:e.clientX,y:e.clientY,r:innerWidth-r.right,b:innerHeight-r.bottom};moved=false;b.setPointerCapture(e.pointerId)});
+  b.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+    if(!moved&&Math.hypot(dx,dy)<6)return;moved=true;b.classList.add('drag');
+    pos={r:drag.r-dx,b:drag.b-dy};place()});
+  const end=()=>{if(!drag)return;drag=null;b.classList.remove('drag');
+    if(moved)try{localStorage.setItem('exam-aifab',JSON.stringify(pos))}catch(e){}};
+  b.addEventListener('pointerup',end);b.addEventListener('pointercancel',end);
+  b.onclick=e=>{if(moved){moved=false;e.preventDefault();return}openAI(document.getElementById('aipanel').hidden)};
+  b.title='กดเพื่อถาม AI · กดค้างแล้วลากเพื่อย้ายปุ่ม';
+})();
 document.getElementById('aiclose').onclick=()=>openAI(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('aipanel').hidden)openAI(false)});
 function renderStudy(){

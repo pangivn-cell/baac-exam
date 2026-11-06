@@ -544,3 +544,9 @@ body.side-off .side{display:none}
 @media (max-width:520px){.hhero{padding:16px}.hlvb{width:60px;height:60px}.hlvb b{font-size:1.6rem}.hcta{width:100%}.hcta .big{flex:1 1 100%}
   .hstat{padding:10px}.hstat .hi{font-size:22px}.hstat b{font-size:1.1rem}.hrecr{grid-template-columns:minmax(0,1fr) 3em}.hrecb{display:none}}
 .msg.ai.err{border-color:var(--bad);background:var(--bad-soft);color:var(--ink)}
+
+.lkchips{display:flex;flex-wrap:wrap;gap:6px;max-height:150px;overflow:auto;padding:2px}
+.lkchip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:99px;font-size:13px;cursor:pointer;background:var(--paper)}
+.lkchip:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.lkchip input{margin:0;accent-color:var(--accent)}
+#dlg .lbl{margin:10px 0 0;font-weight:600}

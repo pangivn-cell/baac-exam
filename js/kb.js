@@ -235,34 +235,55 @@ async function addDocSubject(id){
   toast(`ย้าย ${target.length} รายการไป “${name}” แล้ว`);
 }
 /* ---------- เชื่อมต่อไฟล์กับรายวิชา ----------
-   แต่ละบัตร/ข้อสอบมีวิชาประจำตัว วิชาที่เลือกไว้คือวิชาที่ดึงข้อมูลไฟล์นี้ไปออกข้อสอบ
-   ไฟล์เดียวจึงแยกข้อมูลให้หลายวิชาได้ (เช่น การเงินธนาคาร 11 รายการ + ความรู้ ธ.ก.ส. 2 รายการ) */
+   ตัวเลือกวิชา = รายวิชาที่อยู่ในเมนูจริงเท่านั้น (วิชาที่ลบ/ซ่อนออกจากเมนูแล้วไม่โผล่)
+   วิชาของทั้งไฟล์ (d.subs) = วิชาที่ได้ข้อมูลทุกรายการของไฟล์นี้ไปออกข้อสอบ
+   วิชาของแต่ละรายการ (c.topic) = วิชาที่เอาข้อนั้นไปออกข้อสอบได้ด้วย (ไฟล์เดียวแบ่งให้หลายวิชาได้) */
+const menuSubjects=()=>{const seen=new Set();return SUBJ.filter(s=>s.id!=='specall'&&!seen.has(s.name)&&seen.add(s.name))};
 async function linkDocSubjects(id){
   const d=DOCS.find(x=>x.id===id);if(!d)return;
   if(!(typeof isReviewerMe==='function'&&isReviewerMe()||docMine(d))){toast('เชื่อมต่อได้เฉพาะเจ้าของไฟล์หรือผู้ตรวจ/แอดมิน','bad');return}
   const cards=CARDS.filter(c=>c.docId===id);
   if(!cards.length){toast('ไฟล์นี้ยังไม่มีบัตรหรือข้อสอบให้เชื่อมต่อ','bad');return}
-  const names=[...new Set([...SUBJ.filter(s=>s.id!=='specall'&&!s.doc).map(s=>s.name),...cards.map(c=>c.topic).filter(Boolean)])];
-  const opts=sel=>`<option value="">— เลือกวิชา —</option>`+names.map(n=>`<option value="${esc(n)}"${n===sel?' selected':''}>${esc(n)}</option>`).join('');
+  const subs=menuSubjects(),names=new Set(subs.map(s=>s.name)),own=d.label||docBase(d);
+  const grp=(g,t)=>{const l=subs.filter(s=>(s.group||'spec')===g);return l.length?`<optgroup label="${esc(t)}">${l.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}</optgroup>`:''};
+  const optAll=grp('gen','ความรู้ความสามารถทั่วไป')+grp('spec',typeof SPEC_LABEL!=='undefined'?SPEC_LABEL:'ความรู้เฉพาะตำแหน่ง');
+  const opts=sel=>`<option value="">— ไม่ระบุวิชา —</option>`+optAll.replace(`value="${esc(sel)}"`,`value="${esc(sel)}" selected`);
   const lab=c=>c.type==='q'?'ข้อสอบ: '+String((c.q&&c.q.stem)||'').slice(0,48):String(c.title||c.fact||'').slice(0,52);
-  const rows=cards.map((c,j)=>`<div class="lkrow"><span class="lktxt">${j+1}. ${esc(lab(c))}</span><select class="tx lksel" data-lk="${esc(c.id)}">${opts(c.topic)}</select></div>`).join('');
+  const cur=new Set((d.subs||[]).filter(n=>names.has(n)));
+  const chip=s=>`<label class="lkchip"><input type="checkbox" data-lkf="${esc(s.name)}"${cur.has(s.name)?' checked':''}><span>${esc(s.name)}</span></label>`;
+  const rows=cards.map((c,j)=>`<div class="lkrow"><span class="lktxt">${j+1}. ${esc(lab(c))}</span><select class="tx lksel" data-lk="${esc(c.id)}">${opts(names.has(c.topic)?c.topic:'')}</select></div>`).join('');
+  const off=cards.filter(c=>c.topic&&!names.has(c.topic)).length;
   const p=modal(`<p class="mt">เชื่อมต่อกับรายวิชา</p>
-    <p class="src">${esc(d.name)} · ${cards.length} รายการ · วิชาที่เลือกคือวิชาที่จะดึงข้อมูลไฟล์นี้ไปออกข้อสอบ (ไฟล์เดียวแบ่งให้หลายวิชาได้)</p>
-    <div class="lkall"><span class="lbl">ตั้งทั้งหมดเป็น</span><select class="tx" id="lk-all">${opts('')}</select><button class="ghost" type="button" id="lk-apply">ใช้</button></div>
+    <p class="src">${esc(d.name)} · ${cards.length} รายการ · รายชื่อวิชาตรงกับเมนู</p>
+    <p class="lbl">1. วิชาที่ได้ข้อสอบทั้งไฟล์ (${cards.length} รายการ)</p>
+    <p class="src">ติ๊กวิชาไหน วิชานั้นดึงทุกรายการของไฟล์นี้ไปออกข้อสอบ เลือกได้หลายวิชา${d.show?` · วิชา “${esc(own)}” ของไฟล์นี้เองได้ทุกรายการอยู่แล้ว`:''}</p>
+    <input class="tx" type="search" id="lk-q" placeholder="ค้นหาวิชา" aria-label="ค้นหาวิชา">
+    <div class="lkchips" id="lk-chips">${subs.filter(s=>s.doc!==d.id).map(chip).join('')}</div>
+    <p class="lbl">2. วิชาเพิ่มเติมของแต่ละรายการ</p>
+    <p class="src">วิชาที่เลือกในแต่ละข้อ เอาข้อนั้นไปออกข้อสอบได้ด้วย (นอกจากวิชาของทั้งไฟล์)${off?` · มี ${off} รายการที่วิชาเดิมไม่มีในเมนูแล้ว แสดงเป็น “ไม่ระบุวิชา”`:''}</p>
     <div class="kcards lklist">${rows}</div>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
-  const ap=document.getElementById('lk-apply');
-  if(ap)ap.onclick=()=>{const v=document.getElementById('lk-all').value;if(!v)return;
-    document.querySelectorAll('#dlg [data-lk]').forEach(s=>{s.value=v});toast(`ตั้งทั้งไฟล์เป็น "${v}" แล้ว · กดบันทึกเพื่อยืนยัน`)};
+  const q=document.getElementById('lk-q');
+  if(q)q.oninput=()=>{const t=q.value.trim().toLowerCase();document.querySelectorAll('#lk-chips .lkchip').forEach(l=>{l.hidden=!!t&&!l.textContent.toLowerCase().includes(t)})};
   if(await p!==1)return;
+  const nextSubs=[...document.querySelectorAll('#dlg [data-lkf]')].filter(x=>x.checked).map(x=>x.dataset.lkf);
+  /* วิชาเดิมที่ไม่อยู่ในเมนูแล้ว เก็บไว้ตามเดิม (ถ้าเปิดวิชานั้นกลับมา การผูกยังอยู่) */
+  const keep=(d.subs||[]).filter(n=>!names.has(n)),subsNew=[...new Set([...keep,...nextSubs])];
+  const subsCh=subsNew.join('|')!==(d.subs||[]).join('|');
   const changed=[];
   for(const c of cards){const sel=document.querySelector(`#dlg [data-lk="${c.id}"]`);if(!sel)continue;
     const v=sel.value;if(v&&v!==c.topic){c.topic=v;c.editedAt=Date.now();changed.push(c)}}
-  if(!changed.length){toast('ไม่มีการเปลี่ยนแปลง');return}
-  await saveCards(changed);
-  if(canEmbed())embedCards(changed).catch(()=>{});
-  if(typeof syncPushCards==="function")syncPushCards(d,true);
+  if(!changed.length&&!subsCh){toast('ไม่มีการเปลี่ยนแปลง');return}
+  if(subsCh){
+    try{if(d.central)await savePackSubs(d,subsNew);else{d.subs=subsNew;await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d)}}
+    catch(e){toast('บันทึกวิชาของทั้งไฟล์ไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+  }
+  if(changed.length){
+    await saveCards(changed);
+    if(canEmbed())embedCards(changed).catch(()=>{});
+    if(typeof syncPushCards==="function")syncPushCards(d,true);
+  }
   syncDocSubjects();renderSide();renderKB();
-  toast(`เชื่อมต่อกับรายวิชาแล้ว · ${changed.length} รายการ`);
+  toast(`เชื่อมต่อกับรายวิชาแล้ว${subsCh?` · ทั้งไฟล์: ${nextSubs.length?nextSubs.join(', '):'ไม่มี'}`:''}${changed.length?` · เปลี่ยนรายข้อ ${changed.length} รายการ`:''}`);
 }
 function docWindows(doc,max=12000){
   const w=[];let cur=[],len=0;

@@ -135,7 +135,9 @@ function rebuildCloudIndex(){
 async function applyPack(id,p){
   const docId='c_'+id,old=DOCS.find(d=>d.id===docId),st={};
   for(const c of CARDS)if(c.docId===docId)st[c.id]=c.st;
-  const ids=CARDS.filter(c=>c.docId===docId).map(c=>c.id);
+  /* รหัสบัตรที่ชุดอื่นใช้อยู่ด้วย (ชุดซ้ำ/ชุดส่งใหม่ใช้รหัสบัตรเดิม) ห้ามลบออกจากที่เก็บในเครื่อง */
+  const other=new Set(CARDS.filter(c=>c.docId!==docId).map(c=>c.id));
+  const ids=CARDS.filter(c=>c.docId===docId).map(c=>c.id).filter(id=>!other.has(id));
   CARDS=CARDS.filter(c=>c.docId!==docId);try{await kbDelMany('cards',ids)}catch(e){}
   if(p.deleted){if(old){DOCS.splice(DOCS.indexOf(old),1);try{await kbDelMany('docs',[docId])}catch(e){}}return}
   const d={id:docId,central:true,cloudId:id,name:p.title+(p.parts>1?` (ส่วนที่ ${p.part})`:''),type:'pack',size:0,at:p.approvedAtMs||Date.now(),unit:p.unit||'หน้า',
@@ -242,6 +244,14 @@ async function checkSubs(){
 /* ---------- reviewer actions ---------- */
 async function approveSub(pid){
   const f=await fb(),s=await f.fs.getDoc(fsDoc('subs',pid));if(!s.exists())return;const p=s.data();
+  /* ชุดเดิมของไฟล์เดียวกัน (ส่งซ้ำ / เก็บตกแล้วส่งใหม่): ลบก่อน แล้วค่อยวางชุดใหม่ ไม่ให้คลังกลางมีชุดซ้ำ
+     ลบก่อนย้ายรูป เพราะรูปของชุดใหม่ใช้รหัสเดิม */
+  if((p.part||1)===1){
+    const base=pid.replace(/_\d+$/,''),old=new Set();
+    const q=async(k,v)=>{if(!v)return;try{const r=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'kb'),f.fs.where(k,'==',v)));for(const x of r.docs){const d=x.data();if(!d.deleted&&x.id.replace(/_\d+$/,'')!==base&&(k!=='title'||d.ownerUid===p.ownerUid))old.add(x.id)}}catch(e){}};
+    await q('sha',p.sha);await q('txtSha',p.txtSha);await q('title',p.title);
+    for(const oid of old)await removePack(oid);
+  }
   for(const fid of p.figIds||[]){const x=await f.fs.getDoc(fsDoc('subfigs',fid));
     if(x.exists()){const {ownerUid,...rest}=x.data();await f.fs.setDoc(fsDoc('kbfigs',fid),{...rest,packId:pid});await f.fs.deleteDoc(fsDoc('subfigs',fid))}}
   const {status,note,...pack}=p;
@@ -253,9 +263,10 @@ async function rejectSub(pid,note){
   for(const fid of s.data().figIds||[])try{await f.fs.deleteDoc(fsDoc('subfigs',fid))}catch(e){}
   await f.fs.updateDoc(fsDoc('subs',pid),{status:'rejected',note:note||'',cards:[],updatedAt:f.fs.serverTimestamp()});
 }
-async function removePack(pid){
+/* keep = รูปที่ชุดอื่นยังใช้อยู่ (ชุดซ้ำใช้รหัสรูปเดียวกัน) ห้ามลบ */
+async function removePack(pid,keep){
   const f=await fb(),s=await f.fs.getDoc(fsDoc('kb',pid));
-  if(s.exists())for(const fid of s.data().figIds||[])try{await f.fs.deleteDoc(fsDoc('kbfigs',fid))}catch(e){}
+  if(s.exists())for(const fid of s.data().figIds||[])if(!(keep&&keep.has(fid)))try{await f.fs.deleteDoc(fsDoc('kbfigs',fid))}catch(e){}
   await f.fs.setDoc(fsDoc('kb',pid),{deleted:true,title:s.exists()?s.data().title:'',cards:[],figIds:[],updatedAt:f.fs.serverTimestamp()});
 }
 /* ลบชุดออกจากคลังกลางพร้อมทุกอย่างที่มาจากชุดนั้น (ผู้ตรวจ/แอดมิน):
@@ -289,6 +300,29 @@ async function deleteCentralPack(d){
     rebuildCloudIndex();syncDocSubjects();renderSide();renderKB();
     toast(`ลบแล้ว · บัตร/ข้อสอบ ${cards.length} รายการ${pool?` · โจทย์ในคลังโจทย์กลาง ${pool} ข้อ`:''}${rep?` · รายงาน ${rep} รายการ`:''}`);
   }catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+}
+/* ชุดซ้ำในคลังกลาง: ไฟล์เดียวกัน (sha / ข้อความเดียวกัน / ชื่อไฟล์+ผู้ส่งเดียวกัน) */
+function dupPacks(){
+  const by=new Map();
+  for(const d of DOCS.filter(x=>x.central)){const b=String(d.cloudId).replace(/_\d+$/,'');if(!by.has(b))by.set(b,{b,parts:[],at:0,d});const g=by.get(b);g.parts.push(d);g.at=Math.max(g.at,+d.at||0)}
+  const groups=new Map();
+  for(const g of by.values()){const d=g.d;g.n=CARDS.filter(c=>g.parts.some(x=>x.id===c.docId)).length;const k=d.txtSha||d.sha||(baseName(d.name)+'|'+(d.owner||''));if(!groups.has(k))groups.set(k,[]);groups.get(k).push(g)}
+  /* เก็บชุดที่มีบัตร/ข้อสอบมากที่สุด (ข้อมูลครบกว่า) เท่ากันเก็บชุดล่าสุด */
+  const out=[];for(const l of groups.values())if(l.length>1){l.sort((a,b)=>b.n-a.n||b.at-a.at);out.push(...l.slice(1).map(g=>({...g,keep:l[0]})))}
+  return out;
+}
+async function removeDupPacks(){
+  const l=dupPacks();if(!l.length||!isReviewerMe())return;
+  if(await modal(`<p class="mt">ลบชุดซ้ำ ${l.length} ชุด?</p><p class="src">${l.map(g=>{const nm=x=>esc(x.d.name.replace(/ \(ส่วนที่ \d+\)$/,'')),dt=x=>new Date(x.at).toLocaleDateString('th-TH');return `ลบ ${nm(g)} (${g.n} รายการ · ${dt(g)}) → เก็บ ${nm(g.keep)} (${g.keep.n} รายการ · ${dt(g.keep)})`}).join('<br>')}</p><p class="src">ของแต่ละไฟล์เก็บชุดที่มีบัตร/ข้อสอบมากที่สุดไว้ (เท่ากันเก็บชุดล่าสุด)</p>`,[{t:'ยกเลิก'},{t:'ลบชุดซ้ำ',cls:'primary'}])!==1)return;
+  const gone=new Set(l.flatMap(g=>g.parts.map(x=>x.id)));
+  const keep=new Set(CARDS.filter(c=>String(c.docId).startsWith('c_')&&!gone.has(c.docId)).flatMap(c=>c.figs||[]));
+  try{for(const g of l)for(const x of g.parts)await removePack(x.cloudId,keep);
+    /* ชุดซ้ำใช้รหัสบัตรเดียวกับชุดที่เก็บไว้: แตะชุดที่เก็บให้ทุกเครื่องโหลดบัตรชุดนั้นใหม่ ไม่ให้บัตรหายตามชุดที่ลบ */
+    const f=await fb(),kept=new Set(l.map(g=>g.keep));
+    for(const g of kept)for(const x of g.parts)try{await f.fs.updateDoc(fsDoc('kb',x.cloudId),{updatedAt:f.fs.serverTimestamp()})}catch(e){}
+    await syncCentral(true);toast(`ลบชุดซ้ำแล้ว ${l.length} ชุด`)}
+  catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e),'bad')}
+  renderKB();
 }
 async function editCloudCard(pid,cardId,patch){
   const f=await fb(),s=await f.fs.getDoc(fsDoc('kb',pid));if(!s.exists())throw new Error('ไม่พบชุดนี้');

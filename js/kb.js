@@ -292,7 +292,8 @@ const QLIKE=/(^|\n)\s*\d{1,3}\s*[.)]\s*\S[\s\S]*?(^|\n|\s)[กขคง1-4]\s*[.
 function uncovered(doc,win,exam){
   const has=new Set(CARDS.filter(c=>c.docId===doc.id&&(!exam||c.type==='q')).map(c=>+c.page)),len={};
   for(const p of win)len[p.n]=(len[p.n]||0)+p.text.replace(/\[รูป F[a-z0-9]+\][^\n]*/g,'').replace(/\s/g,'').length;
-  return win.filter(p=>!has.has(p.n)&&len[p.n]>=350&&!/สารบัญ|table of contents/i.test(p.text.slice(0,200))&&(!exam||QLIKE.test(p.text)));
+  /* 60 ตัวอักษร: หน้าสไลด์มีข้อความน้อยแต่มีสาระ (เดิม 350 ทำให้หน้าสไลด์ไม่ถูกเก็บตกเลย) */
+  return win.filter(p=>!has.has(p.n)&&len[p.n]>=60&&!/สารบัญ|table of contents/i.test(p.text.slice(0,200))&&(!exam||QLIKE.test(p.text)));
 }
 function docPrompt(doc,level,k,base,weak){
   const W=docWindows(doc),win=W[(DOC_OFF+Math.floor(base/20))%W.length];
@@ -561,6 +562,7 @@ async function processDoc(doc){
     return;
   }
   doc.waitHost=false;
+  const cards0=CARDS.filter(c=>c.docId===doc.id).length;
   /* จองงานข้ามเครื่อง: ถ้าเครื่องอื่นกำลังทำ หรือทำเสร็จแล้ว ให้ข้าม ไม่เสียเครดิต AI ซ้ำ */
   let leaseTimer=null;
   if(typeof syncClaim==='function'){
@@ -588,6 +590,8 @@ async function processDoc(doc){
     if(doc.stage==='embed'){if(canEmbed()){setProg(doc,'กำลังทำดัชนีค้นหาตามความหมาย');await embedCards(CARDS.filter(c=>c.docId===doc.id&&!c.emb))}doc.stage='conflict';await saveDoc(doc)}
     if(doc.stage==='conflict'){if(canEmbed()){setProg(doc,'กำลังเทียบกับเอกสารเดิม หาเนื้อหาที่ขัดกัน');await findConflicts(doc)}doc.stage='ready';await saveDoc(doc)}
     doc.tries=0;doc.nextTry=0;doc.errCode='';doc.errLocal=false;
+    const added=CARDS.filter(c=>c.docId===doc.id).length-cards0;
+    if(added>0&&doc.subStatus==='approved'&&!doc.noShare&&ME&&typeof submitDoc==='function')setTimeout(()=>submitDoc(doc,{auto:true}),80);
     if(doc.newSubj)setTimeout(()=>addSubjectFromDoc(doc),20);
     setTimeout(()=>autoShare(doc),50);
     toast(`${doc.name} พร้อมแล้ว · ${doc.kind==='exam'?`ข้อสอบ ${CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length} ข้อ`:`บัตรความรู้ ${CARDS.filter(c=>c.docId===doc.id).length} ใบ`}`);
@@ -655,7 +659,7 @@ function digestPrompt(doc,win,figs,onlyFigs,fill){
 - เก็บเฉพาะสาระที่ออกสอบได้: นิยาม หลักการ เงื่อนไข ข้อยกเว้น ขั้นตอน ตัวเลข ระยะเวลา อัตรา สิทธิและหน้าที่ บทลงโทษ ความแตกต่างของสิ่งที่คล้ายกัน
 - ข้ามสารบัญ คำนำ หัวกระดาษ ท้ายกระดาษ และข้อความซ้ำ
 - เก็บให้ครบทุกหัวข้อตั้งแต่ต้นจนจบเนื้อหา ทุกหน้าที่มีสาระต้องมีอย่างน้อย 1 บัตร หัวข้อที่มีรายละเอียดมากให้แยกเป็นหลายบัตร ไม่จำกัดจำนวนบัตร ห้ามหยุดก่อนถึงหน้าสุดท้าย${fill?`
-- รอบนี้เป็นการเก็บตก: หน้าในเนื้อหาด้านล่างยังไม่มีบัตรเลย ให้ทำบัตรจากทุกสาระในหน้าเหล่านี้`:''}
+- รอบนี้เป็นการเก็บตก: หน้าในเนื้อหาด้านล่างยังไม่มีบัตรเลย ให้ทำบัตรจากทุกสาระในหน้าเหล่านี้ หน้าที่สั้น (เช่น สไลด์) ให้ทำบัตรจากข้อความที่มี ข้ามได้เฉพาะหน้าปก หน้าชื่อบท หรือหน้าที่ไม่มีสาระจริงๆ`:''}
 - ห้ามเติมความรู้ที่ไม่มีในเนื้อหา ตัวเลขต้องตรงตามเอกสาร ถ้าข้อความต้นฉบับพิมพ์ผิดหรือวรรณยุกต์เพี้ยนแต่ความหมายชัด ให้เขียนให้ถูก
 - topic เลือกจาก: ${topicsOf(doc.group).join(', ')} หรือ อื่นๆ
 - kind เลือกจาก: นิยาม, หลักการ, เงื่อนไข, ข้อยกเว้น, ขั้นตอน, ตัวเลข, สิทธิหน้าที่, บทลงโทษ, เปรียบเทียบ, ข้อเท็จจริง, สูตรหรือวิธีคิด, ไวยากรณ์หรือการใช้ภาษา${doc.group==='gen'?`
@@ -1071,19 +1075,29 @@ function renderKB(){
   if(KB_TAB==='central'){
     head('ข้อมูลในคลังกลาง','ชุดที่อนุมัติแล้ว ทุกคนที่เปิดเว็บใช้ร่วมกัน');
     el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+      ${isReviewerMe()&&dupPacks().length?`<div class="hban"><b>พบชุดซ้ำในคลังกลาง ${dupPacks().length} ชุด</b><span>ไฟล์เดียวกันถูกอนุมัติซ้ำ เก็บชุดที่ข้อมูลครบที่สุดไว้ ลบชุดที่เหลือ</span><button class="ghost" id="kbdedup">🧹 ลบชุดซ้ำ</button></div>`:''}
       <input class="tx" id="kbcq" type="search" placeholder="ค้นหารายวิชา ชื่อไฟล์ หรือหัวข้อ เช่น PDPA, สินเชื่อ" value="${esc(KB_CQ)}" aria-label="ค้นหาในคลังกลาง" style="width:100%">
       ${hiddenSubjHTML()}
       ${srcAdminHTML()}
       <div id="kbclist">${centralListHTML()||'<p class="src" style="text-align:center">คลังกลางยังว่าง</p>'}</div>`;
+    const dd=document.getElementById('kbdedup');if(dd)dd.onclick=removeDupPacks;
     const cq=document.getElementById('kbcq');cq.oninput=()=>{KB_CQ=cq.value;const pos=cq.selectionStart;renderKB();const n=document.getElementById('kbcq');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(e){}}};
     if(ME&&!SRC.ready&&!SRC.loading&&!(SRC.failAt&&Date.now()-SRC.failAt<60000))loadSrcIndex().then(()=>{if(VIEW==='kb'&&KB_TAB==='central')renderKB()});
     document.getElementById('kbback').onclick=()=>{KB_TAB='main';renderKB();window.scrollTo({top:0})};
   }else if(KB_TAB==='hist'){
     head('ประวัติการอัปโหลด','ไฟล์ที่ประมวลผลเสร็จแล้ว · ดู แก้ ตั้งค่า หรือลบได้ที่นี่');
-    el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button></div>
+    const fillable=done.filter(d=>CARDS.some(c=>c.docId===d.id)&&docMine(d));
+    el.innerHTML=`<div class="btnrow" style="justify-content:flex-start"><button class="ghost" id="kbback">← กลับไปหน้าคลังความรู้</button>${fillable.length?`<button class="primary" id="kbfillall">🔁 เก็บตกหน้าที่ยังไม่มีบัตร ทุกไฟล์ (${fillable.length})</button>`:''}</div>
+      ${fillable.length?`<p class="src">${localUp()?'ใช้ AI ในเครื่องนี้ (ฟรี) ทำทีละไฟล์':'ใช้ AI ที่ตั้งไว้ (เสียเครดิตเฉพาะหน้าที่ขาด)'} · ไฟล์ที่อยู่ในคลังกลางแล้ว ระบบส่งฉบับที่เพิ่มบัตรแทนชุดเดิมให้เอง</p>`:''}
       <p class="lbl">เสร็จแล้ว ${done.length} ไฟล์${empty?` · ในนี้ ${empty} ไฟล์ไม่พบเนื้อหา (ดูคำแนะนำในแต่ละไฟล์)`:''}</p>
       ${done.map(docBox).join('')||'<p class="src" style="text-align:center">ยังไม่มีไฟล์ที่ประมวลผลเสร็จ</p>'}`;
     document.getElementById('kbback').onclick=()=>{KB_TAB='main';renderKB();window.scrollTo({top:0})};
+    const fa=document.getElementById('kbfillall');if(fa)fa.onclick=async()=>{
+      if(!activeAI()&&!localUp()){toast('ตั้งค่า AI หรือเปิด AI ในเครื่องก่อน','bad');return}
+      if(await modal(`<p class="mt">เก็บตกทุกไฟล์?</p><p>${fillable.length} ไฟล์</p><p class="src">ระบบไล่ดูทุกหน้า หน้าที่มีเนื้อหาแต่ยังไม่มีบัตรจะส่งให้ AI ทำเพิ่ม ของเดิมยังอยู่ครบ ทำทีละไฟล์ตามคิว ปิดหน้าเว็บระหว่างทำได้ (เปิดใหม่แล้วทำต่อ)</p>`,[{t:'ยกเลิก'},{t:'เริ่มเก็บตก',cls:'primary'}])!==1)return;
+      for(const d of fillable){Object.assign(d,{fill:true,digDone:0,win:0,stage:'digest',err:'',reprocess:true});await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);queueDoc(d.id)}
+      toast(`เริ่มเก็บตก ${fillable.length} ไฟล์ ดูความคืบหน้าที่หน้าคลังความรู้`);KB_TAB='main';renderKB();
+    };
   }else{
   el.innerHTML=`<div class="drop" id="drop"><p><b>ลากไฟล์มาวางที่นี่</b> หรือ</p><button class="primary" id="kbpick">เลือกไฟล์</button>
       <p class="src">PDF (รวมไฟล์สแกน), DOCX, TXT, HTML · ไฟล์ละไม่เกิน ${MAX_MB} MB · เลือกหลายไฟล์พร้อมกันได้ · ชื่อไฟล์ซ้ำจะอัปเดตทับของเดิม</p>

@@ -64,7 +64,8 @@ function syncVisible(){if(!document.hidden&&SYNC.on)syncPull().catch(e=>syErr(e)
 
 /* ---------- อ่านจาก Firestore ---------- */
 function syncDocFromMeta(m){
-  const id=m.localId||m.id,figs=Array.isArray(m.figs)?m.figs:[];
+  /* รหัสบันทึกบนคลาวด์ = 'l'+รหัสในเครื่อง (ไม่มี sha) · ถ้า meta ไม่มี localId ต้องตัด 'l' ออก ไม่งั้นได้รหัสใหม่ 'll…' แล้วเกิดรายการซ้ำที่ลบไม่หาย */
+  const id=m.localId||(/^l/.test(m.id)&&!m.sha?m.id.slice(1):m.id),figs=Array.isArray(m.figs)?m.figs:[];
   return{id,name:m.name||'เอกสาร',sha:m.sha||'',driveId:m.driveId||'',srcFile:m.srcFile||'',size:m.size||0,
     type:m.type||'',unit:m.unit||'หน้า',chars:m.chars||0,pages:[],bad:m.bad||[],figPages:m.figPages||[],
     group:m.group||'spec',show:m.show!==false,kind:m.kind||'kb',topic:topicName(m.topic||''),topicDesc:'',newSubj:false,
@@ -79,8 +80,8 @@ function syncRememberFigs(doc,figs){
   for(const f of figs||[])if(f&&f.id)PFIG.set(f.id,{id:f.id,docId:doc.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0});
 }
 async function syncAdopt(m){
-  const id=m.localId||m.id;
-  let doc=DOCS.find(d=>d.id===id&&!d.central);
+  const id=m.localId||(/^l/.test(m.id)&&!m.sha?m.id.slice(1):m.id);
+  let doc=DOCS.find(d=>d.id===id&&!d.central)||DOCS.find(d=>!d.central&&syncKey(d)===m.id);
   if(!doc&&m.sha){doc=DOCS.find(d=>!d.central&&d.sha===m.sha)}
   if(!doc){
     doc=syncDocFromMeta(m);DOCS.push(doc);await saveDoc(doc);

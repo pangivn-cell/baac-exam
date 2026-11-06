@@ -137,7 +137,16 @@ const inSubj=(c,name)=>c.topic===name||docSubsOf(c.docId).includes(name);
 /* ---------- question bank: questions taken as-is from files uploaded as "ข้อสอบ/ตัวอย่างโจทย์" ---------- */
 const BUILTIN_RAW=[...(typeof BUILTIN_BANK!=='undefined'?BUILTIN_BANK:[]),...(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[]),...(typeof AGE_BANK!=='undefined'?AGE_BANK:[]),...(typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[])];
 const BUILTIN_CARDS=BUILTIN_RAW.map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]},level:q.level||0,calc:!!q.level}));   /* calc = คลังที่สร้างและตรวจเฉลยด้วยโค้ด (บวกเลข นับอายุ นับขาสัตว์) */
-const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
+/* ข้อสอบที่ผู้ใช้กดลบ: ซ่อนในเครื่องนี้ทันที (รอผู้ตรวจอนุมัติลบจริง ถ้าผู้ตรวจยกเลิก ข้อนั้นกลับมา) */
+const QHIDE_KEY='exam-qhide';let QHIDE={};try{QHIDE=JSON.parse(localStorage.getItem(QHIDE_KEY)||'{}')||{}}catch(e){QHIDE={}}
+const saveQHide=()=>{try{localStorage.setItem(QHIDE_KEY,JSON.stringify(QHIDE))}catch(e){}};
+/* โจทย์/ตัวเลือกที่เป็นรูป เก็บเป็นป้าย [รูป Fxxx] · ป้ายที่ไม่มีรูปจริงในเครื่องหรือคลังกลาง = ข้อมูลหาย ไม่เอามาออกข้อสอบ */
+const FIG_TOK=/\[รูป (F[a-z0-9]+)\]/gi;
+const figOK=id=>FIGS.has(id)||PFIG.has(id)||(typeof CFIG!=='undefined'&&CFIG.has(id));
+const figMissing=c=>{const q=c.q||c;return [...String((q.stem||'')+' '+(q.choices||[]).join(' ')).matchAll(FIG_TOK)].some(m=>!figOK(m[1]))};
+/* ข้อความที่มีป้ายรูป → แสดงรูปจริงตรงตำแหน่งป้าย */
+const figText=(t,cls)=>esc(String(t||'')).replace(FIG_TOK,(m,id)=>figHTML(id,cls||'qfig infig'));
+const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!QHIDE[c.id]&&!figMissing(c)&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};

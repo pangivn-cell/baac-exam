@@ -78,17 +78,17 @@ function questionHTML(q){
   if(q.kind==='ineq2'){const L=q.lines;let g=`<div class="given"><span class="k">ถ้า</span>`;L.forEach((l,i)=>{g+=`${i?'<span></span>':''}<span class="eq">${esc(l)}${i<L.length-1?' &nbsp;<span class="k">และ</span>':''}</span>`});g+=`<span class="note">ทุกตัวอักษรมีค่ามากกว่าศูนย์</span></div>`;
     return g+(q.fmt==='tfu'?`<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`:`<div class="ask"><div class="lab">คำถาม</div><div class="st2">${esc(q.text)}</div></div>`)}
   if(q.kind==='ineq')return `${givenHTML(q.ctx)}<div class="ask"><div class="lab">ข้อสรุป</div><div class="st">${esc(q.text)}</div></div>`;
-  return `${q.pool?'<p class="origtag pooltag">♻ โจทย์จากคลังกลาง (ไม่ใช้เครดิต AI)</p>':''}${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${esc(q.stem)}</div>`;
+  return `${q.pool?'<p class="origtag pooltag">♻ โจทย์จากคลังกลาง (ไม่ใช้เครดิต AI)</p>':''}${q.retry?'<p class="origtag retrytag">🔁 ข้อที่เคยตอบผิด ลองตอบใหม่อีกครั้ง</p>':''}${q.orig?'<p class="origtag">ข้อสอบจริงจากคลัง</p>':''}${q.fig&&!String(q.stem||'').includes(`[รูป ${q.fig}]`)?figHTML(q.fig):''}${q.svg?`<figure class="qsvgw">${q.svg}</figure>`:''}${q.viz?renderViz(q.viz):''}<div class="stem">${figText(q.stem)}</div>`;
 }
 function choicesHTML(q,pick,locked){
   const mc=!isTFU(q),pics=mc&&q.chSvg;
   return `<div class="choices${mc?' mc':''}${pics?' pics':''}">${q.choices.map((t,j)=>{
     let cls='ch';if(locked){if(j===q.answer)cls+=' right';else if(j===pick)cls+=' wrong'}else if(j===pick)cls+=' sel';
-    return `<button class="${cls}" data-j="${j}" ${locked?'disabled':''} aria-pressed="${j===pick}">${pics?`<b>${TH[j]}</b><span class="chsvg">${q.chSvg[j]}</span>`:mc?`<b>${TH[j]}</b><span>${esc(t)}</span>`:esc(t)}</button>`}).join('')}</div>`;
+    return `<button class="${cls}" data-j="${j}" ${locked?'disabled':''} aria-pressed="${j===pick}">${pics?`<b>${TH[j]}</b><span class="chsvg">${q.chSvg[j]}</span>`:mc?`<b>${TH[j]}</b><span>${figText(t,'qfig chfig')}</span>`:esc(t)}</button>`}).join('')}</div>`;
 }
 function explainHTML(q,pick){
   const ok=pick===q.answer;
-  let h=`<div class="explain"><p class="verdict ${ok?'good':'bad'}">${pick==null?'ไม่ได้ตอบ':ok?'ถูกต้อง':'ยังไม่ใช่'} · เฉลย ${isTFU(q)?'':TH[q.answer]+(q.chSvg?'':'. ')}${q.chSvg?'':esc(q.choices[q.answer])}</p>`;
+  let h=`<div class="explain"><p class="verdict ${ok?'good':'bad'}">${pick==null?'ไม่ได้ตอบ':ok?'ถูกต้อง':'ยังไม่ใช่'} · เฉลย ${isTFU(q)?'':TH[q.answer]+(q.chSvg?'':'. ')}${q.chSvg?'':esc(String(q.choices[q.answer]).replace(FIG_TOK,'').trim())}</p>`;
   if(q.kind==='ineq'){const x=q.ctx;h+=`<p class="lbl">แถวรวม <span class="src">(มาจาก: คูณ ${x.k} ทุกตัวในบรรทัดล่างให้ ${FR[x.k]}${esc(x.H)} เป็น ${esc(x.H)} แล้วต่อกับบรรทัดบนตรง ${esc(x.H)})</span></p>${mergedHTML(x,q.hl)}`}
   if(q.exSvg)h+=`<figure class="qsvgw">${q.exSvg}</figure>`;
   if(q.expViz)h+=renderViz(q.expViz);
@@ -97,7 +97,8 @@ function explainHTML(q,pick){
   if(q.fixed)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
-  if(typeof cloudCardOf==='function'&&cloudCardOf(q))h+=`<div><button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button></div>`;
+  {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=q.card&&CARDS.find(x=>x.id===q.card&&x.type==='q');
+   if(rp||dc)h+=`<div class="btnrow" style="justify-content:flex-start">${rp?`<button class="ghost" type="button" data-rpt="${esc(q.card)}">⚑ รายงานเฉลยผิด</button>`:''}${dc?`<button class="ghost" type="button" data-qdel="${esc(q.card)}">🗑 ลบข้อสอบข้อนี้</button>`:''}</div>`}
   return h+`</div>`;
 }
 function askHTML(id,q,pick){

@@ -554,6 +554,10 @@ body.side-off .side{display:none}
   .hstat{padding:10px}.hstat .hi{font-size:22px}.hstat b{font-size:1.1rem}.hrecr{grid-template-columns:minmax(0,1fr) 3em}.hrecb{display:none}}
 .msg.ai.err{border-color:var(--bad);background:var(--bad-soft);color:var(--ink)}
 
+.stem .qfig.infig{margin:6px 0}
+.ch .qfig{margin:0;padding:3px;max-width:min(240px,100%)}.ch .qfig img{max-height:130px;pointer-events:none}
+.choices .ch:has(.qfig){align-items:center}
+.kdoc .qfig.sm img,.kq .qfig img,#dlg .qfig.sm img{max-height:110px}
 .lkchips{display:flex;flex-wrap:wrap;gap:6px;max-height:150px;overflow:auto;padding:2px}
 .lkchip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:99px;font-size:13px;cursor:pointer;background:var(--paper)}
 .lkchip:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}

@@ -148,6 +148,7 @@ async function applyPack(id,p){
 }
 async function syncCentral(force){
   if(CLOUD.syncing)return;CLOUD.syncing=true;
+  refreshQHide();
   try{
     const f=await fb();let since=0;try{since=force?0:(+localStorage.getItem(SYNC_KEY)||0)}catch(e){}
     const q=f.fs.query(f.fs.collection(f.db,'kb'),f.fs.where('updatedAt','>',f.fs.Timestamp.fromMillis(since)),f.fs.orderBy('updatedAt'));
@@ -360,6 +361,64 @@ document.addEventListener('click',e=>{
   const pool=[...(R&&R.items||[]),...(M&&M.items||[])],q=pool.find(x=>x.card===b.dataset.rpt);if(q)reportQ(q);
 });
 
+/* ---------- ขอลบข้อสอบ ----------
+   ผู้ใช้กดลบ → ข้อนั้นไม่แสดงในเครื่องนี้ทันที + ส่งคำขอ (reports type:'delete') ให้ผู้ตรวจ
+   ผู้ตรวจอนุมัติ = ลบข้อนั้นออกจากชุดในคลังกลาง คลังโจทย์กลาง และรูปที่ไม่ได้ใช้แล้ว (ทุกเครื่องลบตามตอนซิงก์)
+   ผู้ตรวจยกเลิก = ข้อนั้นกลับมาแสดงในเครื่องของผู้ขอ · ข้อจากไฟล์ของตัวเองที่ยังไม่อยู่คลังกลาง ลบได้ทันที */
+async function requestDelQ(cardId){
+  const c=CARDS.find(x=>x.id===cardId);if(!c||!c.q)return;
+  const central=String(c.docId).startsWith('c_');
+  if(central&&!ME&&!(await loginDialog()))return;
+  const r=await modal(`<p class="mt">ลบข้อสอบข้อนี้?</p><div style="white-space:pre-wrap">${figText(c.q.stem,'qfig sm')}</div>
+    <p class="src">${central?'ข้อนี้จะไม่แสดงในเครื่องของคุณทันที และส่งให้ผู้ตรวจยืนยัน ถ้าผู้ตรวจอนุมัติ ข้อนี้จะถูกลบออกจากคลังกลางถาวร ถ้าผู้ตรวจยกเลิก ข้อนี้จะกลับมา':'ข้อนี้มาจากไฟล์ของคุณที่ยังไม่อยู่ในคลังกลาง จะลบออกทันที'}</p>
+    <label class="lbl" for="qd-w">เหตุผล</label><textarea id="qd-w" rows="2" class="cetx" placeholder="เช่น รูปหาย โจทย์ไม่ครบ ไม่มีตัวเลือกที่ถูก"></textarea>`,[{t:'ยกเลิก'},{t:'ลบข้อนี้',cls:'primary'}]);
+  if(r!==1)return;
+  const why=document.getElementById('qd-w').value.trim();
+  if(!central){
+    const d=DOCS.find(x=>x.id===c.docId);
+    CARDS=CARDS.filter(x=>x.id!==c.id);try{await kbDelMany('cards',[c.id])}catch(e){}
+    if(d){d.delCards=[...new Set([...(d.delCards||[]),c.id])].slice(-1000);await saveDoc(d);if(typeof syncPushCards==='function')syncPushCards(d,true)}
+    toast('ลบข้อนี้แล้ว');return;
+  }
+  QHIDE[c.id]={at:Date.now(),rid:''};saveQHide();
+  try{const f=await fb();
+    const ref=await f.fs.addDoc(f.fs.collection(f.db,'reports'),{type:'delete',uid:ME.uid,name:ME.name,packId:c.docId.slice(2),cardId:c.id,cardFact:String(c.fact||'').slice(0,1500),
+      stem:String(c.q.stem||'').slice(0,1500),choices:c.q.choices,answer:c.q.answer,figs:(c.figs||[]).slice(0,12),why:why.slice(0,1500),status:'open',createdAt:f.fs.serverTimestamp()});
+    QHIDE[c.id].rid=ref.id;saveQHide();
+    toast('ซ่อนข้อนี้แล้ว · ส่งให้ผู้ตรวจยืนยันการลบ');
+  }catch(e){toast('ซ่อนข้อนี้ในเครื่องแล้ว แต่ส่งคำขอลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-qdel]');if(!b)return;e.preventDefault();requestDelQ(b.dataset.qdel)});
+/* ผู้ตรวจยกเลิกคำขอ → เอาข้อนั้นกลับมาในเครื่องของผู้ขอ (เช็กไม่เกินทุก 10 นาที) */
+let QHIDE_AT=0;
+async function refreshQHide(){
+  if(!ME||!Object.keys(QHIDE).length||Date.now()-QHIDE_AT<10*60000)return;QHIDE_AT=Date.now();
+  try{const f=await fb(),snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('uid','==',ME.uid),f.fs.where('type','==','delete')));
+    let back=0;for(const s of snap.docs){const r=s.data();if(r.status==='dismissed'&&QHIDE[r.cardId]){delete QHIDE[r.cardId];back++}}
+    if(back){saveQHide();toast(`ผู้ตรวจยกเลิกการลบ ${back} ข้อ ข้อสอบกลับมาแล้ว`)}
+  }catch(e){}
+}
+async function approveDelQ(r){
+  const f=await fb(),s=await f.fs.getDoc(fsDoc('kb',r.packId));
+  if(s.exists()&&!s.data().deleted){
+    const all=s.data().cards||[],left=all.filter(c=>c.id!==r.cardId);
+    if(left.length!==all.length){
+      const keepFigs=new Set(left.flatMap(c=>c.figs||[])),gone=(all.find(c=>c.id===r.cardId)||{}).figs||[];
+      if(!left.length)await removePack(r.packId);
+      else{await f.fs.updateDoc(fsDoc('kb',r.packId),{cards:left,count:left.length,figIds:[...keepFigs],updatedAt:f.fs.serverTimestamp()});
+        for(const fid of gone)if(!keepFigs.has(fid))try{await f.fs.deleteDoc(fsDoc('kbfigs',fid))}catch(e){}}
+    }
+  }
+  /* คลังโจทย์กลาง: โจทย์ที่สร้างจากข้อนี้ */
+  try{const snap=await f.fs.getDocs(f.fs.collection(f.db,'qpool'));
+    for(const p of snap.docs){const items=p.data().items||[],keep=items.filter(raw=>{try{return JSON.parse(raw).card!==r.cardId}catch(e){return true}});
+      if(keep.length===items.length)continue;if(keep.length)await f.fs.updateDoc(p.ref,{items:keep,n:keep.length});else await f.fs.deleteDoc(p.ref)}
+    if(typeof POOL!=='undefined')POOL.cache.clear()}catch(e){}
+  await f.fs.updateDoc(fsDoc('reports',r.id),{status:'resolved',by:ME.name,resolvedAt:f.fs.serverTimestamp()});
+  CARDS=CARDS.filter(c=>c.id!==r.cardId);try{await kbDelMany('cards',[r.cardId])}catch(e){}
+  rebuildCloudIndex();
+}
+
 /* ---------- review view (ผู้ตรวจ/แอดมิน) ---------- */
 let RV={tab:'subs',subs:null,reports:null,users:null,open:new Set()};
 async function renderReview(){
@@ -368,7 +427,7 @@ async function renderReview(){
   const el=document.getElementById('sheet');
   if(!isReviewerMe()){el.innerHTML='<div class="state"><p><b>หน้านี้สำหรับผู้ตรวจและแอดมิน</b></p></div>';return}
   const tab=(v,t)=>`<button data-rt="${v}" aria-pressed="${RV.tab===v}">${t}</button>`;
-  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">${tab('subs','รออนุมัติ')}${tab('reports','รายงานเฉลยผิด')}${tab('feedback','ข้อความ')}${tab('kb','คลังกลาง')}${ME.role==='admin'?tab('users','สมาชิก'):''}</div><div id="rvbody"><div class="state"><div class="spin"></div></div></div>`;
+  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">${tab('subs','รออนุมัติ')}${tab('reports','รายงานเฉลยผิด')}${tab('dels','ขอลบข้อสอบ')}${tab('feedback','ข้อความ')}${tab('kb','คลังกลาง')}${ME.role==='admin'?tab('users','สมาชิก'):''}</div><div id="rvbody"><div class="state"><div class="spin"></div></div></div>`;
   el.querySelectorAll('[data-rt]').forEach(b=>b.onclick=()=>{RV.tab=b.dataset.rt;renderReview()});
   const body=document.getElementById('rvbody');
   try{
@@ -388,7 +447,7 @@ async function renderReview(){
       });
     }else if(RV.tab==='reports'){
       const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('status','==','open')));
-      const list=snap.docs.map(s=>({id:s.id,...s.data()}));
+      const list=snap.docs.map(s=>({id:s.id,...s.data()})).filter(r=>r.type!=='delete');
       body.innerHTML=list.length?list.map(r=>`<div class="kdoc" data-rp="${r.id}"><p class="src">รายงานโดย ${esc(r.name||'-')}${r.orig?' · ข้อสอบจริงจากคลัง':' · ข้อที่ AI สร้างจากบัตร'}</p>
         <p style="white-space:pre-wrap"><b>${esc(r.stem)}</b></p><ol class="kq">${(r.choices||[]).map((x,j)=>`<li${j===r.answer?' class="ok"':''}>${esc(x)}${j===r.answer?' (เฉลยเดิม)':''}${x===r.proposed?' ← ผู้รายงานเสนอ':''}</li>`).join('')}</ol>
         <p><b>เหตุผล:</b> ${esc(r.why)}</p><p class="src">บัตรต้นทาง: ${esc(r.cardFact)}</p>
@@ -401,6 +460,20 @@ async function renderReview(){
           try{await editCloudCard(r.packId,c.id,c.type==='q'?{q:c.q,fact:c.fact,title:c.title,ansSrc:c.ansSrc,topic:c.topic}:{fact:c.fact,title:c.title,topic:c.topic});
             await f.fs.updateDoc(fsDoc('reports',r.id),{status:'resolved',by:ME.name});toast('แก้ในคลังกลางแล้ว ทุกคนจะได้ฉบับแก้ตอนซิงก์');await syncCentral()}catch(e){toast('แก้ไม่สำเร็จ: '+(e.code||e.message),'bad')}
           renderReview()};
+      });
+    }else if(RV.tab==='dels'){
+      const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'reports'),f.fs.where('status','==','open')));
+      const list=snap.docs.map(s=>({id:s.id,...s.data()})).filter(r=>r.type==='delete');
+      const pk=id=>(DOCS.find(d=>d.cloudId===id)||{}).name||id;
+      body.innerHTML=list.length?list.map(r=>`<div class="kdoc" data-dq="${r.id}"><p class="src">ขอลบโดย ${esc(r.name||'-')} · ชุด ${esc(pk(r.packId))}</p>
+        <div style="white-space:pre-wrap"><b>${figText(r.stem,'qfig sm')}</b></div><ol class="kq">${(r.choices||[]).map((x,j)=>`<li${j===r.answer?' class="ok"':''}>${figText(x,'qfig chfig')}${j===r.answer?' (เฉลย)':''}</li>`).join('')}</ol>
+        <p><b>เหตุผล:</b> ${esc(r.why||'-')}</p>
+        <div class="btnrow" style="justify-content:flex-start"><button class="primary" data-dok>อนุมัติลบออกจากคลังถาวร</button><button class="ghost" data-dno>ยกเลิกการลบ (คืนข้อสอบ)</button></div></div>`).join('')
+        :'<p class="src" style="text-align:center">ไม่มีคำขอลบข้อสอบ</p>';
+      body.querySelectorAll('[data-dq]').forEach(box=>{const r=list.find(x=>x.id===box.dataset.dq);
+        box.querySelector('[data-dok]').onclick=async()=>{box.querySelectorAll('button').forEach(b=>b.disabled=true);
+          try{await approveDelQ(r);toast('ลบข้อนี้ออกจากคลังกลางแล้ว ทุกเครื่องจะลบตามตอนซิงก์');await syncCentral(true)}catch(e){toast('ลบไม่สำเร็จ: '+String(e&&e.code||e&&e.message||e),'bad')}renderReview()};
+        box.querySelector('[data-dno]').onclick=async()=>{try{await f.fs.updateDoc(fsDoc('reports',r.id),{status:'dismissed',by:ME.name});toast('ยกเลิกการลบแล้ว ข้อนี้จะกลับมาในเครื่องของผู้ขอ')}catch(e){toast('ไม่สำเร็จ','bad')}renderReview()};
       });
     }else if(RV.tab==='feedback'){
       const snap=await f.fs.getDocs(f.fs.query(f.fs.collection(f.db,'feedback'),f.fs.where('status','==','open')));

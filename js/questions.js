@@ -138,7 +138,7 @@ const inSubj=(c,name)=>c.topic===name||docSubsOf(c.docId).includes(name);
 const BUILTIN_RAW=[...(typeof BUILTIN_BANK!=='undefined'?BUILTIN_BANK:[]),...(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[]),...(typeof AGE_BANK!=='undefined'?AGE_BANK:[]),...(typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[])];
 const BUILTIN_CARDS=BUILTIN_RAW.map((q,i)=>({id:'b'+i,docId:'builtin',type:'q',topic:q.topic,ansSrc:'',figs:[],q:{stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:q.steps||[]},level:q.level||0,calc:!!q.level}));   /* calc = คลังที่สร้างและตรวจเฉลยด้วยโค้ด (บวกเลข นับอายุ นับขาสัตว์) */
 const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
-function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));return s.doc?b.filter(c=>c.docId===s.doc||inSubj(c,s.name)):s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
+function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};
 const pickBank=(pool,k)=>pool.map(c=>({c,sc:cardScore(c)})).sort((a,b)=>b.sc-a.sc).slice(0,k).map(x=>x.c);
@@ -314,13 +314,13 @@ async function makeNew0(s,level,n,o,pool){
   if(doc&&typeof syncHydrate==='function'){try{await syncHydrate(doc,{cards:true})}catch(e){}act=activeCards()}
   const tag=q=>withCard({...q,sub:s.id,subName:s.name,gen:'ai'},doc),run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
   if(s.figOnly&&!LOCAL[s.id]&&!figCards().some(c=>inSubj(c,s.name))){if(pool.length)return[];throw{code:'need_figs'}}
-  if(s.doc&&doc&&doc.kind==='exam'&&!act.some(c=>c.docId===doc.id))return (await run(k=>genPrompt({name:doc.name,desc:'ข้อสอบแนวเดียวกับตัวอย่าง'},level,k),n)).map(tag);
+  if(s.doc&&doc&&doc.kind==='exam'&&!act.some(c=>subjDocIds(s).has(c.docId)||inSubj(c,s.name)))return (await run(k=>genPrompt({name:doc.name,desc:'ข้อสอบแนวเดียวกับตัวอย่าง'},level,k),n)).map(tag);
   if(s.doc){
     if(!doc)throw{code:'no_doc'};
-    const has=act.some(c=>c.docId===doc.id);
+    const ids=subjDocIds(s),mine=c=>ids.has(c.docId)||inSubj(c,s.name),has=act.some(mine);
     if(!has&&(!doc.pages||!doc.pages.length)&&doc.pagesParts>0&&typeof ensureDocPages==='function'){try{await ensureDocPages(doc)}catch(e){}}
     if(!has&&!docWindows(doc).length)throw{code:'doc_empty'};
-    return (await run(has?cardPF(()=>activeCards().filter(c=>c.docId===doc.id),k=>Array(k).fill(null),level,weak):(k,b)=>docPrompt(doc,level,k,b,weak),n)).map(tag);
+    return (await run(has?cardPF(()=>activeCards().filter(mine),k=>Array(k).fill(null),level,weak):(k,b)=>docPrompt(doc,level,k,b,weak),n)).map(tag);
   }
   if(s.id==='specall'){const tf=rotTopics();
     return (await run(act.some(c=>SPEC_TOPICS.includes(c.topic))?cardPF(activeCards,tf,level,weak,2):(k,b)=>specPrompt(tf(k,b),{level,weak}),n)).map(tag)}

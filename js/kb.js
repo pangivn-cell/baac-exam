@@ -15,6 +15,16 @@ function syncDocSubjects(){
     SUBJ.push({id:'doc_'+d.id,name:d.label||docBase(d),desc:'',ai:true,group:d.group||'spec',doc:d.id});
   }
 }
+/* ฐานข้อมูลของวิชาจากไฟล์ = ทุกส่วนของไฟล์นั้น (ชุดใหญ่ในคลังกลางแบ่งเป็น ส่วนที่ 1, 2, ...) + ไฟล์อื่นที่เชื่อมต่อกับวิชานี้ทั้งไฟล์
+   (ข้อที่ตั้งวิชานี้รายข้อในไฟล์อื่น นับผ่าน inSubj อยู่แล้ว) */
+function subjDocs(s){
+  if(!s||!s.doc)return[];
+  const main=DOCS.find(x=>x.id===s.doc),hid=typeof HIDE!=='undefined'?HIDE:new Set();if(!main)return[];
+  const k=docKey(main),out=[main];
+  for(const d of DOCS)if(d!==main&&!d.deleted&&!hid.has(d.id)&&docMine(d)&&(docKey(d)===k||(d.subs||[]).includes(s.name)))out.push(d);
+  return out;
+}
+const subjDocIds=s=>new Set(subjDocs(s).map(d=>d.id));
 /* ลบวิชาจากไฟล์ (ปุ่ม 🗑 ในเมนู): เลือกได้ว่าลบเฉพาะชุดที่ซ้ำ หรือลบวิชานี้ทั้งหมด
    ชุดในเครื่องนี้ลบได้เสมอ · ชุดในคลังกลางเฉพาะผู้ตรวจ/แอดมินลบได้ (คนอื่นจะซ่อนจากเมนูของตัวเองแทน) */
 async function delLocalDoc(id){
@@ -69,9 +79,13 @@ function subjDesc(s){const tot=bankFor(s,true).length,left=bankFor(s).length;
 function subjDesc0(s){
   if(s.id==='specall'){const n=activeCards().filter(c=>SPEC_TOPICS.includes(c.topic)).length;return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
   if(s.group==='gen'&&!s.doc){const n=activeCards().filter(c=>inSubj(c,s.name)).length;if(n)return `${s.desc} · ${activeAI()?`ผสมโจทย์จากบัตรความรู้ ${n} ใบ`:`มีบัตรความรู้ ${n} ใบ (ตั้งค่า AI เพื่อใช้)`}`}
-  if(s.doc){const d=DOCS.find(x=>x.id===s.doc);if(!d)return 'ไม่พบเอกสาร';const n=activeCards().filter(c=>c.docId===d.id).length;
-    const nq=CARDS.some(c=>c.docId===d.id&&c.type==='q');
-    return n?`โจทย์สร้างจากบัตรความรู้ ${n} ใบที่ AI ย่อยจาก ${d.name} มีอ้างอิง${d.unit}ทุกข้อ`:nq?`ใช้ข้อสอบจริงจาก ${d.name} และให้ AI สร้างโจทย์เพิ่มจากเนื้อหาไฟล์`:`โจทย์สร้างจากเนื้อหา ${d.name} (ยังไม่ได้ย่อยเป็นบัตรความรู้)`}
+  if(s.doc){const d=DOCS.find(x=>x.id===s.doc);if(!d)return 'ไม่พบเอกสาร';
+    const ds=subjDocs(s),ids=new Set(ds.map(x=>x.id)),n=activeCards().filter(c=>ids.has(c.docId)).length,nq=CARDS.some(c=>ids.has(c.docId)&&c.type==='q');
+    /* ชื่อฐานข้อมูล: ส่วนของไฟล์เดียวกันรวมเป็นชื่อเดียว */
+    const nm=x=>x.name.replace(/ \(ส่วนที่ \d+\)$/,''),parts=new Map();for(const x of ds)parts.set(nm(x),(parts.get(nm(x))||0)+1);
+    const src=[...parts].map(([k,v])=>v>1?`${k} (${v} ส่วน)`:k).join(', '),one=parts.size===1;
+    const from=one?src:`${parts.size} ไฟล์: ${src}`;
+    return n?`โจทย์สร้างจากบัตรความรู้ ${n} ใบที่ AI ย่อยจาก ${from} มีอ้างอิง${d.unit}ทุกข้อ`:nq?`ใช้ข้อสอบจริงจาก ${from} และให้ AI สร้างโจทย์เพิ่มจากเนื้อหาไฟล์`:`โจทย์สร้างจากเนื้อหา ${from} (ยังไม่ได้ย่อยเป็นบัตรความรู้)`}
   if(s.group==='spec'){const n=activeCards().filter(c=>inSubj(c,s.name)).length;
     return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:kbContext([s.name]).text?'อิงเนื้อหาเอกสารในคลังความรู้':'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
   return s.desc;

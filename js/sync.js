@@ -111,14 +111,16 @@ async function syncMerge(local,m){
   if(rms&&rms<=(local.syncAt||0))return;
   let ch=false;
   const rk=syncRank(m.stage),lk=syncRank(local.stage);
-  if(rk>lk||(+m.digDone||0)>(local.digDone||0)){
+  /* ไฟล์ที่สั่งเก็บตก/ประมวลผลใหม่ในเครื่องนี้: ไม่เอาสถานะ "พร้อมใช้" เดิมจากคลาวด์มาทับ ไม่งั้นงานไม่ได้เริ่ม */
+  const redo=!!(local.fill||local.reprocess);
+  if(!redo&&(rk>lk||(+m.digDone||0)>(local.digDone||0))){
     local.digDone=Math.max(local.digDone||0,+m.digDone||0);if(+m.win)local.win=+m.win;
     if(rk>lk)local.stage=m.stage;
     local.ocrDone=[...new Set([...(local.ocrDone||[]),...(m.ocrDone||[])])].sort((a,b)=>a-b);
     if(Array.isArray(m.summ)&&m.summ.length)local.summ=m.summ;
     local.err='';ch=true;
   }
-  if(m.stage==='ready'&&local.stage!=='ready'){local.stage='ready';local.err='';ch=true}
+  if(m.stage==='ready'&&local.stage!=='ready'&&!redo){local.stage='ready';local.err='';ch=true}
   for(const k of ['group','show','kind','topic','noShare'])if(m[k]!=null){const v=k==='topic'?topicName(m[k]):m[k];if(local[k]!==v){local[k]=v;ch=true}}
   if(m.pagesParts!=null&&local.pagesParts!==m.pagesParts){local.pagesParts=m.pagesParts;ch=true}
   if(m.cardsParts!=null&&local.cardsParts!==m.cardsParts){local.cardsParts=m.cardsParts;ch=true}

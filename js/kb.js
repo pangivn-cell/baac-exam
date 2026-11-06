@@ -576,7 +576,18 @@ async function readDriveDoc(doc){
 const hostKnown=()=>typeof HOSTBEAT!=='undefined'&&!!HOSTBEAT;
 const procMode=d=>localUp()?'local':(d&&d.forceHere&&activeAI())?'own':(typeof hostAlive==='function'&&hostAlive())?'wait':activeAI()?'own':'wait';
 const HOST_WAIT_TXT='รอเครื่องประมวลผลหลัก (AI ในเครื่อง)';
+/* ไฟล์ว่าง: ไม่มีข้อความ ไม่มีต้นฉบับ (ในเครื่อง/Drive) ไม่มีหน้าบนคลาวด์ และไม่มีบัตร → ทำอะไรต่อไม่ได้ ลบทิ้งทันที ไม่เข้าคิว */
+function looksEmpty(d){
+  return !!d&&!d.central&&d.stage!=='ready'&&!(d.pages||[]).length&&!(+d.pagesParts>0)&&!d.driveId&&!d.srcFile&&!(+d.cardCount>0)&&!(+d.cardsParts>0)&&!CARDS.some(c=>c.docId===d.id)&&!UPQ.some(j=>j.name===d.name&&!j.err);
+}
+async function dropIfEmpty(d){
+  if(!looksEmpty(d))return false;
+  let f=null;try{f=await kbGet('files',d.id)}catch(e){}if(f&&f.buf)return false;   /* มีไฟล์ต้นฉบับในเครื่อง ยังอ่านใหม่ได้ */
+  await delLocalDoc(d.id);syncDocSubjects();
+  console.warn('ลบไฟล์ว่างออกจากรายการ',d.name);return true;
+}
 async function processDoc(doc){
+  if(await dropIfEmpty(doc)){renderKB();toast(`ลบ "${doc.name}" ออกจากรายการแล้ว (ไฟล์ว่าง ไม่มีข้อมูลให้ประมวลผล)`);return}
   doc.err='';
   const mode=procMode(doc);doc.forceHere=false;
   if(mode==='wait'){
@@ -1395,7 +1406,10 @@ let retryBusy=false;
 async function autoRetry(){
   if(retryBusy||(document.hidden&&!localUp()))return;retryBusy=true;
   try{
-    const now=Date.now(),mine=DOCS.filter(d=>!d.central&&docMine(d)),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
+    const now=Date.now(),busy=d=>PROC_ID===d.id||PROCQ.includes(d.id);
+    let dropped=0;for(const d of DOCS.filter(x=>!x.central&&docMine(x)&&!busy(x)))if(await dropIfEmpty(d))dropped++;
+    if(dropped){renderSide();toast(`ลบไฟล์ว่าง ${dropped} ไฟล์ออกจากรายการ (ไม่มีข้อมูลให้ประมวลผล)`)}
+    const mine=DOCS.filter(d=>!d.central&&docMine(d));
     for(const d of mine){
       if(busy(d)||d.stage==='ready'||(!activeAI()&&!localUp()&&!hostKnown()))continue;
       if(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d))continue;

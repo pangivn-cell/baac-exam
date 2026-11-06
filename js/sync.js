@@ -157,6 +157,10 @@ async function syncPull(){
     SYNC.meta=metas;
     for(const m of metas.values()){
       if(m.deleted){await syncDropLocal(m.id,m.localId);continue}
+      /* บันทึกที่ยังว่าง (ไม่มีหน้า ไม่มีต้นฉบับ ไม่มีบัตร): ไม่ดึงมาสร้างรายการใหม่ในเครื่องนี้
+         (ไม่ลบบนคลาวด์ เพราะอาจเป็นไฟล์ที่อีกเครื่องเพิ่งอัปโหลดและยังส่งหน้าไม่เสร็จ) */
+      if(m.stage!=='ready'&&!(+m.pagesParts>0)&&!m.driveId&&!m.srcFile&&!(+m.cardsParts>0)&&!((m.counts&&+m.counts.cards)>0)
+        &&!DOCS.some(d=>!d.central&&(d.id===(m.localId||m.id)||syncKey(d)===m.id)))continue;
       await syncAdopt(m);
     }
     if(!SYNC.firstPush){SYNC.firstPush=true;syncPushLocal(metas).catch(e=>syErr(e))}

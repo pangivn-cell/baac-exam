@@ -352,11 +352,12 @@ function addHist(e){HIST.push({id:Date.now().toString(36)+Math.random().toString
 /* ---------- views ---------- */
 var VIEW='practice',M=null,G=null,HF='all',VIEW_FROM='home';
 function setView(v){
+  if(v==='study'){openAI(true);return}   /* สอบถาม AI เป็นหน้าต่างลอย ไม่ใช่หน้า */
   if(M&&M.status==='run'&&v!=='mock')return;
   if(v==='kb'&&VIEW!=='kb'&&typeof KB_TAB!=='undefined')KB_TAB='main';
   if(v!=='dev')VIEW_FROM=v;   /* จำหน้าล่าสุดไว้แนบไปกับข้อความถึงผู้พัฒนา */
   VIEW=v;
-  document.querySelectorAll('#views button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
+  document.querySelectorAll('#views button,#views2 button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
   document.getElementById('pside').classList.toggle('off',v!=='practice');
   document.getElementById('pctl').hidden=v!=='practice';
   if(v!=='mock'){document.getElementById('tbar').hidden=true;document.querySelector('.app').classList.remove('exam')}

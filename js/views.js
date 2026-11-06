@@ -252,10 +252,17 @@ function srcHTML(c,i){
   return `<div class="kc"><p class="src">${c.type==='q'?'ข้อสอบตัวอย่าง':esc(c.kind)} · ${esc(c.topic)}${d?` · ${esc(cardCite(c))} · อัปโหลดโดย ${esc(upBy(c))}`:''}</p>${body}${figs.map(id=>figHTML(id,'kthumb')).join('')}
     ${d?srcBtn({card:c.id}):''}${activeAI()?`<div><button class="ghost" data-exp="${i}">✨ ให้ AI อธิบายเรื่องนี้ให้ละเอียด</button></div>`:''}</div>`;
 }
+/* ---------- สอบถาม AI: หน้าต่างลอยมุมขวาล่าง เปิดได้จากทุกหน้า บทสนทนาค้างไว้เมื่อปิด ---------- */
+function openAI(on){
+  const p=document.getElementById('aipanel'),b=document.getElementById('aifab');if(!p)return;
+  p.hidden=!on;b.setAttribute('aria-expanded',String(!!on));document.body.classList.toggle('ai-open',!!on);
+  if(on){if(!p.dataset.r){p.dataset.r='1';renderStudy()}setTimeout(()=>{const q=document.getElementById(STU.answer?'askq2':'askq');if(q&&!isPhone())q.focus()},50)}
+}
+document.getElementById('aifab').onclick=()=>openAI(document.getElementById('aipanel').hidden);
+document.getElementById('aiclose').onclick=()=>openAI(false);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('aipanel').hidden)openAI(false)});
 function renderStudy(){
-  if(VIEW!=='study')return;
-  head('สอบถาม AI','ถามได้ทุกเรื่องเหมือนค้นใน Google · AI ตรวจจากคลังความรู้ก่อน แล้วบอกที่มาทุกครั้ง');
-  const el=document.getElementById('sheet'),ai=!!activeAI(),cnt={};for(const c of activeCards())cnt[c.topic]=(cnt[c.topic]||0)+1;
+  const el=document.getElementById('aisheet'),ai=!!activeAI(),cnt={};for(const c of activeCards())cnt[c.topic]=(cnt[c.topic]||0)+1;
   const sug=['7C คืออะไร','NPL คืออะไร','PDPA ต้องขอความยินยอมเมื่อไร','จัดชั้นหนี้มีกี่ชั้น','5C ต่างจาก 7C อย่างไร','ผลต่างชั้นที่สองในอนุกรม'];
   el.innerHTML=`<form class="ask1" id="askf"><input class="tx" id="askq" type="search" placeholder="พิมพ์คำถาม เช่น 7C คืออะไร" value="${esc(STU.q)}" aria-label="คำถาม" autocomplete="off"><button class="primary">ถาม</button></form>
     ${!STU.q?`<div class="tags">${sug.map(s=>`<button class="tag tbtn" data-sg="${esc(s)}">${esc(s)}</button>`).join('')}</div>
@@ -350,7 +357,7 @@ document.getElementById('mclose').onclick=()=>{setMenu(false);document.getElemen
 document.getElementById('mback').onclick=()=>setMenu(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('menu-open')){setMenu(false);document.getElementById('mmenu').focus()}});
 document.getElementById('side').addEventListener('click',e=>{
-  if(isPhone()&&e.target.closest('#views button,#subjects [data-s],#newset'))setTimeout(()=>{setMenu(false);window.scrollTo({top:0})},0);
+  if(isPhone()&&e.target.closest('#views button,#views2 button,#subjects [data-s],#newset'))setTimeout(()=>{setMenu(false);window.scrollTo({top:0})},0);
 },true); /* capture: the subject list re-renders inside its own click handler */
 /* page title and account shortcut in the top bar follow the page */
 new MutationObserver(()=>{const t=document.getElementById('title').textContent;document.getElementById('mtitle').textContent=t||'ระบบซ้อมสอบ'}).observe(document.getElementById('title'),{childList:true,characterData:true,subtree:true});
@@ -362,7 +369,7 @@ function renderMav(){
 new MutationObserver(renderMav).observe(document.getElementById('acct'),{childList:true});renderMav();
 new MutationObserver(()=>{const on=document.querySelector('.app').classList.contains('exam');document.body.classList.toggle('exam-on',on);if(on)setMenu(false)}).observe(document.querySelector('.app'),{attributes:true,attributeFilter:['class']});
 matchMedia('(max-width:760px)').addEventListener('change',e=>{if(!e.matches)setMenu(false)});
-document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+document.querySelectorAll('#views button,#views2 button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
 document.getElementById('count').onchange=e=>{P.count=+e.target.value;save();if(VIEW==='practice'&&R&&!R.picks.some(x=>x!=null)&&R.status!=='loading')start(true);else toast(`ชุดถัดไปจะมี ${P.count} ข้อ`)};
 document.getElementById('mode-now').onclick=()=>{P.mode='now';save();renderSide()};

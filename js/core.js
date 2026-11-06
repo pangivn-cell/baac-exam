@@ -98,3 +98,16 @@ const c=(n,L)=>n===1?L:n+L;
 const FR={2:'½',3:'⅓',4:'¼',5:'⅕'};
 const rnd=a=>a[Math.floor(Math.random()*a.length)];
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
+/* ขนาดตัวอักษรของพื้นที่เนื้อหา (แถบ A− / A+ มุมขวาบน) จำไว้ในเครื่องนี้ */
+(function(){
+  const r=document.getElementById('fsr');if(!r)return;
+  const set=v=>{v=Math.min(160,Math.max(80,Math.round(+v/10)*10||100));r.value=v;
+    document.documentElement.style.setProperty('--fs',v/100);document.getElementById('fsv').textContent=v+'%';
+    try{localStorage.setItem('exam-font',v)}catch(e){}};
+  let v=100;try{v=+localStorage.getItem('exam-font')||100}catch(e){}
+  set(v);
+  r.addEventListener('input',()=>set(r.value));
+  document.getElementById('fsdn').onclick=()=>set(+r.value-10);
+  document.getElementById('fsup').onclick=()=>set(+r.value+10);
+})();

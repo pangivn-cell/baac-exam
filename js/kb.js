@@ -816,7 +816,8 @@ ${g.map((c,i)=>`ข้อ ${i}: ${c.q.stem}\n${c.q.choices.map((t,j)=>`  ${j}) $
     if(changed.length){await saveCards(changed);done+=changed.filter(c=>c.q.answer>=0).length}
     if(typeof syncQueue==='function')syncQueue(doc,{cards:true});
   }
-  doc.needSolve=false;   /* ข้อที่คลาวด์ไม่มั่นใจคงไว้ไม่มีเฉลย ไม่วนถามซ้ำ */
+  /* ข้อที่คลาวด์ตอบว่าไม่มั่นใจถูกล้างเป็น ไม่มีเฉลย แล้ว · ข้อที่ยังค้าง (คำตอบไม่มีข้อนั้น) ลองใหม่รอบหน้า */
+  doc.needSolve=CARDS.some(c=>c.docId===doc.id&&c.byLocal&&c.ansSrc!=='doc'&&c.type==='q');
   return done;
 }
 async function extractDoc(doc){

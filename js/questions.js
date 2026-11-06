@@ -19,7 +19,10 @@ const kbAll=s=>kbTx(s,'readonly',st=>st.getAll());
 const kbGet=(s,id)=>kbTx(s,'readonly',st=>st.get(id));
 const kbPutMany=(s,arr)=>kbTx(s,'readwrite',st=>{for(const x of arr)st.put(x)});
 const kbDelMany=(s,ids)=>kbTx(s,'readwrite',st=>{for(const id of ids)st.delete(id)});
-async function saveDoc(d){const {prog,...rest}=d;try{await kbPutMany('docs',[rest])}catch(e){d.mem=true}}
+/* บันทึกไม่ได้ (พื้นที่เบราว์เซอร์เต็ม) = ปิดหน้าแล้วความคืบหน้าหาย ต้องบอกผู้ใช้ ไม่เงียบ · ถ้าล็อกอินอยู่ ความคืบหน้ายังอยู่บนคลาวด์ (syncClaim ดึงกลับมา) */
+let SAVE_WARNED=0;
+async function saveDoc(d){const {prog,...rest}=d;try{await kbPutMany('docs',[rest]);d.mem=false}catch(e){d.mem=true;
+  if(Date.now()-SAVE_WARNED>600000){SAVE_WARNED=Date.now();if(typeof toast==='function')toast('บันทึกความคืบหน้าในเบราว์เซอร์ไม่ได้ (พื้นที่เต็ม) · ลบไฟล์ต้นฉบับที่ไม่ใช้ในคลังความรู้เพื่อคืนพื้นที่ หรือเข้าสู่ระบบเพื่อเก็บความคืบหน้าบนคลาวด์','bad')}}}
 async function saveCards(arr){if(arr.length)try{await kbPutMany('cards',arr)}catch(e){}}
 
 /* ---------- figures: images kept from documents (never dropped — some questions can't be answered without them) ---------- */

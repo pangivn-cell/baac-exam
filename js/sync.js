@@ -111,7 +111,7 @@ async function syncMerge(local,m){
   let ch=false;
   const rk=syncRank(m.stage),lk=syncRank(local.stage);
   if(rk>lk||(+m.digDone||0)>(local.digDone||0)){
-    local.digDone=Math.max(local.digDone||0,+m.digDone||0);
+    local.digDone=Math.max(local.digDone||0,+m.digDone||0);if(+m.win)local.win=+m.win;
     if(rk>lk)local.stage=m.stage;
     local.ocrDone=[...new Set([...(local.ocrDone||[]),...(m.ocrDone||[])])].sort((a,b)=>a-b);
     if(Array.isArray(m.summ)&&m.summ.length)local.summ=m.summ;
@@ -257,7 +257,7 @@ function syncMetaOf(doc){
     v:1,localId:doc.id,ownerUid:doc.ownerUid||ME.uid,name:doc.name,sha:doc.sha||'',driveId:doc.driveId||'',srcFile:doc.srcFile||'',size:+doc.size||0,
     type:doc.type||'',unit:doc.unit||'หน้า',chars:+doc.chars||0,group:doc.group||'spec',show:doc.show!==false,
     kind:doc.kind||'kb',topic:doc.topic||'',label:doc.label||'',noShare:!!doc.noShare,stage:doc.stage||'',status:syncStatus(doc),
-    leaseBy:doc.stage==='ready'?'':(doc.leaseBy||''),leaseAt:doc.stage==='ready'?0:(+doc.leaseAt||0),digDone:+doc.digDone||0,ocrDone:doc.ocrDone||[],
+    leaseBy:doc.stage==='ready'?'':(doc.leaseBy||''),leaseAt:doc.stage==='ready'?0:(+doc.leaseAt||0),digDone:+doc.digDone||0,win:+doc.win||0,fill:!!doc.fill,ocrDone:doc.ocrDone||[],
     summ:doc.summ||[],bad:doc.bad||[],figPages:doc.figPages||[],pagesParts:+doc.pagesParts||0,cardsParts:+doc.cardsParts||0,pagesRev:+doc.pagesRev||0,cardsRev:+doc.cardsRev||0,
     figs:(doc.figMeta||[]).map(f=>({id:f.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0})),
     delCards:(doc.delCards||[]).slice(-1000),cardsResetAt:+doc.cardsResetAt||0,
@@ -397,11 +397,23 @@ async function syncClaim(doc){
       if(d.stage==='ready'&&!doc.reprocess)return{ok:false,ready:true};
       if(d.leaseBy&&d.leaseBy!==syncDevice()&&(Date.now()-(+d.leaseAt||0)<SYNC_LEASE_MS))return{ok:false,lease:true};
       tx.set(ref,{status:'processing',leaseBy:syncDevice(),leaseAt:Date.now(),localId:doc.id,updatedAt:f.fs.serverTimestamp()},{merge:true});
-      return{ok:true};
+      return{ok:true,meta:d};
     });
-    if(res&&res.ok){doc.leaseBy=syncDevice();doc.leaseAt=Date.now()}
+    if(res&&res.ok){doc.leaseBy=syncDevice();doc.leaseAt=Date.now();if(res.meta)takeProgress(doc,res.meta)}
     return res||{ok:true};
   }catch(e){syErr(e);return{ok:true}}
+}
+/* ก่อนเริ่มประมวลผล: ถ้าบนคลาวด์ไปได้ไกลกว่าในเครื่อง (ทำต่อจากอีกเครื่อง หรือเครื่องนี้บันทึกไม่ทัน) ใช้ความคืบหน้าที่ไกลกว่า ไม่เริ่มใหม่ */
+function takeProgress(doc,m){
+  if(!m||doc.reprocess&&!doc.fill)return;
+  const rk=syncRank(m.stage),lk=syncRank(doc.stage),cd=+m.digDone||0,cw=+m.win||0;
+  /* นับช่วงคนละขนาดกันไม่ได้: ใช้ของคลาวด์เมื่อขนาดช่วงตรงกัน (หรือในเครื่องยังไม่เริ่มย่อย) */
+  if(cd>(doc.digDone||0)&&(!doc.digDone||!cw||!doc.win||cw===doc.win)){doc.digDone=cd;if(cw)doc.win=cw}
+  if(rk>lk&&rk<syncRank('ready'))doc.stage=m.stage;
+  doc.ocrDone=[...new Set([...(doc.ocrDone||[]),...(m.ocrDone||[])])].sort((a,b)=>a-b);
+  if(Array.isArray(m.summ)&&m.summ.length>(doc.summ||[]).length)doc.summ=m.summ;
+  /* ข้อความหน้าที่ AI อ่านจากภาพแล้วอยู่บนคลาวด์ใหม่กว่า: โหลดใหม่ก่อนทำต่อ */
+  if((+m.pagesRev||0)>(+doc.pagesRev||0)&&(m.pagesParts||0)>0){doc.pagesRev=+m.pagesRev;doc.pagesParts=+m.pagesParts;doc.pages=[];doc.pagesRemote=true}
 }
 async function syncLease(doc){
   if(!syncOk()||!doc||doc.central)return;

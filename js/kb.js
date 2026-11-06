@@ -531,6 +531,8 @@ async function readDriveDoc(doc){
   setProg(doc,'กำลังอ่านไฟล์');
   const r=await readBuffer(doc.name,buf,(i,n)=>setProg(doc,`อ่านแล้ว ${i} จาก ${n} หน้า`),buf.byteLength);
   Object.assign(doc,{type:r.ext,unit:r.unit,pages:r.pages,chars:r.chars,bad:r.bad||[],figPages:r.figPages||[],readAt:Date.now(),pagesRemote:false});
+  /* อ่านไฟล์ใหม่ = ข้อความที่ AI อ่านจากภาพไว้หายไปด้วย: หน้าข้อความเพี้ยนที่เคยอ่านแล้วต้องอ่านใหม่ (ปกติไม่เกิด เพราะข้อความหน้าถูกเก็บบนคลาวด์ทุก 8 หน้า) */
+  if((doc.ocrDone||[]).length){const b=new Set(doc.bad);doc.ocrDone=doc.ocrDone.filter(n=>!b.has(n))}
   doc.txtSha=await textShaOf(r.pages);
   if(doc.txtSha){
     const dup=DOCS.find(d=>d!==doc&&docMine(d)&&d.txtSha===doc.txtSha);
@@ -579,6 +581,7 @@ async function processDoc(doc){
     if((doc.driveId||doc.srcFile)&&(!doc.pages||!doc.pages.length))await readDriveDoc(doc);
     if(doc.dupOf){toast(`${doc.name} มีเนื้อหาเดียวกับเอกสารเดิม · ข้ามการประมวลผลซ้ำ`);return}
     if(doc.stage==='queued')doc.stage='digest';
+    if(!doc.fill&&((doc.digDone||0)>0||(doc.ocrDone||[]).length))setProg(doc,`ทำต่อจากรอบก่อน (${doc.stage==='ocr'?`อ่านภาพแล้ว ${doc.ocrDone.length} หน้า`:`ย่อยแล้ว ${doc.digDone} ช่วง`} ไม่ทำซ้ำ)`);
     if(doc.stage==='ocr'){if(canVision('proc'))await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
     if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone&&!doc.fill){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
     if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
@@ -604,9 +607,10 @@ async function ocrDoc(doc){
   doc.ocrDone=doc.ocrDone||[];
   const todo=visionTodo(doc);if(!todo.length)return;
   const buf=await docBuf(doc);if(!buf)throw{code:'no_file'};
-  const pdf=await openPDF(buf),bad=new Set(doc.bad||[]);let fail=0;
+  const pdf=await openPDF(buf),bad=new Set(doc.bad||[]),before=doc.ocrDone.length,total=before+todo.length;let fail=0;
   for(let i=0;i<todo.length;i+=4){
-    const nums=todo.slice(i,i+4);setProg(doc,`AI กำลังอ่านภาพหน้าเอกสาร (ข้อความเพี้ยนหรือมีรูป) ${Math.min(i+4,todo.length)} จาก ${todo.length} หน้า`);
+    /* นับรวมหน้าที่อ่านไปแล้วในรอบก่อน ผู้ใช้จะเห็นว่าทำต่อ ไม่ได้เริ่มใหม่ */
+    const nums=todo.slice(i,i+4);setProg(doc,`AI กำลังอ่านภาพหน้าเอกสาร (ข้อความเพี้ยนหรือมีรูป) ${before+Math.min(i+4,todo.length)} จาก ${total} หน้า${before?` · ทำต่อจากรอบก่อน (${before} หน้าแรกเสร็จแล้ว)`:''}`);
     const imgs=[];for(const n of nums)imgs.push(await pageImage(pdf,n));
     let got=[];
     try{const r=await aiVisionJSON(`อ่านภาพหน้าเอกสาร ${nums.length} ภาพต่อไปนี้ ภาพเรียงตามลำดับ ${nums.map(n=>'หน้า '+n).join(', ')} แล้วทำ 2 อย่าง
@@ -638,7 +642,8 @@ async function ocrDoc(doc){
     }
     doc.pages.sort((a,b)=>a.n-b.n);doc.chars=doc.pages.reduce((a,p)=>a+p.text.length,0);await saveDoc(doc);
     /* ส่งข้อความหน้าเป็นระยะ (ทุก ~20 หน้า) ไม่ใช่ทุกชุด 4 หน้า กันการอัปโหลดซ้ำบ่อยเกินไป */
-    if(typeof syncQueue==='function'&&(i===0||i%20===0||i+4>=todo.length))syncQueue(doc,{pages:true,figs:true});
+    /* ส่งข้อความหน้าที่อ่านแล้วขึ้นคลาวด์ทุก 2 ชุด (8 หน้า) ถ้าเครดิตหมดกลางคันหรือปิดหน้า ทำต่อได้โดยไม่ต้องอ่านซ้ำ */
+    if(typeof syncQueue==='function'&&(i%8===0||i+4>=todo.length))syncQueue(doc,{pages:true,figs:true});
   }
   doc.warn=fail?`AI อ่านภาพไม่ได้ ${fail} หน้า (ใช้ข้อความที่ดึงได้แทน)`:'';
 }

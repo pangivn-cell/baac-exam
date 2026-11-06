@@ -571,3 +571,5 @@ body.side-off .side{display:none}
 .qgc{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink-2);white-space:nowrap}.qgc b{color:var(--ink);font-size:15px}
 .qgbar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.qgbar i{display:block;height:100%;background:var(--unk)}.qgbar i.ok{background:var(--ok)}
 @media (max-width:700px){.qgrow{grid-template-columns:minmax(0,1fr) auto}.qgbar{grid-column:1/-1}.qgrow>button,.qgrow>span:last-child{grid-column:1/-1;justify-self:start}}
+
+.qgrow.none{outline:1px solid var(--bad)}.ghost.danger{color:var(--bad);border-color:var(--bad)}

@@ -89,6 +89,13 @@ async function qgenTick(){
 }
 setInterval(()=>{qgenTick().catch(()=>{})},90e3);
 
+function qgenDocData(s){
+  const ds=typeof subjDocs==='function'?subjDocs(s):[DOCS.find(x=>x.id===s.doc)].filter(Boolean),ids=new Set(ds.map(x=>x.id));
+  const q=CARDS.filter(c=>c.type==='q'&&(ids.has(c.docId)||inSubj(c,s.name))).length;
+  const cards=activeCards().filter(c=>ids.has(c.docId)||inSubj(c,s.name)).length;
+  const text=ds.some(x=>(x.pages||[]).some(p=>p.text&&p.text.replace(/\s/g,'').length>=200)||+x.pagesParts>0);
+  return{q,cards,text,ok:q+cards>=3||text};
+}
 function renderQGen(){
   if(VIEW!=='qgen')return;
   head('สร้างโจทย์','ทุกวิชาต้องมีโจทย์อย่างน้อยตามขั้นต่ำ วิชาที่ยังไม่ครบ ระบบสร้างเพิ่มเองเมื่อว่าง ด้วย AI ในเครื่องก่อน สร้างไม่ได้จึงใช้ AI คลาวด์');
@@ -96,7 +103,7 @@ function renderQGen(){
   if(!ME){el.innerHTML='<div class="state"><p><b>เข้าสู่ระบบก่อน</b></p><p class="src">โจทย์ที่สร้างจะเก็บในคลังโจทย์กลางให้ทุกคนใช้</p></div>';return}
   if(!cnt){el.innerHTML='<div class="state"><span class="spin"></span><p>กำลังนับจำนวนโจทย์ของแต่ละวิชา...</p></div>';qgenCounts().then(()=>renderQGen());return}
   const host=localUp(),cloud=activeAI();
-  const row=s=>{const c=cnt[s.id]||{real:0,pool:0,total:0},ok=c.total>=QGEN.min,pct=Math.min(100,c.total/QGEN.min*100);
+  const row=s=>{if(s.doc)return docRow(s);const c=cnt[s.id]||{real:0,pool:0,total:0},ok=c.total>=QGEN.min,pct=Math.min(100,c.total/QGEN.min*100);
     const rt=qgenSubj(s)?qgenRoute(s,true):null,lf=QGEN.local[s.id];
     const note=!s.ai?'โปรแกรมในเว็บสร้างโจทย์และคำนวณเฉลยเองทันที ไม่ใช้ AI ไม่เสียเครดิต':s.doc?'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่ตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)'
       :QGEN.busy===s.id?'⏳ กำลังสร้าง...':ok?'✓ ครบแล้ว':`ขาด ${QGEN.min-c.total} ข้อ`+(rt?` · จะใช้ ${AINAME[rt.p]||rt.p}`:' · ยังไม่มี AI ให้ใช้')+(s.figOnly?' (ต้องดูรูป ใช้ AI คลาวด์)':lf&&lf.fail>=2?' (AI ในเครื่องสร้างไม่ได้ สลับใช้ AI คลาวด์)':'');
@@ -104,6 +111,13 @@ function renderQGen(){
       <div class="qgc">${!s.ai?`${c.real?`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>`:''}<b>⚙️ ไม่ใช้เครดิต</b>`:`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>${s.doc?'':`<span title="โจทย์ที่ AI สร้างในคลังกลาง">✨ ${c.pool}</span>`}<b>${s.doc?c.real:c.total}${s.doc?' ข้อ':'/'+QGEN.min}</b>`}</div>
       <div class="qgbar"><i style="width:${s.ai&&!s.doc?pct:100}%" class="${ok||!s.ai||s.doc?'ok':''}"></i></div>
       ${qgenSubj(s)?`<button class="ghost" data-qg="${esc(s.id)}" ${QGEN.busy||!rt?'disabled':''}>สร้างเพิ่ม ${QGEN_BATCH} ข้อ</button>`:'<span></span>'}</div>`};
+  /* วิชาจากไฟล์: ข้อมูลที่ใช้สร้างโจทย์ = ข้อสอบในไฟล์ + บัตรความรู้ + เนื้อหาหน้าเอกสาร · ไม่มีเลย = ขึ้นปุ่มลบ */
+  const docRow=s=>{const d=qgenDocData(s),none=!d.ok;
+    const note=none?'⚠️ ไม่มีข้อมูลให้สร้างโจทย์ (ไม่มีข้อสอบ บัตรความรู้ หรือเนื้อหาจากไฟล์)':'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่จากเนื้อหาตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)';
+    return `<div class="qgrow${none?' none':''}"><div class="qgn"><b>${esc(s.name)}</b><span class="src">${note}</span></div>
+      <div class="qgc"><span title="ข้อสอบจากไฟล์">📄 ${d.q}</span><span title="บัตรความรู้">📚 ${d.cards}</span>${d.text?'<span title="มีเนื้อหาหน้าเอกสาร">📃 เนื้อหา</span>':''}</div>
+      <div class="qgbar"><i style="width:${none?0:100}%" class="ok"></i></div>
+      ${none?`<button class="ghost danger" data-qgdel="${esc(s.id)}">🗑 ลบวิชา</button>`:'<span></span>'}</div>`};
   const grp=(t,l)=>l.length?`<section class="hsec"><div class="hsech"><h2>${t}</h2></div>${l.map(row).join('')}</section>`:'';
   const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec'&&s.id!=='specall');
   const due=SUBJ.filter(s=>qgenSubj(s)&&cnt[s.id]&&cnt[s.id].total<QGEN.min).length;
@@ -119,6 +133,7 @@ function renderQGen(){
   $('qg-auto').onchange=e=>{QGEN.auto=e.target.checked;saveQGen();if(QGEN.auto)qgenTick()};
   $('qg-min').onchange=e=>{QGEN.min=Math.max(10,Math.min(500,Math.round(+e.target.value/10)*10||50));saveQGen();renderQGen()};
   $('qg-re').onclick=async()=>{QGEN.counts=null;POOL.cache.clear();renderQGen()};
+  el.querySelectorAll('[data-qgdel]').forEach(b=>b.onclick=async()=>{await deleteSubject(b.dataset.qgdel);QGEN.counts=null;setTimeout(renderQGen,300)});
   el.querySelectorAll('[data-qg]').forEach(b=>b.onclick=async()=>{const s=SUBJ.find(x=>x.id===b.dataset.qg);if(!s)return;
     try{await poolDocs(s);const r=await qgenRun(s,QGEN_BATCH,true);if(r.n)toast(`สร้าง “${s.name}” เพิ่ม ${r.n} ข้อแล้ว (${AINAME[r.by]||r.by})`);else toast('สร้างไม่สำเร็จ ลองอีกครั้ง','bad')}
     catch(e){toast('สร้างไม่สำเร็จ: '+(e&&e.code==='login'?'เข้าสู่ระบบก่อน':errCopy(e&&e.code,'สร้างโจทย์')),'bad')}});

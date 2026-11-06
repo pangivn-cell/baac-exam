@@ -362,13 +362,20 @@ function setView(v){
   if(v==='kb'&&VIEW!=='kb'&&typeof KB_TAB!=='undefined')KB_TAB='main';
   if(v!=='dev')VIEW_FROM=v;   /* จำหน้าล่าสุดไว้แนบไปกับข้อความถึงผู้พัฒนา */
   VIEW=v;
-  document.querySelectorAll('#views button,#views2 button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
+  document.querySelectorAll('#views button,#views2 button,#views3 button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
   document.getElementById('pside').classList.toggle('off',v!=='practice');
   document.getElementById('pctl').hidden=v!=='practice';
   if(v!=='mock'){document.getElementById('tbar').hidden=true;document.querySelector('.app').classList.remove('exam')}
-  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='dev')renderDev();else if(v==='video')renderVideo();else if(v==='rank')renderRank();else if(v==='home')renderHome();else if(v==='welcome')renderWelcome();else renderHist();
+  if(v==='practice')render();else if(v==='mock')renderMock();else if(v==='kb')renderKB();else if(v==='review')renderReview();else if(v==='study')renderStudy();else if(v==='dev')renderDev();else if(v==='video')renderVideo();else if(v==='rank')renderRank();else if(v==='home')renderHome();else if(v==='welcome')renderWelcome();else if(v==='aiset')renderAISetView();else renderHist();
 }
 const head=(t,d)=>{document.getElementById('title').textContent=t;document.getElementById('desc').textContent=d||''};
+/* หน้า ตั้งค่า AI: ย้ายจากแถบเมนูซ้ายมาเป็นหน้าปกติ เพราะตัวเลือกเยอะ */
+function renderAISetView(){
+  if(VIEW!=='aiset')return;
+  head('ตั้งค่า AI','เลือกผู้ให้บริการ AI ใส่ key และตั้ง AI สำหรับประมวลผลไฟล์ · ค่าที่ตั้งผูกกับบัญชีของคุณ');
+  document.getElementById('sheet').innerHTML='<div class="aiset aipage"><div class="bd" id="aibody"></div></div>';
+  renderAISet();
+}
 
 /* ---------- mock exam ---------- */
 const MKEY='exam-mock-v1',MSKEY='exam-mock-set';

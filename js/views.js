@@ -400,7 +400,7 @@ document.getElementById('mclose').onclick=()=>{setMenu(false);document.getElemen
 document.getElementById('mback').onclick=()=>setMenu(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('menu-open')){setMenu(false);document.getElementById('mmenu').focus()}});
 document.getElementById('side').addEventListener('click',e=>{
-  if(isPhone()&&e.target.closest('#views button,#views2 button,#subjects [data-s],#newset'))setTimeout(()=>{setMenu(false);window.scrollTo({top:0})},0);
+  if(isPhone()&&e.target.closest('#views button,#views2 button,#views3 button,#subjects [data-s],#newset'))setTimeout(()=>{setMenu(false);window.scrollTo({top:0})},0);
 },true); /* capture: the subject list re-renders inside its own click handler */
 /* page title and account shortcut in the top bar follow the page */
 new MutationObserver(()=>{const t=document.getElementById('title').textContent;document.getElementById('mtitle').textContent=t||'ระบบซ้อมสอบ'}).observe(document.getElementById('title'),{childList:true,characterData:true,subtree:true});
@@ -412,7 +412,7 @@ function renderMav(){
 new MutationObserver(renderMav).observe(document.getElementById('acct'),{childList:true});renderMav();
 new MutationObserver(()=>{const on=document.querySelector('.app').classList.contains('exam');document.body.classList.toggle('exam-on',on);if(on)setMenu(false)}).observe(document.querySelector('.app'),{attributes:true,attributeFilter:['class']});
 matchMedia('(max-width:1024px)').addEventListener('change',e=>{if(!e.matches)setMenu(false)});
-document.querySelectorAll('#views button,#views2 button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+document.querySelectorAll('#views button,#views2 button,#views3 button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
 document.getElementById('count').onchange=e=>{P.count=+e.target.value;save();if(VIEW==='practice'&&R&&!R.picks.some(x=>x!=null)&&R.status!=='loading')start(true);else toast(`ชุดถัดไปจะมี ${P.count} ข้อ`)};
 document.getElementById('mode-now').onclick=()=>{P.mode='now';save();renderSide()};

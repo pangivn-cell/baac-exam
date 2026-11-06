@@ -38,7 +38,16 @@ input.tx,select{font-size:15px;box-sizing:border-box;width:100%;padding:7px 8px;
 .seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{font:500 14px var(--f-body);padding:8px 4px;border:none;background:var(--sheet);color:var(--ink);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--sheet)}
-.aiset{border-top:1px solid var(--line);padding-top:12px}
+#views3{border-top:1px solid var(--line);padding-top:10px}
+.aisetbtn{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.aiset.aipage{border:none;padding:0}
+.aiset.aipage .bd{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;align-items:start;padding:0}
+.aipage .bd>.field:first-child{grid-column:1/-1;max-width:420px}
+@media (max-width:640px){.aiset.aipage .bd{grid-template-columns:minmax(0,1fr)}}
+.aipage .bd>details,.aipage .bd>.hint,.aipage .bd>.btns,.aipage .bd>p{grid-column:1/-1}
+.aipage .bd>details{border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--paper)}
+.aipage .bd>details[open]>summary{margin-bottom:8px}
+.aipage .bd>details>.field,.aipage .bd>details>.rad{margin-bottom:8px}
 .aiset summary{cursor:pointer;font-weight:600;font-size:15px;display:flex;justify-content:space-between;gap:8px}
 .aiset .bd{display:flex;flex-direction:column;gap:10px;padding-top:10px}
 .aiset .hint{font-size:13px;color:var(--ink-2);margin:0;line-height:1.5}

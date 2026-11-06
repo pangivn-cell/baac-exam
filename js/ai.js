@@ -242,8 +242,9 @@ function errCopy(code,what){
   return code==='rate_limited'?`${what}ถี่เกินไปหรือโควตาหมด รอสักครู่แล้วลองใหม่`:code==='bad_key'?'API key ไม่ถูกต้องหรือไม่มีสิทธิ์ ตรวจในตั้งค่า AI':code==='bad_model'?'ไม่พบชื่อโมเดลนี้ แก้ชื่อโมเดลในตั้งค่า AI':code==='overloaded'?'เซิร์ฟเวอร์ AI มีคนใช้เยอะชั่วคราว ระบบลองซ้ำและลองโมเดลสำรองแล้วยังไม่ได้ รอสักครู่แล้วลองใหม่':code==='network'?'เชื่อมต่อผู้ให้บริการ AI ไม่ได้ ตรวจอินเทอร์เน็ต':code==='session_expired'?'กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง':code==='invalid_json'||code==='truncated'?'ได้โจทย์ไม่ครบ ลองลดจำนวนข้อแล้วสร้างใหม่':(code==='refused'||code==='empty_completion')?'AI ไม่ตอบข้อนี้ ลองใหม่อีกครั้ง':`${what}ไม่สำเร็จ ลองใหม่อีกครั้ง`;
 }
 function renderAISet(){
-  const pill=document.getElementById('aipill'),body=document.getElementById('aibody');if(!pill||!body)return;
-  const a=activeAI();pill.textContent=a?AINAME[a]:'ยังไม่ตั้ง';
+  const pill=document.getElementById('aipill'),body=document.getElementById('aibody');
+  const a=activeAI();if(pill)pill.textContent=a?AINAME[a]:'ยังไม่ตั้ง';
+  if(!body)return;   /* ตัวตั้งค่าอยู่ในหน้า ตั้งค่า AI เท่านั้น */
   if(inViewer){body.innerHTML=`<p class="hint">เปิดผ่าน Claude อยู่ ระบบใช้ Claude ของบัญชีคุณโดยอัตโนมัติ</p><p class="hint">Gemini และ OpenAI ใช้ได้เมื่อเปิดจากไฟล์ exam-practice.html ในเครื่อง เพราะหน้าที่เปิดใน Claude เชื่อมต่อเว็บอื่นไม่ได้</p>`;return}
   const g=AIP.gemini,o=AIP.openai;
   body.innerHTML=`<div class="field"><label for="aiprov">ใช้ AI จาก</label><select id="aiprov"><option value="auto">อัตโนมัติ (ตัวที่มี key)</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Claude API</option><option value="meta">Meta (Muse Spark)</option><option value="custom">ผู้ให้บริการอื่น (OpenAI-compatible)</option></select></div>

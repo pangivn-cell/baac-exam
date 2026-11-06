@@ -1313,7 +1313,7 @@ function renderKB(){
   if(ME&&!SRC.dirsAt&&!SRC.loading)ensureSrcDirs().then(()=>{if(VIEW==='kb'&&KB_TAB==='main')renderKB()}).catch(()=>{});
   document.getElementById('kbpick').onclick=()=>document.getElementById('kbfile').click();
   const ra=document.getElementById('runall');if(ra)ra.onclick=runAll;
-  const kas=document.getElementById('kbaiset');if(kas)kas.onclick=()=>{const a=document.getElementById('aiset');if(a){a.open=true;if(isPhone())setMenu(true);a.scrollIntoView({behavior:'smooth'})}};
+  const kas=document.getElementById('kbaiset');if(kas)kas.onclick=()=>setView('aiset');
   const drop=document.getElementById('drop');
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
   drop.ondragleave=()=>drop.classList.remove('over');

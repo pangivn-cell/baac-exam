@@ -2,12 +2,24 @@
 /* ---------- AI connection ---------- */
 let SAMPLE=null,aiReady=false,R=null,genCtl=null;
 const inViewer=!!window.claude;
+/* ผู้ให้บริการแบบ OpenAI-compatible ที่มีโควตาฟรี (ไม่ต้องใช้บัตร) URL ตายตัว ใส่แค่ key กับโมเดล
+   ทั้ง 4 เจ้าอนุญาตให้เว็บเรียกตรงได้ (CORS) · ไม่ส่ง response_format (looseJSON แกะ JSON ให้) · ไม่ใช้อ่านรูป */
+const OAI_PROVS={
+  typhoon:{name:'Typhoon',url:'https://api.opentyphoon.ai/v1',model:'typhoon-v2.5-30b-a3b-instruct',models:['typhoon-v2.5-30b-a3b-instruct'],keyUrl:'https://playground.opentyphoon.ai/api-key',ph:'วาง Typhoon API key',
+    note:'โมเดลภาษาไทยของ SCB 10X ฟรี (งานวิจัย) ไม่ต้องใช้บัตร · จำกัด 200 ครั้ง/นาที · เก่งภาษาไทยที่สุดในกลุ่มที่ฟรี · ข้อมูลที่ส่งไปอาจถูกใช้พัฒนาโมเดล'},
+  groq:{name:'Groq',url:'https://api.groq.com/openai/v1',model:'openai/gpt-oss-120b',models:['openai/gpt-oss-120b','openai/gpt-oss-20b','llama-3.3-70b-versatile','qwen/qwen3-32b'],keyUrl:'https://console.groq.com/keys',ph:'gsk_...',
+    note:'ฟรีไม่ต้องใช้บัตร · ประมาณ 30 ครั้ง/นาที และ 1,000 ครั้ง/วัน (แล้วแต่โมเดล) · ตอบเร็วมาก'},
+  openrouter:{name:'OpenRouter',url:'https://openrouter.ai/api/v1',model:'google/gemma-4-31b-it:free',models:['google/gemma-4-31b-it:free','openrouter/free','nvidia/nemotron-3-ultra-550b-a55b:free','google/gemma-4-26b-a4b-it:free'],keyUrl:'https://openrouter.ai/settings/keys',ph:'sk-or-...',
+    note:'ใช้ฟรีเฉพาะโมเดลที่ลงท้าย :free · 50 ครั้ง/วัน (ถ้าเคยเติมเงินครบ $10 ได้ 1,000 ครั้ง/วัน) · openrouter/free = เลือกโมเดลฟรีให้เอง'},
+  mistral:{name:'Mistral',url:'https://api.mistral.ai/v1',model:'mistral-medium-latest',models:['mistral-medium-latest','mistral-large-latest','mistral-small-latest'],keyUrl:'https://console.mistral.ai/api-keys',ph:'วาง Mistral API key',
+    note:'แพ็กเกจฟรีไม่ต้องใช้บัตร (อาจต้องยืนยันเบอร์โทร) · จำกัดความถี่ ดูได้ในหน้า console'}};
 let AIP={provider:'auto',gemini:{key:'',model:'gemini-flash-latest'},openai:{key:'',model:'gpt-5-mini'},anthropic:{key:'',model:'claude-opus-5-5'},meta:{key:'',model:'muse-spark-1.3'},
   /* custom = ผู้ให้บริการแบบ OpenAI-compatible ที่ใส่ URL เอง (OpenRouter, DeepSeek, Typhoon, Groq, Ollama/LM Studio ในเครื่อง) key ว่างได้ */
   custom:{key:'',model:'',url:'',vision:false},
+  ...Object.fromEntries(Object.entries(OAI_PROVS).map(([p,o])=>[p,{key:'',keys:[],model:o.model}])),
   /* proc = AI สำหรับประมวลผลไฟล์ (อ่านภาพหน้า ย่อยบัตร ดึงข้อสอบ เทียบเนื้อหา) แยกจากตัวออกข้อสอบ เพื่อใช้โมเดลถูกกว่า · provider 'same' = ผู้ให้บริการเดียวกับตัวหลัก */
   proc:{provider:'same',model:''}};
-const mergeAIP=a=>({...AIP,...a,gemini:{...AIP.gemini,...(a.gemini||{})},openai:{...AIP.openai,...(a.openai||{})},anthropic:{...AIP.anthropic,...(a.anthropic||{})},meta:{...AIP.meta,...(a.meta||{})},custom:{...AIP.custom,...(a.custom||{})},proc:{...AIP.proc,...(a.proc||{})}});
+const mergeAIP=a=>({...AIP,...a,gemini:{...AIP.gemini,...(a.gemini||{})},openai:{...AIP.openai,...(a.openai||{})},anthropic:{...AIP.anthropic,...(a.anthropic||{})},meta:{...AIP.meta,...(a.meta||{})},custom:{...AIP.custom,...(a.custom||{})},...Object.fromEntries(Object.keys(OAI_PROVS).map(p=>[p,{...AIP[p],...(a[p]||{})}])),proc:{...AIP.proc,...(a.proc||{})}});
 try{const a=JSON.parse(localStorage.getItem('exam-drill-ai')||'null');if(a)AIP=mergeAIP(a)}catch(e){}
 /* ตั้งค่า AI (รวม key) ผูกกับบัญชี: เก็บที่ users/{uid}/qlog/aiset (กฎเดียวกับบันทึกโจทย์ อ่าน/เขียนได้เฉพาะเจ้าของ) ล็อกอินเครื่องไหนก็ได้ key ชุดเดียวกัน */
 const AIP_AT='exam-drill-ai-at';
@@ -36,7 +48,7 @@ async function pullAIP(){
     else aiSyncMsg(`☁ ตั้งค่า AI ตรงกับบัญชี ${ME.email||ME.name} แล้ว`);
   }catch(e){aiSyncMsg('ดึงตั้งค่า AI จากบัญชีไม่สำเร็จ: '+syncErr(e),true)}
 }
-const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta',custom:'ผู้ให้บริการอื่น',local:'AI ในเครื่อง'};
+const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta',typhoon:'Typhoon',groq:'Groq',openrouter:'OpenRouter',mistral:'Mistral',custom:'ผู้ให้บริการอื่น',local:'AI ในเครื่อง'};
 /* AI ในเครื่องนี้ (Ollama / LM Studio) สำหรับประมวลผลไฟล์: ตั้งเฉพาะเครื่องนี้ ไม่ซิงก์กับบัญชี เพราะ localhost ของเครื่องอื่นไม่ใช่เครื่องนี้
    เครื่องที่เปิดไว้ = เครื่องประมวลผลหลัก รับไฟล์ที่รอประมวลผลของทั้งบัญชีมาทำ (ดู hostTick ใน sync.js) */
 /* vision ปิดไว้ก่อน: เทส gemma3:12b ถอดภาษาไทยจากภาพผิดจนความหมายเปลี่ยน (ด้อย→ด้วย) หน้าที่ต้องอ่านภาพจึงส่งให้ AI ตัวหลักแทน */
@@ -56,7 +68,7 @@ async function pingLocal(){
 }
 const localUp=()=>!!(LLMHOST.on&&LOCALAI.up);
 const cfgOf=prov=>prov==='local'?LLMHOST:AIP[prov];
-const KEY_PROVS=['gemini','openai','anthropic','meta','custom'];
+const KEY_PROVS=['gemini','openai','anthropic','meta',...Object.keys(OAI_PROVS),'custom'];
 /* หลาย key ต่อผู้ให้บริการ (ไม่จำกัด): AIP[p].keys = ทุก key, AIP[p].key = key ที่ใช้อยู่ตอนนี้
    key ที่โควตา/เครดิตหมดพัก 30 นาที · ถูกจำกัดความถี่พัก 1 นาที · key ผิดพักจนกว่าจะแก้ key
    ระบบสลับไป key ถัดไปของผู้ให้บริการเดียวกันก่อน ครบทุก key แล้วจึงเปลี่ยนไปผู้ให้บริการอื่น (aiText) */
@@ -66,7 +78,7 @@ const KEY_WHY={};
 const liveKeys=p=>{const now=Date.now();return keysOf(p).filter(k=>!(KEY_DOWN[k]>now))};
 /* ใช้ key ที่ยังไม่พัก (ถ้าพักหมดใช้ตัวแรก) */
 const pickKey=p=>{const c=AIP[p];if(!c)return'';const k=liveKeys(p)[0]||keysOf(p)[0]||'';if(k)c.key=k;return k};
-for(const p of ['gemini','openai','anthropic','meta','custom'])if(AIP[p]&&!Array.isArray(AIP[p].keys))AIP[p].keys=AIP[p].key?[AIP[p].key]:[];
+for(const p of KEY_PROVS)if(AIP[p]&&!Array.isArray(AIP[p].keys))AIP[p].keys=AIP[p].key?[AIP[p].key]:[];
 const provReady=p=>p==='custom'?!!(AIP.custom.url&&AIP.custom.model):keysOf(p).length>0;
 /* ผู้ให้บริการ+โมเดลที่ใช้กับงานนั้น: task 'proc' (ประมวลผลไฟล์) ใช้ตัวที่ตั้งแยกไว้ถ้าตั้งไว้ ไม่งั้นใช้ตัวหลัก */
 function aiRoute(task){
@@ -77,7 +89,7 @@ function aiRoute(task){
     const p=activeAI();if(p&&q.model&&p!=='claude')return{p,model:q.model};}
   return{p:activeAI(),model:''};
 }
-const visionOK=p=>p==='local'?!!LLMHOST.vision:!!p&&p!=='claude'&&(p!=='custom'||!!AIP.custom.vision);
+const visionOK=p=>p==='local'?!!LLMHOST.vision:!!p&&p!=='claude'&&!OAI_PROVS[p]&&(p!=='custom'||!!AIP.custom.vision);
 function activeAI(){
   if(inViewer)return SAMPLE?'claude':null;
   const p=AIP.provider;
@@ -93,7 +105,7 @@ async function httpFail(res){
   let msg='';try{msg=await res.text()}catch(e){}
   const bad=res.status===401||res.status===403||(res.status===400&&/API[_ ]?key/i.test(msg));
   if(/credit balance|insufficient_quota|payment required/i.test(msg)||res.status===402)throw{code:'no_credit',message:msg.slice(0,300)};
-  if(res.status===429&&/quota|RESOURCE_EXHAUSTED|exceeded your current/i.test(msg))throw{code:'quota',message:msg.slice(0,300)};
+  if(res.status===429&&/quota|RESOURCE_EXHAUSTED|exceeded your current|per day|RPD|TPD|daily|free-models-per-day/i.test(msg))throw{code:'quota',message:msg.slice(0,300)};
   throw{code:bad?'bad_key':res.status===404?'bad_model':res.status===429?'rate_limited':(res.status>=500||/overloaded|high demand|UNAVAILABLE/i.test(msg))?'overloaded':'upstream_error',message:msg.slice(0,300)};
 }
 const GEMINI_FALLBACK=['gemini-flash-latest','gemini-flash-lite-latest','gemini-3.8-flash','gemini-3.5-flash-lite'];
@@ -169,7 +181,7 @@ async function keyCallOnce(prov,model,input,json,signal){
         headers:{'Content-Type':'application/json','x-goog-api-key':AIP.gemini.key},
         body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>({inline_data:{mime_type:i.mime,data:i.data}}))]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})})});
     }else{
-      const meta=prov==='meta',cus=prov==='custom'||prov==='local',cf=cfgOf(prov);
+      const meta=prov==='meta',oai=OAI_PROVS[prov],cus=prov==='custom'||prov==='local'||!!oai,cf=oai?{...cfgOf(prov),url:oai.url}:cfgOf(prov);
       /* custom: ไม่ส่ง response_format เพราะหลายเจ้า/โมเดลในเครื่องไม่รองรับ (looseJSON แกะ JSON จากข้อความให้) */
       res=await fetch(cus?chatURL(cf.url):meta?'https://api.meta.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions',{method:'POST',signal,
         headers:{'Content-Type':'application/json',...(cf.key?{'Authorization':'Bearer '+cf.key}:{})},
@@ -277,16 +289,19 @@ function renderAISet(){
   if(!body)return;   /* ตัวตั้งค่าอยู่ในหน้า ตั้งค่า AI เท่านั้น */
   if(inViewer){body.innerHTML=`<p class="hint">เปิดผ่าน Claude อยู่ ระบบใช้ Claude ของบัญชีคุณโดยอัตโนมัติ</p><p class="hint">Gemini และ OpenAI ใช้ได้เมื่อเปิดจากไฟล์ exam-practice.html ในเครื่อง เพราะหน้าที่เปิดใน Claude เชื่อมต่อเว็บอื่นไม่ได้</p>`;return}
   const g=AIP.gemini,o=AIP.openai;
-  body.innerHTML=`<div class="field"><label for="aiprov">ใช้ AI จาก</label><select id="aiprov"><option value="auto">อัตโนมัติ (ตัวที่มี key)</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Claude API</option><option value="meta">Meta (Muse Spark)</option><option value="custom">ผู้ให้บริการอื่น (OpenAI-compatible)</option></select></div>
-   <div class="field"><span class="fl">Gemini API key</span>${keyList('gemini','วาง key ที่นี่ (ขึ้นต้น AIza)')}<a class="klink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">สร้าง Gemini key ↗</a></div>
+  body.innerHTML=`<div class="field"><label for="aiprov">ใช้ AI จาก</label><select id="aiprov"><option value="auto">อัตโนมัติ (ตัวที่มี key)</option><option value="gemini">Gemini (ฟรีแบบจำกัด/วัน)</option><option value="openai">OpenAI (เสียเงิน)</option><option value="anthropic">Claude API (เสียเงิน)</option><option value="meta">Meta (Muse Spark) (เสียเงิน)</option>${Object.entries(OAI_PROVS).map(([p,o])=>`<option value="${p}">${o.name} (ฟรี)</option>`).join('')}<option value="custom">ผู้ให้บริการอื่น (OpenAI-compatible)</option></select></div>
+   <div class="field"><span class="fl">Gemini API key <span class="pfree">ฟรีแบบจำกัด/วัน</span></span>${keyList('gemini','วาง key ที่นี่ (ขึ้นต้น AIza)')}<a class="klink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">สร้าง Gemini key ↗</a></div>
    <div class="field"><label for="gmodel">โมเดล Gemini</label><input class="tx" id="gmodel" type="text" autocomplete="off"></div>
-   <div class="field"><span class="fl">OpenAI API key</span>${keyList('openai','sk-...')}<a class="klink" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">สร้าง OpenAI key ↗</a></div>
+   <div class="field"><span class="fl">OpenAI API key <span class="ppaid">เสียเงิน</span></span>${keyList('openai','sk-...')}<a class="klink" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">สร้าง OpenAI key ↗</a></div>
    <div class="field"><label for="omodel">โมเดล OpenAI</label><input class="tx" id="omodel" type="text" autocomplete="off"></div>
-   <div class="field"><span class="fl">Claude API key</span>${keyList('anthropic','sk-ant-...')}<a class="klink" href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">สร้าง Claude key ↗</a></div>
+   <div class="field"><span class="fl">Claude API key <span class="ppaid">เสียเงิน</span></span>${keyList('anthropic','sk-ant-...')}<a class="klink" href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">สร้าง Claude key ↗</a></div>
    <div class="field"><label for="amodel">โมเดล Claude</label><input class="tx" id="amodel" type="text" autocomplete="off" list="amodels"><datalist id="amodels"><option value="claude-opus-5-5"><option value="claude-sonnet-5-5"><option value="claude-haiku-5-5"></datalist></div>
-   <div class="field"><span class="fl">Meta API key</span>${keyList('meta','วาง Meta Model API key')}<a class="klink" href="https://dev.meta.ai/" target="_blank" rel="noopener">สร้าง Meta key ↗</a></div>
+   <div class="field"><span class="fl">Meta API key <span class="ppaid">เสียเงิน</span></span>${keyList('meta','วาง Meta Model API key')}<a class="klink" href="https://dev.meta.ai/" target="_blank" rel="noopener">สร้าง Meta key ↗</a></div>
    <div class="field"><label for="mmodel">โมเดล Meta</label><input class="tx" id="mmodel" type="text" autocomplete="off" list="mmodels"><datalist id="mmodels"><option value="muse-spark-1.3"><option value="muse-spark-1.3-contributor"></datalist></div>
-   <details class="howto"${AIP.custom.url?' open':''}><summary>ผู้ให้บริการอื่น / AI ในเครื่อง (OpenAI-compatible)</summary>
+   <p class="freehd">🆓 ผู้ให้บริการที่มีโควตาฟรี (ไม่ต้องใช้บัตร) ใส่ key ไว้หลายเจ้า เมื่อเจ้าหนึ่งโควตาหมด ระบบสลับไปเจ้าถัดไปเอง</p>
+   ${Object.entries(OAI_PROVS).map(([p,o])=>`<div class="field"><span class="fl">${o.name} API key <span class="pfree">ฟรี</span></span>${keyList(p,o.ph)}<a class="klink" href="${o.keyUrl}" target="_blank" rel="noopener">สร้าง ${o.name} key ↗</a><span class="hint">${esc(o.note)}</span></div>
+   <div class="field"><label for="m-${p}">โมเดล ${o.name}</label><input class="tx" id="m-${p}" type="text" autocomplete="off" list="ml-${p}"><datalist id="ml-${p}">${o.models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>`).join('')}
+   <details class="howto"${AIP.custom.url?' open':''}><summary>ผู้ให้บริการอื่น / AI ในเครื่อง (OpenAI-compatible) · ฟรีหรือเสียเงินแล้วแต่เจ้า</summary>
    <p class="hint">ใช้ได้กับ OpenRouter, DeepSeek, Typhoon (โมเดลภาษาไทย), Groq และ AI ที่รันในเครื่องเอง (Ollama, LM Studio) ฟรีไม่ต้องใช้ key</p>
    <div class="field"><label for="curl">URL ของบริการ</label><input class="tx" id="curl" type="text" autocomplete="off" list="curls" placeholder="https://openrouter.ai/api/v1"><datalist id="curls"><option value="https://openrouter.ai/api/v1">OpenRouter</option><option value="https://api.deepseek.com/v1">DeepSeek</option><option value="https://api.opentyphoon.ai/v1">Typhoon</option><option value="https://api.groq.com/openai/v1">Groq</option><option value="http://localhost:11434/v1">Ollama ในเครื่อง</option><option value="http://localhost:1234/v1">LM Studio ในเครื่อง</option></datalist></div>
    <div class="field"><span class="fl">API key (AI ในเครื่องเว้นว่างได้)</span>${keyList('custom','')}</div>
@@ -299,7 +314,7 @@ function renderAISet(){
    <div class="field"><label for="hmodel">โมเดล</label><input class="tx" id="hmodel" type="text" autocomplete="off" list="hmodels"><datalist id="hmodels">${LOCALAI.models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>
    <label class="rad"><input type="checkbox" id="hvis"><span>ให้ AI ในเครื่องอ่านรูปด้วย (ไม่แนะนำ: ถอดภาษาไทยจากภาพยังผิดบ่อย ปล่อยว่างไว้ หน้าที่ต้องอ่านภาพจะใช้ AI ตัวหลักแทน)</span></label>
    <p class="hint ${localUp()?'ok':LLMHOST.on?'err':''}" id="hstat">${hostStatusText()}</p></details>
-   <div class="field"><label for="pprov">AI สำหรับประมวลผลไฟล์ (ประหยัดเครดิต)</label><select id="pprov"><option value="same">ผู้ให้บริการเดียวกับด้านบน</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Claude API</option><option value="meta">Meta</option><option value="custom">ผู้ให้บริการอื่น</option></select></div>
+   <div class="field"><label for="pprov">AI สำหรับประมวลผลไฟล์ (ประหยัดเครดิต)</label><select id="pprov"><option value="same">ผู้ให้บริการเดียวกับด้านบน</option><option value="gemini">Gemini (ฟรีแบบจำกัด/วัน)</option><option value="openai">OpenAI (เสียเงิน)</option><option value="anthropic">Claude API (เสียเงิน)</option><option value="meta">Meta (เสียเงิน)</option>${Object.entries(OAI_PROVS).map(([p,o])=>`<option value="${p}">${o.name} (ฟรี)</option>`).join('')}<option value="custom">ผู้ให้บริการอื่น</option></select></div>
    <div class="field"><label for="pmodel">โมเดลสำหรับประมวลผลไฟล์ (เว้นว่าง = โมเดลเดิมของผู้ให้บริการนั้น)</label><input class="tx" id="pmodel" type="text" autocomplete="off" list="pmodels" placeholder="เช่น gemini-flash-lite-latest"><datalist id="pmodels"><option value="gemini-flash-lite-latest"><option value="gpt-5-nano"><option value="gpt-5-mini"><option value="claude-haiku-5-5"><option value="muse-spark-1.3-contributor"></datalist></div>
    <p class="hint">งานอ่านไฟล์ ย่อยบัตรความรู้ และดึงข้อสอบจากไฟล์ ใช้ AI มากที่สุด ตั้งเป็นโมเดลราคาถูกตรงนี้ได้ ส่วนการออกข้อสอบและติวเตอร์ยังใช้ตัวด้านบน${(()=>{const r=aiRoute('proc');return r.p?` · ตอนนี้ประมวลผลไฟล์ด้วย ${AINAME[r.p]}${r.model?' · '+esc(r.model):''}`:''})()}</p>
    <p class="hint">ใส่ key ได้หลายอันไม่จำกัดต่อผู้ให้บริการ (กด + เพิ่ม key) เมื่อ key ไหนโควตาหรือเครดิตหมด ระบบสลับไปใช้ key ถัดไปเอง ครบทุก key แล้วจึงเปลี่ยนไปผู้ให้บริการอื่น</p>
@@ -335,10 +350,12 @@ function renderAISet(){
 <p class="hint">key ถูกเก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น อย่าใช้ในเครื่องสาธารณะ และอย่าส่ง key ให้คนอื่น ค่าใช้จ่ายคิดกับบัญชีของ key นั้น</p>`;
   const $=id=>document.getElementById(id);
   $('aiprov').value=AIP.provider;$('gmodel').value=g.model;$('omodel').value=o.model;$('amodel').value=AIP.anthropic.model;$('mmodel').value=AIP.meta.model;
+  for(const p of Object.keys(OAI_PROVS))$('m-'+p).value=AIP[p].model||OAI_PROVS[p].model;
   $('curl').value=AIP.custom.url;$('cmodel').value=AIP.custom.model;$('cvis').checked=!!AIP.custom.vision;$('pprov').value=AIP.proc.provider||'same';$('pmodel').value=AIP.proc.model||'';
   $('hon').checked=!!LLMHOST.on;$('hurl').value=LLMHOST.url;$('hmodel').value=LLMHOST.model;$('hvis').checked=!!LLMHOST.vision;
   const kv=p=>{const ks=[...new Set([...document.querySelectorAll(`[data-keys="${p}"] input`)].map(x=>x.value.trim()).filter(Boolean))];return{keys:ks,key:ks[0]||''}};
   const read=()=>{AIP.provider=$('aiprov').value;AIP.gemini={...kv('gemini'),model:$('gmodel').value.trim()||'gemini-flash-latest'};AIP.openai={...kv('openai'),model:$('omodel').value.trim()||'gpt-5-mini'};AIP.anthropic={...kv('anthropic'),model:$('amodel').value.trim()||'claude-opus-5-5'};AIP.meta={...kv('meta'),model:$('mmodel').value.trim()||'muse-spark-1.3'};
+    for(const [p,o] of Object.entries(OAI_PROVS))AIP[p]={...kv(p),model:$('m-'+p).value.trim()||o.model};
     AIP.custom={url:$('curl').value.trim(),...kv('custom'),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()};
     LLMHOST={on:$('hon').checked,url:$('hurl').value.trim()||'http://localhost:11434/v1',model:$('hmodel').value.trim()||'gemma3:12b',vision:$('hvis').checked};saveHost()};
   const stat=(t,c)=>{const e=$('aistat');e.textContent=t;e.className='hint '+(c||'')};

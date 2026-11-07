@@ -282,7 +282,7 @@ function keyRow(p,k,i,ph){
   return `<div class="keyrow"><span class="keyn">${i+1}</span><input class="tx" type="password" autocomplete="off" value="${esc(k)}" placeholder="${esc(ph||'')}" aria-label="${esc(AINAME[p])} key ${i+1}">
     ${down?`<span class="keyst bad" title="ระบบข้าม key นี้ชั่วคราว">${esc(KEY_LBL[why]||'พักอยู่')}</span>`:cur?'<span class="keyst ok">ใช้อยู่</span>':''}<button type="button" class="ghost keydel" data-delkey aria-label="ลบ key ${i+1}">✕</button></div>`;
 }
-const keyList=(p,ph)=>{const ks=keysOf(p);return `<div class="keys" data-keys="${p}" data-ph="${esc(ph)}">${(ks.length?ks:['']).map((k,i)=>keyRow(p,k,i,ph)).join('')}</div><button type="button" class="ghost keyadd" data-addkey="${p}">+ เพิ่ม key</button>`};
+const keyList=(p,ph)=>{const ks=keysOf(p);return `<div class="keys" data-keys="${p}" data-ph="${esc(ph)}">${(ks.length?ks:['']).map((k,i)=>keyRow(p,k,i,ph)).join('')}</div><div class="keybtns"><button type="button" class="ghost keyadd" data-addkey="${p}">+ เพิ่ม key</button><button type="button" class="primary keyadd" data-savekey>💾 บันทึก</button></div>`};
 function renderAISet(){
   const pill=document.getElementById('aipill'),body=document.getElementById('aibody');
   const a=activeAI();if(pill)pill.textContent=a?AINAME[a]:'ยังไม่ตั้ง';
@@ -361,6 +361,8 @@ ${Object.values(OAI_PROVS).map(o=>`<details class="howto"><summary>วิธี�
   const stat=(t,c)=>{const e=$('aistat');e.textContent=t;e.className='hint '+(c||'')};
   $('aisave').onclick=()=>{read();saveAI();if(typeof hostTick==='function')hostTick().then(()=>{renderAISet();if(typeof renderKB==='function'&&VIEW==='kb')renderKB()});renderAISet();aiChanged();document.getElementById('aistat').textContent=activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
   $('aisyncbtn').onclick=async()=>{if(typeof ME==='undefined'||!ME){aiSyncMsg('เข้าสู่ระบบก่อน แล้วกดอีกครั้ง',true);return}aiSyncMsg('กำลังซิงก์...');await pullAIP()};
+  /* ปุ่มบันทึกข้างช่อง key: ทำงานเหมือนปุ่ม บันทึก ด้านล่าง แล้วแจ้งผลเป็น toast (ปุ่มด้านล่างอยู่ไกล มองไม่เห็นผล) */
+  body.querySelectorAll('[data-savekey]').forEach(b=>b.onclick=()=>{$('aisave').click();const t=document.getElementById('aistat');toast(t&&t.textContent||'บันทึกแล้ว')});
   body.querySelectorAll('[data-addkey]').forEach(b=>b.onclick=()=>{const box=body.querySelector(`[data-keys="${b.dataset.addkey}"]`);box.insertAdjacentHTML('beforeend',keyRow(b.dataset.addkey,'',box.children.length,box.dataset.ph));box.lastElementChild.querySelector('input').focus()});
   if(!body._kd){body._kd=1;body.addEventListener('click',e=>{const b=e.target.closest('[data-delkey]');if(!b)return;const row=b.closest('.keyrow'),box=row.parentElement;if(box.children.length>1)row.remove();else row.querySelector('input').value='';box.querySelectorAll('.keyn').forEach((n,i)=>n.textContent=i+1)})}
   $('aiclear').onclick=()=>{for(const x of KEY_PROVS){AIP[x].key='';AIP[x].keys=[]}saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent='ลบ key แล้ว'};

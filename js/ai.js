@@ -282,7 +282,7 @@ function keyRow(p,k,i,ph){
   return `<div class="keyrow"><span class="keyn">${i+1}</span><input class="tx" type="password" autocomplete="off" value="${esc(k)}" placeholder="${esc(ph||'')}" aria-label="${esc(AINAME[p])} key ${i+1}">
     ${down?`<span class="keyst bad" title="ระบบข้าม key นี้ชั่วคราว">${esc(KEY_LBL[why]||'พักอยู่')}</span>`:cur?'<span class="keyst ok">ใช้อยู่</span>':''}<button type="button" class="ghost keydel" data-delkey aria-label="ลบ key ${i+1}">✕</button></div>`;
 }
-const keyList=(p,ph)=>{const ks=keysOf(p);return `<div class="keys" data-keys="${p}" data-ph="${esc(ph)}">${(ks.length?ks:['']).map((k,i)=>keyRow(p,k,i,ph)).join('')}</div><div class="keybtns"><button type="button" class="ghost keyadd" data-addkey="${p}">+ เพิ่ม key</button><button type="button" class="primary keyadd" data-savekey>💾 บันทึก</button></div>`};
+const keyList=(p,ph)=>{const ks=keysOf(p);return `<div class="keys" data-keys="${p}" data-ph="${esc(ph)}">${(ks.length?ks:['']).map((k,i)=>keyRow(p,k,i,ph)).join('')}</div><div class="keybtns"><button type="button" class="ghost keyadd" data-addkey="${p}">+ เพิ่ม key</button><button type="button" class="ghost keyadd" data-savekey>💾 บันทึก</button><button type="button" class="ghost keyadd" data-testkey="${p}">🧪 ทดสอบ</button></div><p class="hint keystat" data-keystat="${p}"></p>`};
 function renderAISet(){
   const pill=document.getElementById('aipill'),body=document.getElementById('aibody');
   const a=activeAI();if(pill)pill.textContent=a?AINAME[a]:'ยังไม่ตั้ง';
@@ -312,13 +312,13 @@ function renderAISet(){
    <div class="field"><label for="hurl">URL</label><input class="tx" id="hurl" type="text" autocomplete="off" list="curls"></div>
    <div class="field"><label for="hmodel">โมเดล</label><input class="tx" id="hmodel" type="text" autocomplete="off" list="hmodels"><datalist id="hmodels">${LOCALAI.models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>
    <label class="rad"><input type="checkbox" id="hvis"><span>ให้ AI ในเครื่องอ่านรูปด้วย (ไม่แนะนำ: ถอดภาษาไทยจากภาพยังผิดบ่อย ปล่อยว่างไว้ หน้าที่ต้องอ่านภาพจะใช้ AI ตัวหลักแทน)</span></label>
-   <p class="hint ${localUp()?'ok':LLMHOST.on?'err':''}" id="hstat">${hostStatusText()}</p></details>
+   <p class="hint ${localUp()?'ok':LLMHOST.on?'err':''}" id="hstat">${hostStatusText()}</p>
+   <div class="keybtns"><button type="button" class="ghost keyadd" data-savekey>💾 บันทึก</button><button type="button" class="ghost keyadd" data-testlocal>🧪 ทดสอบ</button></div></details>
    <div class="field"><label for="pprov">AI สำหรับประมวลผลไฟล์ (ประหยัดเครดิต)</label><select id="pprov"><option value="same">ผู้ให้บริการเดียวกับด้านบน</option><option value="gemini">Gemini (ฟรีแบบจำกัด/วัน)</option><option value="openai">OpenAI (เสียเงิน)</option><option value="anthropic">Claude API (เสียเงิน)</option><option value="meta">Meta (เสียเงิน)</option>${Object.entries(OAI_PROVS).map(([p,o])=>`<option value="${p}">${o.name} (ฟรี)</option>`).join('')}<option value="custom">ผู้ให้บริการอื่น</option></select></div>
    <div class="field"><label for="pmodel">โมเดลสำหรับประมวลผลไฟล์ (เว้นว่าง = โมเดลเดิมของผู้ให้บริการนั้น)</label><input class="tx" id="pmodel" type="text" autocomplete="off" list="pmodels" placeholder="เช่น gemini-flash-lite-latest"><datalist id="pmodels"><option value="gemini-flash-lite-latest"><option value="gpt-5-nano"><option value="gpt-5-mini"><option value="claude-haiku-5-5"><option value="muse-spark-1.3-contributor"></datalist></div>
    <p class="hint">งานอ่านไฟล์ ย่อยบัตรความรู้ และดึงข้อสอบจากไฟล์ ใช้ AI มากที่สุด ตั้งเป็นโมเดลราคาถูกตรงนี้ได้ ส่วนการออกข้อสอบและติวเตอร์ยังใช้ตัวด้านบน${(()=>{const r=aiRoute('proc');return r.p?` · ตอนนี้ประมวลผลไฟล์ด้วย ${AINAME[r.p]}${r.model?' · '+esc(r.model):''}`:''})()}</p>
+   <div class="keybtns"><button type="button" class="ghost keyadd" data-savekey>💾 บันทึก</button><button type="button" class="ghost keyadd" data-testproc>🧪 ทดสอบ</button></div><p class="hint keystat" data-keystat="proc"></p>
    <p class="hint">ใส่ key ได้หลายอันไม่จำกัดต่อผู้ให้บริการ (กด + เพิ่ม key) เมื่อ key ไหนโควตาหรือเครดิตหมด ระบบสลับไปใช้ key ถัดไปเอง ครบทุก key แล้วจึงเปลี่ยนไปผู้ให้บริการอื่น</p>
-   <div class="btns"><button class="primary" id="aisave">บันทึก</button><button class="ghost" id="aitest">ทดสอบ</button><button class="ghost" id="aiclear">ลบ key</button></div>
-   <p class="hint" id="aistat"></p>
    <p class="hint ${AISYNC.bad?'err':'ok'}" id="aisync">${esc(AISYNC.msg||((typeof ME!=='undefined'&&ME)?'':'เข้าสู่ระบบเพื่อเก็บ key ไว้กับบัญชี ใช้ได้ทุกเครื่อง'))}</p>
    <div class="btns"><button class="ghost" id="aisyncbtn">⇅ ซิงก์ตั้งค่า AI กับบัญชี</button></div>
    <details class="howto"><summary>วิธีขอ Gemini key (มีโควตาฟรี)</summary><ol>
@@ -358,35 +358,40 @@ ${Object.values(OAI_PROVS).map(o=>`<details class="howto"><summary>วิธี�
     for(const [p,o] of Object.entries(OAI_PROVS))AIP[p]={...kv(p),model:$('m-'+p).value.trim()||o.model};
     AIP.custom={url:$('curl').value.trim(),...kv('custom'),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()};
     LLMHOST={on:$('hon').checked,url:$('hurl').value.trim()||'http://localhost:11434/v1',model:$('hmodel').value.trim()||'gemma3:12b',vision:$('hvis').checked};saveHost()};
-  const stat=(t,c)=>{const e=$('aistat');e.textContent=t;e.className='hint '+(c||'')};
-  $('aisave').onclick=()=>{read();saveAI();if(typeof hostTick==='function')hostTick().then(()=>{renderAISet();if(typeof renderKB==='function'&&VIEW==='kb')renderKB()});renderAISet();aiChanged();document.getElementById('aistat').textContent=activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
+  /* ผลทดสอบแสดงใต้ปุ่มของผู้ให้บริการนั้น · หน้าถูกวาดใหม่หลังบันทึก จึงหาช่องสถานะใหม่ทุกครั้ง */
+  const pstat=(p,t,c)=>{const e=document.querySelector(`[data-keystat="${p}"]`);if(e){e.textContent=t;e.className='hint keystat '+(c||'')}};
+  const doSave=()=>{read();saveAI();if(typeof hostTick==='function')hostTick().then(()=>{renderAISet();if(typeof renderKB==='function'&&VIEW==='kb')renderKB()});renderAISet();aiChanged();
+    return activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
+  body.querySelectorAll('[data-savekey]').forEach(b=>b.onclick=()=>toast(doSave()));
+  $('aiprov').onchange=()=>toast(doSave());
   $('aisyncbtn').onclick=async()=>{if(typeof ME==='undefined'||!ME){aiSyncMsg('เข้าสู่ระบบก่อน แล้วกดอีกครั้ง',true);return}aiSyncMsg('กำลังซิงก์...');await pullAIP()};
-  /* ปุ่มบันทึกข้างช่อง key: ทำงานเหมือนปุ่ม บันทึก ด้านล่าง แล้วแจ้งผลเป็น toast (ปุ่มด้านล่างอยู่ไกล มองไม่เห็นผล) */
-  body.querySelectorAll('[data-savekey]').forEach(b=>b.onclick=()=>{$('aisave').click();const t=document.getElementById('aistat');toast(t&&t.textContent||'บันทึกแล้ว')});
   body.querySelectorAll('[data-addkey]').forEach(b=>b.onclick=()=>{const box=body.querySelector(`[data-keys="${b.dataset.addkey}"]`);box.insertAdjacentHTML('beforeend',keyRow(b.dataset.addkey,'',box.children.length,box.dataset.ph));box.lastElementChild.querySelector('input').focus()});
   if(!body._kd){body._kd=1;body.addEventListener('click',e=>{const b=e.target.closest('[data-delkey]');if(!b)return;const row=b.closest('.keyrow'),box=row.parentElement;if(box.children.length>1)row.remove();else row.querySelector('input').value='';box.querySelectorAll('.keyn').forEach((n,i)=>n.textContent=i+1)})}
-  $('aiclear').onclick=()=>{for(const x of KEY_PROVS){AIP[x].key='';AIP[x].keys=[]}saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent='ลบ key แล้ว'};
-  $('aitest').onclick=async()=>{read();saveAI();
-    if(LLMHOST.on){stat('กำลังทดสอบ AI ในเครื่อง...');await pingLocal();
-      if(!localUp()){stat(LOCALAI.why,'err');return}
-      try{const t0=Date.now(),j=await aiJSON('ตอบเป็น JSON เท่านั้น: {"ok":true,"word":"พร้อม"}',{task:'proc'});stat(`AI ในเครื่องใช้งานได้ (${LLMHOST.model}) ตอบใน ${((Date.now()-t0)/1000).toFixed(1)} วินาที: ${j&&j.word||JSON.stringify(j).slice(0,40)}`,'ok');if(typeof hostTick==='function')hostTick()}
-      catch(e){stat('AI ในเครื่องใช้ไม่ได้: '+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message?` (${String(e.message).slice(0,120)})`:''),'err')}
-      if(!activeAI())return;await new Promise(r=>setTimeout(r,1500))}
-    const a2=activeAI();if(!a2){stat('ยังไม่มี key ให้ทดสอบ','err');return}
-    stat(`กำลังทดสอบ ${AINAME[a2]}...`);
-    try{const t=await aiText('ตอบกลับคำว่า พร้อม เพียงคำเดียว');let msg=`${AINAME[a2]} ใช้งานได้ (โมเดล ${LAST_MODEL}) ตอบว่า: ${t.trim().slice(0,40)}`;
-      const r=aiRoute('proc');if(r.p!==a2||r.model){stat(msg+' · กำลังทดสอบ AI ประมวลผลไฟล์...','ok');
-        try{const j=await aiJSON('ตอบเป็น JSON เท่านั้น: {"ok":true}',{task:'proc'});msg+=` · ประมวลผลไฟล์: ${AINAME[r.p]} (โมเดล ${LAST_MODEL}) ${j&&j.ok?'ใช้งานได้':'ตอบแต่ไม่ใช่ JSON ที่ถูกต้อง'}`}
-        catch(e2){stat(msg+' · AI ประมวลผลไฟล์ใช้ไม่ได้: '+errCopy(e2&&e2.code,'ทดสอบ')+(r.p==='custom'&&e2&&e2.code==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''),'err');return}}
-      const multi=KEY_PROVS.filter(p=>p!=='custom'&&keysOf(p).length>1);
-      if(multi.length){stat(msg+' · กำลังทดสอบทุก key...','ok');const rep=[];
-        for(const p of multi){const ks=keysOf(p);for(let i=0;i<ks.length;i++){AIP[p].key=ks[i];
-          try{await keyCall1(p,'ตอบกลับคำว่า พร้อม เพียงคำเดียว',false);delete KEY_DOWN[ks[i]];delete KEY_WHY[ks[i]];rep.push(`${AINAME[p]} key ${i+1} ✓`)}
-          catch(e){if(KEY_SWITCH.includes(e&&e.code)){KEY_DOWN[ks[i]]=Date.now()+(e.code==='bad_key'?864e5:30*60e3);KEY_WHY[ks[i]]=e.code}rep.push(`${AINAME[p]} key ${i+1} ✗ ${KEY_LBL[e&&e.code]||errCopy(e&&e.code,'ทดสอบ')}`)}}
-          pickKey(p)}
-        msg+='\n'+rep.join(' · ');renderAISet();document.getElementById('aistat').style.whiteSpace='pre-wrap'}
-      stat(msg,'ok');renderAISetPill();aiChanged()}
-    catch(e){const cr=e&&(e.code==='no_credit'||e.code==='quota');stat((cr?'💳 ':'')+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message&&!cr?` (${String(e.message).slice(0,120)})`:''),cr?'':'err')}};
+  /* ทดสอบผู้ให้บริการเดียว: ทุก key ของเจ้านั้น ทีละ key */
+  body.querySelectorAll('[data-testkey]').forEach(b=>b.onclick=async()=>{const p=b.dataset.testkey;read();saveAI();
+    if(p==='custom'&&!(AIP.custom.url&&AIP.custom.model)){renderAISet();pstat(p,'ใส่ URL และชื่อโมเดลก่อน','err');return}
+    const ks=keysOf(p),list=p==='custom'?[ks[0]||'']:ks;
+    if(!list.length){renderAISet();pstat(p,'ยังไม่ได้ใส่ key','err');return}
+    renderAISet();pstat(p,`กำลังทดสอบ ${AINAME[p]}${list.length>1?` ${list.length} key`:''}...`);
+    const rep=[];let bad=0;
+    for(let i=0;i<list.length;i++){const k=list[i],t0=Date.now(),n=list.length>1?`key ${i+1} `:'';AIP[p].key=k;
+      try{await keyCall1(p,'ตอบกลับคำว่า พร้อม เพียงคำเดียว',false);if(k){delete KEY_DOWN[k];delete KEY_WHY[k]}rep.push(`${n}✓ ใช้งานได้ (${LAST_MODEL}) ตอบใน ${((Date.now()-t0)/1000).toFixed(1)} วินาที`)}
+      catch(e){bad++;const c=e&&e.code;if(k&&KEY_SWITCH.includes(c)){KEY_DOWN[k]=Date.now()+(c==='bad_key'?864e5:30*60e3);KEY_WHY[k]=c}
+        rep.push(`${n}✗ ${KEY_LBL[c]||errCopy(c,'ทดสอบ')}${e&&e.message&&!KEY_LBL[c]?` (${String(e.message).slice(0,100)})`:''}${p==='custom'&&c==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''}`)}}
+    if(p!=='custom')pickKey(p);renderAISet();aiChanged();pstat(p,rep.join('\n'),bad===list.length?'err':'ok')});
+  /* AI ในเครื่องนี้ */
+  body.querySelector('[data-testlocal]').onclick=async()=>{read();saveAI();renderAISet();const h=()=>{const e=$('hstat');return e};
+    if(!LLMHOST.on){h().textContent='ติ๊ก "ใช้เครื่องนี้ประมวลผลไฟล์ด้วย AI ในเครื่อง" ก่อน';h().className='hint err';return}
+    h().textContent='กำลังทดสอบ AI ในเครื่อง...';h().className='hint';await pingLocal();
+    if(!localUp()){h().textContent=LOCALAI.why;h().className='hint err';return}
+    try{const t0=Date.now(),j=await aiJSON('ตอบเป็น JSON เท่านั้น: {"ok":true,"word":"พร้อม"}',{task:'proc'});h().textContent=`✓ AI ในเครื่องใช้งานได้ (${LLMHOST.model}) ตอบใน ${((Date.now()-t0)/1000).toFixed(1)} วินาที: ${j&&j.word||JSON.stringify(j).slice(0,40)}`;h().className='hint ok';if(typeof hostTick==='function')hostTick()}
+    catch(e){h().textContent='AI ในเครื่องใช้ไม่ได้: '+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message?` (${String(e.message).slice(0,120)})`:'');h().className='hint err'}};
+  /* AI สำหรับประมวลผลไฟล์ */
+  body.querySelector('[data-testproc]').onclick=async()=>{read();saveAI();renderAISet();const r=aiRoute('proc');
+    if(!r.p){pstat('proc','ยังไม่มี AI ให้ใช้ ใส่ key ของผู้ให้บริการก่อน','err');return}
+    pstat('proc',`กำลังทดสอบ ${AINAME[r.p]}...`);
+    try{const t0=Date.now(),j=await aiJSON('ตอบเป็น JSON เท่านั้น: {"ok":true}',{task:'proc'});pstat('proc',`ประมวลผลไฟล์ด้วย ${AINAME[r.p]} (${LAST_MODEL||r.model||''}) ${j&&j.ok?'✓ ใช้งานได้':'ตอบแต่ไม่ใช่ JSON ที่ถูกต้อง'} · ${((Date.now()-t0)/1000).toFixed(1)} วินาที`,j&&j.ok?'ok':'err')}
+    catch(e){pstat('proc','✗ '+errCopy(e&&e.code,'ทดสอบ')+(r.p==='custom'&&e&&e.code==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''),'err')}};
 }
 function hostStatusText(){
   if(LLMHOST.on)return localUp()?`✓ AI ในเครื่องพร้อม (${LLMHOST.model}) · เครื่องนี้เป็นเครื่องประมวลผลหลัก`:(LOCALAI.why||'กำลังตรวจการเชื่อมต่อ...');

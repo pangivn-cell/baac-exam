@@ -65,6 +65,8 @@ input.tx,select{font-size:15px;box-sizing:border-box;width:100%;padding:7px 8px;
 .keyst.ok{background:rgba(34,197,94,.15);color:#4ade80}
 .keydel{padding:4px 10px;min-height:0}
 .keybtns{display:flex;gap:6px;flex-wrap:wrap}
+.keystat{white-space:pre-wrap;margin:2px 0 0}
+.keystat:empty{display:none}
 .keybtns .keyadd{padding:4px 12px;font-size:13px;min-height:0;line-height:1.6}
 .klink{font-size:13px;color:var(--accent);text-decoration:none;align-self:flex-start}
 .klink:hover{text-decoration:underline}

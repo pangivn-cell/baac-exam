@@ -126,7 +126,8 @@ async function keyCall(prov,input,json,signal,model0){
 }
 async function keyCall1(prov,input,json,signal,model0){
   const first=model0||cfgOf(prov).model;
-  const models=(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
+  /* OpenRouter: โมเดลฟรีตัวที่ตั้งไว้ถูกจำกัด (คนใช้เยอะ) → ใช้ openrouter/free ที่เลือกโมเดลฟรีที่ว่างให้เอง */
+  const models=(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
   let lastErr,keyErr;
   for(const model of models){
     for(let attempt=0;attempt<3;attempt++){
@@ -135,7 +136,7 @@ async function keyCall1(prov,input,json,signal,model0){
         if(e.code==='bad_model'&&prov==='gemini'&&model!==first)DEAD_MODELS.add(prov+':'+model);
         if(e.code!=='bad_model')keyErr=keyErr||e;
         if(e.code==='overloaded'||e.code==='network'&&attempt===0){await sleep(1500*(attempt+1),signal);continue}
-        if(e.code==='bad_model'||((e.code==='rate_limited'||e.code==='quota')&&prov==='gemini'))break;
+        if(e.code==='bad_model'||((e.code==='rate_limited'||e.code==='quota')&&(prov==='gemini'||prov==='openrouter')))break;
         throw e;
       }
     }
@@ -276,6 +277,8 @@ function errCopy(code,what){
   return code==='rate_limited'?`${what}ถี่เกินไปหรือโควตาหมด รอสักครู่แล้วลองใหม่`:code==='bad_key'?'API key ไม่ถูกต้องหรือไม่มีสิทธิ์ ตรวจในตั้งค่า AI':code==='bad_model'?'ไม่พบชื่อโมเดลนี้ แก้ชื่อโมเดลในตั้งค่า AI':code==='overloaded'?'เซิร์ฟเวอร์ AI มีคนใช้เยอะชั่วคราว ระบบลองซ้ำและลองโมเดลสำรองแล้วยังไม่ได้ รอสักครู่แล้วลองใหม่':code==='network'?'เชื่อมต่อผู้ให้บริการ AI ไม่ได้ ตรวจอินเทอร์เน็ต':code==='session_expired'?'กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง':code==='invalid_json'||code==='truncated'?'ได้โจทย์ไม่ครบ ลองลดจำนวนข้อแล้วสร้างใหม่':(code==='refused'||code==='empty_completion')?'AI ไม่ตอบข้อนี้ ลองใหม่อีกครั้ง':`${what}ไม่สำเร็จ ลองใหม่อีกครั้ง`;
 }
 /* ช่องใส่ key แบบหลายแถว: แต่ละแถวมีเลขลำดับ สถานะ (พัก/ใช้ไม่ได้) และปุ่มลบ */
+/* ข้อความผิดพลาดจากผู้ให้บริการมักเป็น JSON: ดึงเฉพาะข้อความ */
+const errMsg=m=>{let t=String(m||'');try{const j=JSON.parse(t),e=j.error||j;t=(e.metadata&&e.metadata.raw)||e.message||t}catch(x){}return String(t).replace(/\s+/g,' ').slice(0,160)};
 const KEY_LBL={quota:'โควตาหมด',no_credit:'เครดิตหมด',bad_key:'key ใช้ไม่ได้',rate_limited:'ถูกจำกัดความถี่'};
 function keyRow(p,k,i,ph){
   const down=k&&KEY_DOWN[k]>Date.now(),why=k&&KEY_WHY[k],cur=k&&AIP[p]&&AIP[p].key===k&&keysOf(p).length>1;
@@ -378,8 +381,8 @@ ${Object.values(OAI_PROVS).map(o=>`<details class="howto"><summary>วิธี�
     const rep=[];let bad=0;
     for(let i=0;i<list.length;i++){const k=list[i],t0=Date.now(),n=list.length>1?`key ${i+1} `:'';AIP[p].key=k;
       try{await keyCall1(p,'ตอบกลับคำว่า พร้อม เพียงคำเดียว',false);if(k){delete KEY_DOWN[k];delete KEY_WHY[k]}rep.push(`${n}✓ ใช้งานได้ (${LAST_MODEL}) ตอบใน ${((Date.now()-t0)/1000).toFixed(1)} วินาที`)}
-      catch(e){bad++;const c=e&&e.code;if(k&&KEY_SWITCH.includes(c)){KEY_DOWN[k]=Date.now()+(c==='bad_key'?864e5:30*60e3);KEY_WHY[k]=c}
-        rep.push(`${n}✗ ${KEY_LBL[c]||errCopy(c,'ทดสอบ')}${e&&e.message&&!KEY_LBL[c]?` (${String(e.message).slice(0,100)})`:''}${p==='custom'&&c==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''}`)}}
+      catch(e){bad++;const c=e&&e.code;if(k&&KEY_SWITCH.includes(c)){KEY_DOWN[k]=Date.now()+(c==='bad_key'?864e5:c==='rate_limited'?60e3:30*60e3);KEY_WHY[k]=c}
+        rep.push(`${n}✗ ${KEY_LBL[c]||errCopy(c,'ทดสอบ')}${e&&e.message?` (${errMsg(e.message)})`:''}${p==='custom'&&c==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''}`)}}
     if(p!=='custom')pickKey(p);renderAISet();aiChanged();pstat(p,rep.join('\n'),bad===list.length?'err':'ok')});
   /* AI ในเครื่องนี้ */
   body.querySelector('[data-testlocal]').onclick=async()=>{read();saveAI();renderAISet();const h=()=>{const e=$('hstat');return e};

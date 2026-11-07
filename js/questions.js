@@ -75,12 +75,21 @@ function cardSrc(c){const d=docOf(c),pg=d&&d.pages.find(p=>p.n===+c.page);
 /* "ข้ามคำถามแนวนี้": จำบัตร/ข้อที่ผู้ใช้ไม่อยากเจอ (ทั้งหน้าเอกสารนั้นลดลงด้วย) เก็บในเครื่องนี้ */
 const SKIPT_KEY='exam-skipt';let SKIPT={};try{SKIPT=JSON.parse(localStorage.getItem(SKIPT_KEY)||'{}')||{}}catch(e){SKIPT={}}
 const saveSkipT=()=>{try{localStorage.setItem(SKIPT_KEY,JSON.stringify(SKIPT))}catch(e){}};
+/* ข้อที่เดาจากความยาวได้: ข้อถูกยาวกว่าตัวลวงที่ยาวสุดเกิน 30% (และเกิน 8 ตัวอักษร) */
+const chLen=t=>String(t||'').replace(/\s+/g,'').length;
+function lenTell(q){
+  if(!q||!Array.isArray(q.choices)||q.choices.length<3||!(q.answer>=0&&q.answer<q.choices.length))return false;
+  const L=q.choices.map(chLen),a=L[q.answer],mx=Math.max(...L.filter((_,j)=>j!==q.answer));
+  return a>mx*1.3&&a-mx>=8;
+}
+/* ข้อที่ยังเดาง่ายและยังไม่ได้ปรับตัวเลือก (qfix.js) ถูกหยิบน้อยลง จนกว่าจะปรับเสร็จ */
+const tellOpen=q=>lenTell(q)&&!(typeof QFIX!=='undefined'&&QFIX.has(qKey(q)));
 const pageKey=c=>c&&c.page!=null?'p:'+c.docId+':'+c.page:'';
 const skipped=c=>!!(c&&SKIPT['c:'+c.id]);
 /* คะแนนเลือกบัตร: ข้อที่เคยผิด/ยังไม่เคยเจอ/สำคัญมาก่อน แต่ข้อที่เพิ่งเจอได้คะแนนลด และสุ่มมากขึ้นให้แนวคำถามเปลี่ยนทุกรอบ */
 function cardScore(c){const s=c.st||{},now=Date.now(),seen=s.ls?now-s.ls:Infinity;
   return Math.min(s.w||0,3)*2-(s.r||0)*1.2+(s.n?0:2.5)+(c.imp||2)*.6+(s.lw&&now-s.lw<3*864e5?1.5:0)
-    -(seen<864e5?3:seen<3*864e5?1.5:0)-(skipped(c)?60:0)-(SKIPT[pageKey(c)]?3:0)+Math.random()*4}
+    -(seen<864e5?3:seen<3*864e5?1.5:0)-(skipped(c)?60:0)-(c.q&&tellOpen(c.q)?2:0)-(SKIPT[pageKey(c)]?3:0)+Math.random()*4}
 /* เลือกบัตรถัดไป: กระจายไปหลายหน้า/หลายไฟล์ · หน้าเดียวกับบัตรที่เลือกไปแล้วในรอบนี้ได้คะแนนลด หน้าใกล้กันลดน้อยกว่า */
 function pickCard(pool,used){
   const fresh=pool.filter(c=>!used.has(c.id)),arr=fresh.length?fresh:pool;if(!arr.length)return null;
@@ -288,8 +297,21 @@ const SETCODE=/\s*[(（]?\s*(?:รหัสชุด|เลขสุ่ม)\s*[:
 const noSetCode=t=>typeof t==='string'?t.replace(SETCODE,'').replace(/\s{2,}/g,' ').trim():t;
 function cleanSetCode(q){if(!q||typeof q.stem!=='string'||!SETCODE.test(q.stem+(q.choices||[]).join(' ')))return q;SETCODE.lastIndex=0;
   return{...q,stem:noSetCode(q.stem),choices:Array.isArray(q.choices)?q.choices.map(noSetCode):q.choices}}
+/* ข้อสอบจากไฟล์บางข้อ ตัวเลือกติดมาท้ายโจทย์ ("ก. ... ข. ...") พอสลับตัวเลือกแล้วลำดับในโจทย์ไม่ตรงกับปุ่ม
+   ตัดบรรทัดท้ายโจทย์ที่เป็นตัวเลือกออก (ต้องตรงกับตัวเลือกจริงอย่างน้อย 2 บรรทัด จึงไม่ตัดเนื้อโจทย์) */
+const CH_LINE=/^\s*\(?(?:[ก-จ]|[1-5]|[a-eA-E])\s*[.)]\s*(.+)$/;
+const nzc=t=>String(t||'').replace(/[\s"'“”‘’.,()]/g,'').toLowerCase();
+function stripStemChoices(q){
+  if(!q||typeof q.stem!=='string'||!Array.isArray(q.choices)||!q.stem.includes('\n'))return q;
+  const lines=q.stem.split('\n');let i=lines.length;
+  while(i>1&&(!lines[i-1].trim()||CH_LINE.test(lines[i-1])))i--;
+  const tail=lines.slice(i).filter(l=>l.trim()),set=new Set(q.choices.map(nzc));
+  if(tail.filter(l=>set.has(nzc(l.match(CH_LINE)[1]))).length<2)return q;
+  const stem=lines.slice(0,i).join('\n').trim();if(!stem)return q;
+  return{...q,origKey:q.origKey||qKey(q),stem};
+}
 function mixAll(a){
-  if(!Array.isArray(a))return a;const out=a.map(q=>mixQ(cleanSetCode(q)));
+  if(!Array.isArray(a))return a;const out=a.map(q=>mixQ(stripStemChoices(cleanSetCode(q))));
   const ks=Object.keys(MIXPOS);if(ks.length>4000)for(const k of ks.slice(0,ks.length-4000))delete MIXPOS[k];
   try{localStorage.setItem(MIX_KEY,JSON.stringify(MIXPOS))}catch(e){}
   return out;
@@ -394,7 +416,8 @@ ${picSub?`- ห้ามสร้างข้อที่อ่านคำต�
 - เขียน "จากรูป" หรืออ้างถึงรูปได้เฉพาะเมื่อต้องดูรูปจึงตอบได้ (แผนผัง ตาราง กราฟ รูปทรง) ถ้ารูปมีแต่ข้อความ ให้เขียนเนื้อหาที่ต้องใช้ไว้ในโจทย์เป็นข้อความ แล้วให้ fig เป็น ""
 - ข้อที่ใช้บัตรที่มีรูป ผู้สอบจะเห็นรูปนั้นในโจทย์ ใส่ fig เป็นรหัสรูปที่ต้องแสดง โจทย์ต้องอ้างถึงรูป (เช่น "จากรูป...") และต้องตอบได้จากรูปจริงที่แนบ ห้ามบรรยายคำตอบไว้ในโจทย์ ห้ามถามสิ่งที่ไม่ปรากฏในรูป`:`- รูปที่แนบมาใช้เพื่อให้คุณเข้าใจเนื้อหาเท่านั้น ผู้สอบจะไม่เห็นรูป ห้ามเขียน "จากรูป" "ตามตาราง" "จากแผนภาพ" หรืออ้างถึงรูป โจทย์ต้องครบในตัวเป็นข้อความ ถ้าต้องใช้ตัวเลขหรือข้อมูลจากรูป ให้เขียนลงในโจทย์ (หรือใส่เป็น viz) และให้ fig เป็น ""`}
 - ถ้าตัวเลือกเป็นรูปที่อยู่ในภาพ ให้ choices เป็นป้ายตามที่ปรากฏในภาพ เช่น "ก" "ข" "ค" "ง" หรือ "1" "2" "3" "4" และ answer ต้องตรงกับเฉลยในบัตร ถ้าบัตรไม่มีเฉลยให้วิเคราะห์จากรูปทีละขั้นก่อนตอบ`:''}
-- ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก ห้ามมีข้อที่กำกวม
+- ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก
+${CHOICE_RULE} ห้ามมีข้อที่กำกวม
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย แต่ละขั้นบอกที่มา (from) เช่น ชื่อกฎหมาย หลักการ หรือ "บัตรความรู้"
 - ใช้ภาษาไทย ศัพท์เฉพาะภาษาอังกฤษเขียนได้ ยกเว้นหัวข้อภาษาอังกฤษ ให้โจทย์และตัวเลือกเป็นภาษาอังกฤษแต่เฉลยเป็นไทย ห้ามใช้ markdown ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:

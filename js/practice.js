@@ -100,7 +100,7 @@ function explainHTML(q,pick){
   if(q.expViz)h+=renderViz(q.expViz);
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
-  if(q.fixed)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
+  if(q.fixed&&!q.fixed.balance)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
   if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
   {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=isMC(q)&&q.stem&&(q.card&&CARDS.some(x=>x.id===q.card&&x.type==='q')||q.poolId||q.pool||q.gen==='ai'||q.orig)?qdelRef(q):'';
@@ -447,7 +447,8 @@ ${kb.text}
 กติกา:
 ${VIZ_RULE}
 ${kb.text?'- ใช้ข้อมูลจากเอกสารอ้างอิงข้างบนเป็นหลัก ข้อที่ออกจากเอกสารให้ใส่ ref เป็นป้ายในวงเล็บเหลี่ยมของช่วงที่ใช้ เช่น "PDPA.pdf หน้า 22" ถ้าเอกสารไม่ครอบคลุมหัวข้อนั้นจึงใช้หลักการทั่วไปและให้ ref เป็น ""\n':''}- ใช้เฉพาะความรู้ที่เป็นหลักการมาตรฐานและเป็นที่ยอมรับทั่วไป ห้ามแต่งตัวเลข ชื่อโครงการ อัตราดอกเบี้ย วันที่ หรือข้อเท็จจริงเฉพาะที่ไม่แน่ใจ ถ้าไม่แน่ใจให้ถามหลักการแทน
-- ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก ห้ามมีข้อที่กำกวม
+- ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก
+${CHOICE_RULE} ห้ามมีข้อที่กำกวม
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย แต่ละขั้นบอกที่มา (from) เช่น ชื่อกฎหมายและมาตรา หรือชื่อหลักการ
 - ใช้ภาษาไทย ศัพท์เฉพาะภาษาอังกฤษเขียนได้ ห้ามใช้ markdown ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:

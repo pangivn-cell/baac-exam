@@ -19,7 +19,7 @@ function fixQ(q){
   if(!Array.isArray(f.choices)||f.choices.length<2||!(f.answer>=0&&f.answer<f.choices.length))return q;
   q.origKey=k;q.stem=f.stem||q.stem;q.choices=f.choices.slice();q.answer=f.answer;
   if(Array.isArray(f.steps)&&f.steps.length)q.steps=f.steps.map(t=>[String(t),'']);
-  q.fixed={why:f.why||'',by:f.name||'',sources:f.sources||[]};
+  q.fixed={why:f.why||'',by:f.name||'',sources:f.sources||[],balance:f.verdict==='balance'};
   return q;
 }
 const fixAll=a=>Array.isArray(a)?a.map(fixQ):a;
@@ -125,6 +125,62 @@ async function applyCorrection(q,res){
   /* ข้อที่เปิดอยู่ในหน้านี้ (ชุดฝึก / สอบจริง) */
   for(const x of [...((typeof R!=='undefined'&&R&&R.items)||[]),...((typeof M!=='undefined'&&M&&M.items)||[])])if(x&&(x.origKey||qKey(x))===key){x.fixed=null;fixQ(x)}
   return shared;
+}
+
+/* ---------- ปรับตัวเลือกที่เดาจากความยาวได้ ----------
+   ให้ AI เขียนตัวเลือกใหม่: ย่อข้อถูกให้เหลือสาระหลัก เขียนตัวลวงให้ยาว/ละเอียดใกล้กัน โจทย์และความหมายของข้อถูกเหมือนเดิม
+   แล้วให้ AI แก้โจทย์ฉบับใหม่แบบไม่เห็นเฉลย (สลับตัวเลือก) ต้องได้ข้อเดิม จึงเก็บเป็น qfix (verdict "balance") ให้ทุกคน */
+async function balanceChoices(q,signal){
+  const r=await aiJSON(`ข้อสอบปรนัยข้อนี้ คำตอบที่ถูกยาวและละเอียดกว่าตัวเลือกอื่นมาก ผู้สอบเดาถูกได้จากความยาวโดยไม่ต้องรู้เนื้อหา ให้เขียนตัวเลือกใหม่ทั้งหมด
+โจทย์: ${q.stem}
+ตัวเลือกเดิม:
+${q.choices.map((t,j)=>`${j}) ${t}`).join('\n')}
+ข้อที่ถูก: ${q.answer}
+กติกา:
+- ห้ามเปลี่ยนโจทย์ ห้ามเปลี่ยนความหมายของข้อที่ถูก ให้ย่อข้อที่ถูกให้กระชับเหลือสาระหลัก ตัดคำอธิบายเสริม วงเล็บ และเครื่องหมายคำพูดที่ไม่จำเป็น
+- ตัวลวงต้องยังผิดชัดเจนสำหรับคนที่รู้เนื้อหา แต่เขียนให้ฟังดูน่าเชื่อ ยาว ระดับรายละเอียด และสำนวนใกล้เคียงกับข้อที่ถูก
+- ความยาวของทุกตัวเลือกต่างกันไม่เกินประมาณ 20%
+- จำนวนตัวเลือกเท่าเดิม ลำดับเดิม ข้อที่ถูกยังอยู่ตำแหน่ง ${q.answer} ห้ามใส่ ก ข ค ง หน้าตัวเลือก
+ตอบเป็น JSON เท่านั้น: {"choices":["ตัวเลือก0","ตัวเลือก1"]}`,{signal});
+  const ch=r&&Array.isArray(r.choices)?r.choices.map(t=>String(t||'').trim()):[];
+  if(ch.length!==q.choices.length||ch.some(t=>!t))return null;
+  const nq={...q,choices:ch};if(lenTell(nq))return null;
+  const order=shuffle(ch.map((_,j)=>j));
+  const r2=await aiJSON(`แก้ข้อสอบปรนัยข้อนี้ คิดทีละขั้นอย่างรอบคอบ แล้วเลือกคำตอบที่ถูกที่สุด
+โจทย์: ${q.stem}
+ตัวเลือก:
+${order.map((j,i)=>`${i}) ${ch[j]}`).join('\n')}
+ถ้าไม่มีตัวเลือกที่ถูก หรือถูกมากกว่าหนึ่งข้อ ให้ answer เป็น -1
+ตอบเป็น JSON เท่านั้น: {"answer":0}`,{signal});
+  const a=r2&&Number.isInteger(+r2.answer)&&+r2.answer>=0&&+r2.answer<order.length?order[+r2.answer]:-1;
+  return a===q.answer?nq:null;
+}
+/* ปรับแล้วบันทึก qfix · คืน true เมื่อสำเร็จ */
+async function balanceSave(q,signal){
+  const key=q.origKey||qKey(q);if(QFIX.has(key))return true;
+  const nq=await balanceChoices(q,signal);if(!nq)return false;
+  const rec={stem:q.stem,choices:nq.choices,answer:q.answer,steps:[],why:'ปรับความยาวตัวเลือกให้ใกล้กัน เดิมข้อที่ถูกยาวกว่าข้ออื่นจนเดาได้',sources:[],verdict:'balance',
+    origAnswer:q.answer,origStem:String(q.stem).slice(0,1500),origChoices:q.choices.slice(),sub:q.sub||'',at:Date.now(),uid:ME?ME.uid:'',name:ME?ME.name:''};
+  let shared=false;
+  if(typeof ME!=='undefined'&&ME){try{const f=await fb();await f.fs.setDoc(fsDoc('qfix',key),rec);shared=true}catch(e){console.warn('qfix balance',e&&e.code||e)}}
+  QFIX.set(key,shared?rec:{...rec,localOnly:true});saveQFixLocal();
+  return true;
+}
+/* ข้อที่ยังเดาง่าย: ข้อสอบจริงในคลัง + โจทย์ในคลังโจทย์กลางที่โหลดไว้แล้ว (ข้อที่ปรับไม่ผ่าน เว้นไว้ 7 วัน) */
+const BAL_KEY='exam-bal-fail';let BALFAIL={};try{BALFAIL=JSON.parse(localStorage.getItem(BAL_KEY)||'{}')||{}}catch(e){BALFAIL={}}
+function tellQueue(){
+  const out=[],seen=new Set(),now=Date.now();
+  const add=q=>{if(!q||!q.stem||!lenTell(q))return;const k=qKey(q);if(seen.has(k)||QFIX.has(k)||(BALFAIL[k]&&now-BALFAIL[k]<7*864e5))return;seen.add(k);out.push(q)};
+  for(const c of bankItems())if(c.q)add({stem:c.q.stem,choices:c.q.choices,answer:c.q.answer,sub:''});
+  if(typeof POOL!=='undefined')for(const [sub,v] of POOL.cache)for(const d of (v&&v.docs)||[])for(const raw of d.items||[]){try{const x=JSON.parse(raw);add({stem:x.stem,choices:x.choices,answer:x.answer,sub})}catch(e){}}
+  return out;
+}
+async function balanceSome(n,route){
+  const list=tellQueue().slice(0,n);let ok=0;
+  for(const q of list){const sig=Object.assign(new AbortController().signal,{route});
+    let done=false;try{done=await balanceSave(q,sig)}catch(e){if(e&&e.code==='cancelled')break;console.warn('balance',e&&e.code||e)}
+    if(done)ok++;else{BALFAIL[qKey(q)]=Date.now();try{localStorage.setItem(BAL_KEY,JSON.stringify(BALFAIL))}catch(e){}}}
+  return{ok,tried:list.length};
 }
 
 /* ผู้ตรวจยกเลิกการแก้ */

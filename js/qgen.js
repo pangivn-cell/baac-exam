@@ -61,6 +61,10 @@ async function qgenRun(s,k,manual){
       if(!items.length&&p&&p!=='claude'){by=p;items=await run({p,model:''})}
     }
     items=items.filter(q=>q&&q.gen==='ai');
+    /* ข้อที่เดาจากความยาวได้: ปรับตัวเลือกก่อนเก็บ ปรับไม่ผ่านก็ไม่เก็บ */
+    const fixed=[];for(const q of items){if(!lenTell(q)){fixed.push(q);continue}
+      try{const nq=await balanceChoices(q,Object.assign(new AbortController().signal,{route:by==='local'?route:{p:by,model:''}}));if(nq)fixed.push(nq)}catch(e){}}
+    items=fixed;
     if(items.length)await poolPut(s,level,items.map(q=>({...q,qgen:by})));
     QGEN.log.unshift({at:Date.now(),sub:s.name,n:items.length,by,level});QGEN.log=QGEN.log.slice(0,30);
     if(QGEN.counts&&QGEN.counts[s.id]){QGEN.counts[s.id].pool+=items.length;QGEN.counts[s.id].total+=items.length}
@@ -81,7 +85,11 @@ async function qgenTick(){
   const cnt=await qgenCounts();
   const need=SUBJ.filter(s=>qgenSubj(s)&&cnt[s.id]&&cnt[s.id].total<QGEN.min&&qgenRoute(s))
     .sort((a,b)=>cnt[a.id].total-cnt[b.id].total);
-  if(!need.length)return;
+  if(!need.length){
+    QGEN.busy='balance';
+    try{const r=await balanceSome(3,{p:'local',model:LLMHOST.model});if(r.ok){QGEN.balDone=(QGEN.balDone||0)+r.ok;if(VIEW==='qgen')renderQGen()}}
+    finally{QGEN.busy='';}
+    return}
   const s=need[0];
   try{await poolDocs(s);const r=await qgenRun(s,Math.min(QGEN_BATCH,QGEN.min-cnt[s.id].total));
     if(r.n)toast(`เติมโจทย์ “${s.name}” ${r.n} ข้อ (${AINAME[r.by]||r.by}) · มี ${cnt[s.id].total} จาก ${QGEN.min} ข้อ`)}
@@ -121,18 +129,26 @@ function renderQGen(){
   const grp=(t,l)=>l.length?`<section class="hsec"><div class="hsech"><h2>${t}</h2></div>${l.map(row).join('')}</section>`:'';
   const gen=SUBJ.filter(s=>s.group==='gen'),spec=SUBJ.filter(s=>s.group==='spec'&&s.id!=='specall');
   const due=SUBJ.filter(s=>qgenSubj(s)&&cnt[s.id]&&cnt[s.id].total<QGEN.min).length;
+  const tells=tellQueue().length,balRt=localUp()?{p:'local',model:LLMHOST.model}:(cloud&&cloud!=='claude'?{p:cloud,model:''}:null);
   el.innerHTML=`<div class="qgtop">
       <label class="rad"><input type="checkbox" id="qg-auto" ${QGEN.auto?'checked':''}><span><b>เติมโจทย์อัตโนมัติเมื่อว่าง</b><span class="src">${host?'เครื่องนี้มี AI ในเครื่อง เติมให้ได้':'ทำงานเฉพาะเครื่องที่เปิด AI ในเครื่องไว้ (ตั้งที่ ตั้งค่า AI → AI ในเครื่องนี้)'}</span></span></label>
       <div class="hopt"><label for="qg-min">ขั้นต่ำต่อวิชา</label><input class="tx" type="number" id="qg-min" min="10" max="500" step="10" value="${QGEN.min}" style="width:90px"><span class="src">ข้อ</span>
         <button class="ghost" id="qg-re">นับใหม่</button>${typeof isReviewerMe==='function'&&isReviewerMe()?'<button class="ghost" id="qg-merge">🔗 รวมรายวิชา</button>':''}</div>
-      <p class="src">AI ในเครื่อง: ${host?'<b class="okt">พร้อม</b>':'ไม่พร้อม'} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา${QGEN.busy?` · กำลังสร้าง “${esc((SUBJ.find(s=>s.id===QGEN.busy)||{}).name||'')}”`:''}</p>
+      <p class="src">AI ในเครื่อง: ${host?'<b class="okt">พร้อม</b>':'ไม่พร้อม'} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา${QGEN.busy==='balance'?' · กำลังปรับตัวเลือกที่เดาง่าย':QGEN.busy?` · กำลังสร้าง “${esc((SUBJ.find(s=>s.id===QGEN.busy)||{}).name||'')}”`:''}</p>
     </div>
+    <section class="hsec"><div class="hsech"><h2>⚖️ ตัวเลือกที่เดาจากความยาวได้</h2></div>
+      <p class="src">ข้อที่คำตอบที่ถูกยาวกว่าตัวเลือกอื่นชัดเจน ระบบให้ AI ย่อข้อถูกและเขียนตัวลวงให้ยาวใกล้กัน แล้วให้ AI แก้โจทย์ใหม่โดยไม่เห็นเฉลย ต้องได้ข้อเดิมจึงใช้ฉบับใหม่ (ทุกคนเห็น) ระหว่างรอปรับ ข้อเหล่านี้ถูกหยิบมาน้อยลง เครื่องที่เปิด AI ในเครื่องปรับให้เองเมื่อว่าง</p>
+      <div class="hopt"><b>${tells?`รอปรับ ${tells} ข้อ`:'✓ ไม่มีข้อที่เดาจากความยาวได้'}</b>${QGEN.balDone?`<span class="src">ปรับแล้วรอบนี้ ${QGEN.balDone} ข้อ</span>`:''}
+        ${tells?`<button class="ghost" id="qg-bal" ${QGEN.busy||!balRt?'disabled':''}>${QGEN.busy==='balance'?'⏳ กำลังปรับ...':`ปรับเลย 5 ข้อ${balRt?` (${esc(AINAME[balRt.p]||balRt.p)})`:''}`}</button>`:''}</div></section>
     ${grp('ความรู้ความสามารถทั่วไป',gen)}${grp(typeof SPEC_LABEL!=='undefined'?SPEC_LABEL:'ความรู้เฉพาะตำแหน่ง',spec)}
     ${QGEN.log.length?`<section class="hsec"><div class="hsech"><h2>🕘 ประวัติการสร้าง</h2></div><div class="hrec">${QGEN.log.slice(0,12).map(l=>`<div class="hrecr"><div><b>${esc(l.sub)}</b><span class="src">${fmtDate(l.at)}${l.level?` · ระดับ ${l.level}`:''}</span></div><span class="src">${l.err?'ไม่สำเร็จ: '+esc(l.err):esc(AINAME[l.by]||l.by||'')}</span><b class="${l.n?'okt':'badt'}">${l.n?'+'+l.n:'0'}</b></div>`).join('')}</div></section>`:''}`;
   const $=id=>document.getElementById(id);
   $('qg-auto').onchange=e=>{QGEN.auto=e.target.checked;saveQGen();if(QGEN.auto)qgenTick()};
   $('qg-min').onchange=e=>{QGEN.min=Math.max(10,Math.min(500,Math.round(+e.target.value/10)*10||50));saveQGen();renderQGen()};
   if($('qg-merge'))$('qg-merge').onclick=()=>mergeSubjectsDialog();
+  if($('qg-bal'))$('qg-bal').onclick=async()=>{QGEN.busy='balance';renderQGen();let r={ok:0,tried:0};
+    try{r=await balanceSome(5,balRt)}catch(e){toast('ปรับไม่สำเร็จ: '+errCopy(e&&e.code,'ปรับตัวเลือก'),'bad')}finally{QGEN.busy=''}
+    QGEN.balDone=(QGEN.balDone||0)+r.ok;toast(`ปรับตัวเลือกแล้ว ${r.ok} จาก ${r.tried} ข้อ${r.tried>r.ok?' (ข้อที่ไม่ผ่านการตรวจซ้ำ จะลองใหม่ใน 7 วัน)':''}`);renderQGen()};
   $('qg-re').onclick=async()=>{QGEN.counts=null;POOL.cache.clear();renderQGen()};
   el.querySelectorAll('[data-qgdel]').forEach(b=>b.onclick=async()=>{await deleteSubject(b.dataset.qgdel);QGEN.counts=null;setTimeout(renderQGen,300)});
   el.querySelectorAll('[data-qg]').forEach(b=>b.onclick=async()=>{const s=SUBJ.find(x=>x.id===b.dataset.qg);if(!s)return;

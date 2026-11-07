@@ -57,7 +57,17 @@ async function pingLocal(){
 const localUp=()=>!!(LLMHOST.on&&LOCALAI.up);
 const cfgOf=prov=>prov==='local'?LLMHOST:AIP[prov];
 const KEY_PROVS=['gemini','openai','anthropic','meta','custom'];
-const provReady=p=>p==='custom'?!!(AIP.custom.url&&AIP.custom.model):!!(AIP[p]&&AIP[p].key);
+/* หลาย key ต่อผู้ให้บริการ (ไม่จำกัด): AIP[p].keys = ทุก key, AIP[p].key = key ที่ใช้อยู่ตอนนี้
+   key ที่โควตา/เครดิตหมดพัก 30 นาที · ถูกจำกัดความถี่พัก 1 นาที · key ผิดพักจนกว่าจะแก้ key
+   ระบบสลับไป key ถัดไปของผู้ให้บริการเดียวกันก่อน ครบทุก key แล้วจึงเปลี่ยนไปผู้ให้บริการอื่น (aiText) */
+const keysOf=p=>{const c=AIP[p];if(!c)return[];const ks=Array.isArray(c.keys)?c.keys:[c.key];return [...new Set(ks.map(k=>String(k||'').trim()).filter(Boolean))]};
+const KEY_DOWN={},KEY_SWITCH=['quota','no_credit','bad_key','rate_limited'];
+const KEY_WHY={};
+const liveKeys=p=>{const now=Date.now();return keysOf(p).filter(k=>!(KEY_DOWN[k]>now))};
+/* ใช้ key ที่ยังไม่พัก (ถ้าพักหมดใช้ตัวแรก) */
+const pickKey=p=>{const c=AIP[p];if(!c)return'';const k=liveKeys(p)[0]||keysOf(p)[0]||'';if(k)c.key=k;return k};
+for(const p of ['gemini','openai','anthropic','meta','custom'])if(AIP[p]&&!Array.isArray(AIP[p].keys))AIP[p].keys=AIP[p].key?[AIP[p].key]:[];
+const provReady=p=>p==='custom'?!!(AIP.custom.url&&AIP.custom.model):keysOf(p).length>0;
 /* ผู้ให้บริการ+โมเดลที่ใช้กับงานนั้น: task 'proc' (ประมวลผลไฟล์) ใช้ตัวที่ตั้งแยกไว้ถ้าตั้งไว้ ไม่งั้นใช้ตัวหลัก */
 function aiRoute(task){
   /* PROC_CLOUD: ไฟล์ที่ส่งต่อให้คลาวด์ (หน้าภาพ / AI ในเครื่องย่อยไม่ได้) ใช้ AI ตัวหลักแม้เครื่องนี้มี AI ในเครื่อง */
@@ -92,12 +102,23 @@ const DEAD_MODELS=new Set();
 let LAST_MODEL='';
 const sleep=(ms,signal)=>new Promise((ok,no)=>{const t=setTimeout(ok,ms);if(signal)signal.addEventListener('abort',()=>{clearTimeout(t);no({code:'cancelled'})},{once:true})});
 async function keyCall(prov,input,json,signal,model0){
+  const ks=prov==='local'?[]:keysOf(prov);
+  if(ks.length<2)return keyCall1(prov,input,json,signal,model0);
+  const now=Date.now(),live=ks.filter(k=>!(KEY_DOWN[k]>now)),list=live.length?live:ks;let err;
+  for(const k of list){AIP[prov].key=k;
+    try{const t=await keyCall1(prov,input,json,signal,model0);delete KEY_WHY[k];return t}
+    catch(e){if(!e||!KEY_SWITCH.includes(e.code))throw e;err=e;
+      KEY_DOWN[k]=Date.now()+(e.code==='bad_key'?864e5:e.code==='rate_limited'?60e3:30*60e3);KEY_WHY[k]=e.code}
+  }
+  throw err;
+}
+async function keyCall1(prov,input,json,signal,model0){
   const first=model0||cfgOf(prov).model;
   const models=(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
   let lastErr,keyErr;
   for(const model of models){
     for(let attempt=0;attempt<3;attempt++){
-      try{const t=await keyCallOnce(prov,model,input,json,signal);LAST_MODEL=model;return t}
+      try{if(prov!=='local'&&keysOf(prov).length===1)AIP[prov].key=keysOf(prov)[0];const t=await keyCallOnce(prov,model,input,json,signal);LAST_MODEL=model;return t}
       catch(e){lastErr=e;if(e&&typeof e==='object'){e.prov=prov;e.model=model}
         if(e.code==='bad_model'&&prov==='gemini'&&model!==first)DEAD_MODELS.add(prov+':'+model);
         if(e.code!=='bad_model')keyErr=keyErr||e;
@@ -180,7 +201,7 @@ const canWeb=()=>!inViewer&&WEB_PROVS.includes(activeAI());
 const textOnly=turns=>normTurns(turns).map(t=>({role:t.role,content:typeof t.content==='string'?t.content:t.content.text}));
 function uniqSrc(list){const seen=new Set(),out=[];for(const s of list){if(!s||!s.url||seen.has(s.url))continue;seen.add(s.url);out.push({url:String(s.url),title:String(s.title||s.url).slice(0,120)})}return out.slice(0,6)}
 async function aiWeb(input,{signal}={}){
-  const p=activeAI();if(!WEB_PROVS.includes(p))throw{code:'no_web'};
+  const p=activeAI();if(!WEB_PROVS.includes(p))throw{code:'no_web'};pickKey(p);
   const turns=textOnly(input);
   if(p==='anthropic'){
     const c=await anthClient();let msg;
@@ -242,6 +263,14 @@ function errCopy(code,what){
   if(code==='quota')return 'โควตาฟรีของ AI หมดแล้ว ระบบจะประมวลผลต่อเองเมื่อโควตากลับมา (ทุก 60 นาที / วันถัดไป) หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
   return code==='rate_limited'?`${what}ถี่เกินไปหรือโควตาหมด รอสักครู่แล้วลองใหม่`:code==='bad_key'?'API key ไม่ถูกต้องหรือไม่มีสิทธิ์ ตรวจในตั้งค่า AI':code==='bad_model'?'ไม่พบชื่อโมเดลนี้ แก้ชื่อโมเดลในตั้งค่า AI':code==='overloaded'?'เซิร์ฟเวอร์ AI มีคนใช้เยอะชั่วคราว ระบบลองซ้ำและลองโมเดลสำรองแล้วยังไม่ได้ รอสักครู่แล้วลองใหม่':code==='network'?'เชื่อมต่อผู้ให้บริการ AI ไม่ได้ ตรวจอินเทอร์เน็ต':code==='session_expired'?'กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง':code==='invalid_json'||code==='truncated'?'ได้โจทย์ไม่ครบ ลองลดจำนวนข้อแล้วสร้างใหม่':(code==='refused'||code==='empty_completion')?'AI ไม่ตอบข้อนี้ ลองใหม่อีกครั้ง':`${what}ไม่สำเร็จ ลองใหม่อีกครั้ง`;
 }
+/* ช่องใส่ key แบบหลายแถว: แต่ละแถวมีเลขลำดับ สถานะ (พัก/ใช้ไม่ได้) และปุ่มลบ */
+const KEY_LBL={quota:'โควตาหมด',no_credit:'เครดิตหมด',bad_key:'key ใช้ไม่ได้',rate_limited:'ถูกจำกัดความถี่'};
+function keyRow(p,k,i,ph){
+  const down=k&&KEY_DOWN[k]>Date.now(),why=k&&KEY_WHY[k],cur=k&&AIP[p]&&AIP[p].key===k&&keysOf(p).length>1;
+  return `<div class="keyrow"><span class="keyn">${i+1}</span><input class="tx" type="password" autocomplete="off" value="${esc(k)}" placeholder="${esc(ph||'')}" aria-label="${esc(AINAME[p])} key ${i+1}">
+    ${down?`<span class="keyst bad" title="ระบบข้าม key นี้ชั่วคราว">${esc(KEY_LBL[why]||'พักอยู่')}</span>`:cur?'<span class="keyst ok">ใช้อยู่</span>':''}<button type="button" class="ghost keydel" data-delkey aria-label="ลบ key ${i+1}">✕</button></div>`;
+}
+const keyList=(p,ph)=>{const ks=keysOf(p);return `<div class="keys" data-keys="${p}" data-ph="${esc(ph)}">${(ks.length?ks:['']).map((k,i)=>keyRow(p,k,i,ph)).join('')}</div><button type="button" class="ghost keyadd" data-addkey="${p}">+ เพิ่ม key</button>`};
 function renderAISet(){
   const pill=document.getElementById('aipill'),body=document.getElementById('aibody');
   const a=activeAI();if(pill)pill.textContent=a?AINAME[a]:'ยังไม่ตั้ง';
@@ -249,18 +278,18 @@ function renderAISet(){
   if(inViewer){body.innerHTML=`<p class="hint">เปิดผ่าน Claude อยู่ ระบบใช้ Claude ของบัญชีคุณโดยอัตโนมัติ</p><p class="hint">Gemini และ OpenAI ใช้ได้เมื่อเปิดจากไฟล์ exam-practice.html ในเครื่อง เพราะหน้าที่เปิดใน Claude เชื่อมต่อเว็บอื่นไม่ได้</p>`;return}
   const g=AIP.gemini,o=AIP.openai;
   body.innerHTML=`<div class="field"><label for="aiprov">ใช้ AI จาก</label><select id="aiprov"><option value="auto">อัตโนมัติ (ตัวที่มี key)</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Claude API</option><option value="meta">Meta (Muse Spark)</option><option value="custom">ผู้ให้บริการอื่น (OpenAI-compatible)</option></select></div>
-   <div class="field"><label for="gkey">Gemini API key</label><input class="tx" id="gkey" type="password" autocomplete="off" placeholder="วาง key ที่นี่ (ขึ้นต้น AIza)"><a class="klink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">สร้าง Gemini key ↗</a></div>
+   <div class="field"><span class="fl">Gemini API key</span>${keyList('gemini','วาง key ที่นี่ (ขึ้นต้น AIza)')}<a class="klink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">สร้าง Gemini key ↗</a></div>
    <div class="field"><label for="gmodel">โมเดล Gemini</label><input class="tx" id="gmodel" type="text" autocomplete="off"></div>
-   <div class="field"><label for="okey">OpenAI API key</label><input class="tx" id="okey" type="password" autocomplete="off" placeholder="sk-..."><a class="klink" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">สร้าง OpenAI key ↗</a></div>
+   <div class="field"><span class="fl">OpenAI API key</span>${keyList('openai','sk-...')}<a class="klink" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">สร้าง OpenAI key ↗</a></div>
    <div class="field"><label for="omodel">โมเดล OpenAI</label><input class="tx" id="omodel" type="text" autocomplete="off"></div>
-   <div class="field"><label for="akey">Claude API key</label><input class="tx" id="akey" type="password" autocomplete="off" placeholder="sk-ant-..."><a class="klink" href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">สร้าง Claude key ↗</a></div>
+   <div class="field"><span class="fl">Claude API key</span>${keyList('anthropic','sk-ant-...')}<a class="klink" href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">สร้าง Claude key ↗</a></div>
    <div class="field"><label for="amodel">โมเดล Claude</label><input class="tx" id="amodel" type="text" autocomplete="off" list="amodels"><datalist id="amodels"><option value="claude-opus-5-5"><option value="claude-sonnet-5-5"><option value="claude-haiku-5-5"></datalist></div>
-   <div class="field"><label for="mkey">Meta API key</label><input class="tx" id="mkey" type="password" autocomplete="off" placeholder="วาง Meta Model API key"><a class="klink" href="https://dev.meta.ai/" target="_blank" rel="noopener">สร้าง Meta key ↗</a></div>
+   <div class="field"><span class="fl">Meta API key</span>${keyList('meta','วาง Meta Model API key')}<a class="klink" href="https://dev.meta.ai/" target="_blank" rel="noopener">สร้าง Meta key ↗</a></div>
    <div class="field"><label for="mmodel">โมเดล Meta</label><input class="tx" id="mmodel" type="text" autocomplete="off" list="mmodels"><datalist id="mmodels"><option value="muse-spark-1.3"><option value="muse-spark-1.3-contributor"></datalist></div>
    <details class="howto"${AIP.custom.url?' open':''}><summary>ผู้ให้บริการอื่น / AI ในเครื่อง (OpenAI-compatible)</summary>
    <p class="hint">ใช้ได้กับ OpenRouter, DeepSeek, Typhoon (โมเดลภาษาไทย), Groq และ AI ที่รันในเครื่องเอง (Ollama, LM Studio) ฟรีไม่ต้องใช้ key</p>
    <div class="field"><label for="curl">URL ของบริการ</label><input class="tx" id="curl" type="text" autocomplete="off" list="curls" placeholder="https://openrouter.ai/api/v1"><datalist id="curls"><option value="https://openrouter.ai/api/v1">OpenRouter</option><option value="https://api.deepseek.com/v1">DeepSeek</option><option value="https://api.opentyphoon.ai/v1">Typhoon</option><option value="https://api.groq.com/openai/v1">Groq</option><option value="http://localhost:11434/v1">Ollama ในเครื่อง</option><option value="http://localhost:1234/v1">LM Studio ในเครื่อง</option></datalist></div>
-   <div class="field"><label for="ckey">API key (AI ในเครื่องเว้นว่างได้)</label><input class="tx" id="ckey" type="password" autocomplete="off"></div>
+   <div class="field"><span class="fl">API key (AI ในเครื่องเว้นว่างได้)</span>${keyList('custom','')}</div>
    <div class="field"><label for="cmodel">ชื่อโมเดล</label><input class="tx" id="cmodel" type="text" autocomplete="off" placeholder="เช่น deepseek-chat, qwen3:14b"></div>
    <label class="rad"><input type="checkbox" id="cvis"><span>โมเดลนี้อ่านรูปได้ (ใช้อ่านหน้า PDF ที่ข้อความเพี้ยนและรูปประกอบ)</span></label>
    <p class="hint">Ollama: ต้องเปิดให้เว็บเรียกได้ก่อน โดยตั้งตัวแปร OLLAMA_ORIGINS=* แล้วเปิด Ollama ใหม่ · AI ในเครื่องใช้ได้เฉพาะเครื่องที่รันอยู่</p></details>
@@ -273,6 +302,7 @@ function renderAISet(){
    <div class="field"><label for="pprov">AI สำหรับประมวลผลไฟล์ (ประหยัดเครดิต)</label><select id="pprov"><option value="same">ผู้ให้บริการเดียวกับด้านบน</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Claude API</option><option value="meta">Meta</option><option value="custom">ผู้ให้บริการอื่น</option></select></div>
    <div class="field"><label for="pmodel">โมเดลสำหรับประมวลผลไฟล์ (เว้นว่าง = โมเดลเดิมของผู้ให้บริการนั้น)</label><input class="tx" id="pmodel" type="text" autocomplete="off" list="pmodels" placeholder="เช่น gemini-flash-lite-latest"><datalist id="pmodels"><option value="gemini-flash-lite-latest"><option value="gpt-5-nano"><option value="gpt-5-mini"><option value="claude-haiku-5-5"><option value="muse-spark-1.3-contributor"></datalist></div>
    <p class="hint">งานอ่านไฟล์ ย่อยบัตรความรู้ และดึงข้อสอบจากไฟล์ ใช้ AI มากที่สุด ตั้งเป็นโมเดลราคาถูกตรงนี้ได้ ส่วนการออกข้อสอบและติวเตอร์ยังใช้ตัวด้านบน${(()=>{const r=aiRoute('proc');return r.p?` · ตอนนี้ประมวลผลไฟล์ด้วย ${AINAME[r.p]}${r.model?' · '+esc(r.model):''}`:''})()}</p>
+   <p class="hint">ใส่ key ได้หลายอันไม่จำกัดต่อผู้ให้บริการ (กด + เพิ่ม key) เมื่อ key ไหนโควตาหรือเครดิตหมด ระบบสลับไปใช้ key ถัดไปเอง ครบทุก key แล้วจึงเปลี่ยนไปผู้ให้บริการอื่น</p>
    <div class="btns"><button class="primary" id="aisave">บันทึก</button><button class="ghost" id="aitest">ทดสอบ</button><button class="ghost" id="aiclear">ลบ key</button></div>
    <p class="hint" id="aistat"></p>
    <p class="hint ${AISYNC.bad?'err':'ok'}" id="aisync">${esc(AISYNC.msg||((typeof ME!=='undefined'&&ME)?'':'เข้าสู่ระบบเพื่อเก็บ key ไว้กับบัญชี ใช้ได้ทุกเครื่อง'))}</p>
@@ -304,16 +334,19 @@ function renderAISet(){
 </ol><p class="hint">Meta ปิด Llama API เดิมไปแล้ว (ก.ค. 2569) ตอนนี้ใช้ Meta Model API กับโมเดล Muse Spark · โมเดล -contributor ราคาถูกกว่า · อ่านรูปในเอกสารได้ แต่ไม่มีดัชนีค้นหาตามความหมาย</p></details>
 <p class="hint">key ถูกเก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น อย่าใช้ในเครื่องสาธารณะ และอย่าส่ง key ให้คนอื่น ค่าใช้จ่ายคิดกับบัญชีของ key นั้น</p>`;
   const $=id=>document.getElementById(id);
-  $('aiprov').value=AIP.provider;$('gkey').value=g.key;$('gmodel').value=g.model;$('okey').value=o.key;$('omodel').value=o.model;$('akey').value=AIP.anthropic.key;$('amodel').value=AIP.anthropic.model;$('mkey').value=AIP.meta.key;$('mmodel').value=AIP.meta.model;
-  $('curl').value=AIP.custom.url;$('ckey').value=AIP.custom.key;$('cmodel').value=AIP.custom.model;$('cvis').checked=!!AIP.custom.vision;$('pprov').value=AIP.proc.provider||'same';$('pmodel').value=AIP.proc.model||'';
+  $('aiprov').value=AIP.provider;$('gmodel').value=g.model;$('omodel').value=o.model;$('amodel').value=AIP.anthropic.model;$('mmodel').value=AIP.meta.model;
+  $('curl').value=AIP.custom.url;$('cmodel').value=AIP.custom.model;$('cvis').checked=!!AIP.custom.vision;$('pprov').value=AIP.proc.provider||'same';$('pmodel').value=AIP.proc.model||'';
   $('hon').checked=!!LLMHOST.on;$('hurl').value=LLMHOST.url;$('hmodel').value=LLMHOST.model;$('hvis').checked=!!LLMHOST.vision;
-  const read=()=>{AIP.provider=$('aiprov').value;AIP.gemini={key:$('gkey').value.trim(),model:$('gmodel').value.trim()||'gemini-flash-latest'};AIP.openai={key:$('okey').value.trim(),model:$('omodel').value.trim()||'gpt-5-mini'};AIP.anthropic={key:$('akey').value.trim(),model:$('amodel').value.trim()||'claude-opus-5-5'};AIP.meta={key:$('mkey').value.trim(),model:$('mmodel').value.trim()||'muse-spark-1.3'};
-    AIP.custom={url:$('curl').value.trim(),key:$('ckey').value.trim(),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()};
+  const kv=p=>{const ks=[...new Set([...document.querySelectorAll(`[data-keys="${p}"] input`)].map(x=>x.value.trim()).filter(Boolean))];return{keys:ks,key:ks[0]||''}};
+  const read=()=>{AIP.provider=$('aiprov').value;AIP.gemini={...kv('gemini'),model:$('gmodel').value.trim()||'gemini-flash-latest'};AIP.openai={...kv('openai'),model:$('omodel').value.trim()||'gpt-5-mini'};AIP.anthropic={...kv('anthropic'),model:$('amodel').value.trim()||'claude-opus-5-5'};AIP.meta={...kv('meta'),model:$('mmodel').value.trim()||'muse-spark-1.3'};
+    AIP.custom={url:$('curl').value.trim(),...kv('custom'),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()};
     LLMHOST={on:$('hon').checked,url:$('hurl').value.trim()||'http://localhost:11434/v1',model:$('hmodel').value.trim()||'gemma3:12b',vision:$('hvis').checked};saveHost()};
   const stat=(t,c)=>{const e=$('aistat');e.textContent=t;e.className='hint '+(c||'')};
   $('aisave').onclick=()=>{read();saveAI();if(typeof hostTick==='function')hostTick().then(()=>{renderAISet();if(typeof renderKB==='function'&&VIEW==='kb')renderKB()});renderAISet();aiChanged();document.getElementById('aistat').textContent=activeAI()?`บันทึกแล้ว ใช้ ${AINAME[activeAI()]}`:'บันทึกแล้ว แต่ยังไม่มี key ที่ใช้ได้'};
   $('aisyncbtn').onclick=async()=>{if(typeof ME==='undefined'||!ME){aiSyncMsg('เข้าสู่ระบบก่อน แล้วกดอีกครั้ง',true);return}aiSyncMsg('กำลังซิงก์...');await pullAIP()};
-  $('aiclear').onclick=()=>{for(const x of KEY_PROVS)AIP[x].key='';saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent='ลบ key แล้ว'};
+  body.querySelectorAll('[data-addkey]').forEach(b=>b.onclick=()=>{const box=body.querySelector(`[data-keys="${b.dataset.addkey}"]`);box.insertAdjacentHTML('beforeend',keyRow(b.dataset.addkey,'',box.children.length,box.dataset.ph));box.lastElementChild.querySelector('input').focus()});
+  if(!body._kd){body._kd=1;body.addEventListener('click',e=>{const b=e.target.closest('[data-delkey]');if(!b)return;const row=b.closest('.keyrow'),box=row.parentElement;if(box.children.length>1)row.remove();else row.querySelector('input').value='';box.querySelectorAll('.keyn').forEach((n,i)=>n.textContent=i+1)})}
+  $('aiclear').onclick=()=>{for(const x of KEY_PROVS){AIP[x].key='';AIP[x].keys=[]}saveAI();renderAISet();aiChanged();document.getElementById('aistat').textContent='ลบ key แล้ว'};
   $('aitest').onclick=async()=>{read();saveAI();
     if(LLMHOST.on){stat('กำลังทดสอบ AI ในเครื่อง...');await pingLocal();
       if(!localUp()){stat(LOCALAI.why,'err');return}
@@ -326,6 +359,13 @@ function renderAISet(){
       const r=aiRoute('proc');if(r.p!==a2||r.model){stat(msg+' · กำลังทดสอบ AI ประมวลผลไฟล์...','ok');
         try{const j=await aiJSON('ตอบเป็น JSON เท่านั้น: {"ok":true}',{task:'proc'});msg+=` · ประมวลผลไฟล์: ${AINAME[r.p]} (โมเดล ${LAST_MODEL}) ${j&&j.ok?'ใช้งานได้':'ตอบแต่ไม่ใช่ JSON ที่ถูกต้อง'}`}
         catch(e2){stat(msg+' · AI ประมวลผลไฟล์ใช้ไม่ได้: '+errCopy(e2&&e2.code,'ทดสอบ')+(r.p==='custom'&&e2&&e2.code==='network'?' (ตรวจ URL และถ้าเป็น Ollama ต้องตั้ง OLLAMA_ORIGINS)':''),'err');return}}
+      const multi=KEY_PROVS.filter(p=>p!=='custom'&&keysOf(p).length>1);
+      if(multi.length){stat(msg+' · กำลังทดสอบทุก key...','ok');const rep=[];
+        for(const p of multi){const ks=keysOf(p);for(let i=0;i<ks.length;i++){AIP[p].key=ks[i];
+          try{await keyCall1(p,'ตอบกลับคำว่า พร้อม เพียงคำเดียว',false);delete KEY_DOWN[ks[i]];delete KEY_WHY[ks[i]];rep.push(`${AINAME[p]} key ${i+1} ✓`)}
+          catch(e){if(KEY_SWITCH.includes(e&&e.code)){KEY_DOWN[ks[i]]=Date.now()+(e.code==='bad_key'?864e5:30*60e3);KEY_WHY[ks[i]]=e.code}rep.push(`${AINAME[p]} key ${i+1} ✗ ${KEY_LBL[e&&e.code]||errCopy(e&&e.code,'ทดสอบ')}`)}}
+          pickKey(p)}
+        msg+='\n'+rep.join(' · ');renderAISet();document.getElementById('aistat').style.whiteSpace='pre-wrap'}
       stat(msg,'ok');renderAISetPill();aiChanged()}
     catch(e){const cr=e&&(e.code==='no_credit'||e.code==='quota');stat((cr?'💳 ':'')+errCopy(e&&e.code,'ทดสอบ')+(e&&e.message&&!cr?` (${String(e.message).slice(0,120)})`:''),cr?'':'err')}};
 }

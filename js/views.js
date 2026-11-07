@@ -104,7 +104,7 @@ function renderWelcome(){
   if($('wg'))$('wg').onclick=async()=>{const f=await fb().catch(()=>null);if(!f)return;try{await f.au.signInWithPopup(f.auth,new f.au.GoogleAuthProvider());toast('เข้าสู่ระบบแล้ว')}catch(e){const c=String(e&&e.code||'');toast(c.includes('popup-blocked')?'เบราว์เซอร์บล็อกหน้าต่างล็อกอิน กดอนุญาตป๊อปอัปแล้วลองใหม่':'เข้าสู่ระบบไม่สำเร็จ','bad')}};
   if($('wm'))$('wm').onclick=()=>loginDialog();
   if($('wks'))$('wks').onclick=async()=>{const k=$('wkey').value.trim();if(!/^AIza/.test(k)){$('wkst').textContent='key ของ Gemini ต้องขึ้นต้นด้วย AIza';return}
-    AIP.gemini.key=k;if(AIP.provider==='openai')AIP.provider='auto';saveAI();renderAISet();aiChanged();$('wkst').textContent='กำลังทดสอบ key...';
+    AIP.gemini.key=k;AIP.gemini.keys=[...new Set([k,...keysOf('gemini')])];if(AIP.provider==='openai')AIP.provider='auto';saveAI();renderAISet();aiChanged();$('wkst').textContent='กำลังทดสอบ key...';
     try{await aiText('ตอบกลับคำว่า พร้อม เพียงคำเดียว');toast('ใช้ AI ได้แล้ว');renderWelcome()}catch(e){$('wkst').textContent=errCopy(e&&e.code,'ทดสอบ')}};
   $('wgo').onclick=()=>{welcomeSkip=true;try{sessionStorage.setItem('exam-onboard-skip','1')}catch(e){}setView('home')};
 }

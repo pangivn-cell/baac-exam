@@ -44,6 +44,13 @@ input.tx,select{font-size:15px;box-sizing:border-box;width:100%;padding:7px 8px;
 .aiset.aipage .bd{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;align-items:start;padding:0}
 .aipage .bd>.field:first-child{grid-column:1/-1;max-width:420px}
 @media (max-width:640px){.aiset.aipage .bd{grid-template-columns:minmax(0,1fr)}}
+.pcard{grid-column:1/-1;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper)}
+.pch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pch b{font-size:16px}
+.pch .klink{margin-left:auto}
+.pnote{margin:4px 0 10px;font-size:13px;color:var(--ink-2)}
+.pcb{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 20px;align-items:start}
+@media (max-width:640px){.pcb{grid-template-columns:minmax(0,1fr)}.pch .klink{margin-left:0;flex-basis:100%}}
 .aipage .bd>details,.aipage .bd>.hint,.aipage .bd>.btns,.aipage .bd>p{grid-column:1/-1}
 .aipage .bd>details{border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--paper)}
 .aipage .bd>details[open]>summary{margin-bottom:8px}

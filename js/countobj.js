@@ -46,9 +46,9 @@ const CNT_CATS={
 const ITEM={...FRUITS,...VEGS,...VEHS};
 const fruitG=(k,x,y,s=1,rot=0)=>`<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})">${ITEM[k].svg}</g>`;
 
-/* ระดับ → จำนวนชนิด ช่วงค่า จำนวนในตะกร้า ช่วงจำนวนที่ซื้อ */
-const CNT_LV={1:{k:3,v:[2,9],inBasket:2,cnt:[1,3],buy:[2,9]},2:{k:4,v:[3,15],inBasket:3,cnt:[1,3],buy:[4,15]},
-  3:{k:4,v:[4,20],inBasket:4,cnt:[1,4],buy:[6,20]},4:{k:5,v:[5,25],inBasket:4,cnt:[1,4],buy:[8,24]},5:{k:5,v:[6,30],inBasket:5,cnt:[1,4],buy:[10,30]}};
+/* ระดับ → ช่วงจำนวนชนิดในรูป ช่วงค่า จำนวนชนิดในตะกร้า ช่วงจำนวนต่อชนิด ช่วงจำนวนที่ซื้อ */
+const CNT_LV={1:{k:[3,3],v:[2,9],inBasket:2,cnt:[1,3],buy:[2,9]},2:{k:[3,4],v:[3,15],inBasket:3,cnt:[1,3],buy:[4,15]},
+  3:{k:[4,5],v:[4,20],inBasket:4,cnt:[1,4],buy:[6,20]},4:{k:[4,6],v:[5,25],inBasket:4,cnt:[1,4],buy:[8,24]},5:{k:[5,6],v:[6,30],inBasket:5,cnt:[1,4],buy:[10,30]}};
 const CNT_SEEN_KEY='exam-count-seen';
 let CNT_SEEN=[];try{CNT_SEEN=JSON.parse(localStorage.getItem(CNT_SEEN_KEY)||'[]')}catch(e){}
 const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
@@ -57,12 +57,16 @@ function makeScene(level){
   const L=CNT_LV[Math.min(5,Math.max(1,level))];
   for(let g=0;g<60;g++){
     const cat=rnd(Object.keys(CNT_CATS)),C=CNT_CATS[cat];
+    const K=ri(L.k[0],L.k[1]),pool=Object.keys(C.items);let src=pool;
+    /* หมวดที่มีแบบเดียวกันหลายสี: บางรอบเลือกแค่ 1–2 แบบแต่หลายสี ต้องแยกสีให้ดีจึงนับถูก */
+    if(C.variant&&Math.random()<(level>=3?.5:.3)){const ts=shuffle([...new Set(pool.map(k=>C.items[k].type))]).slice(0,ri(1,2)),s2=pool.filter(k=>ts.includes(C.items[k].type));if(s2.length>=K)src=s2}
     /* ชนิดที่สีคล้ายกันไม่อยู่ในรูปเดียวกัน จะได้นับได้ไม่สับสน */
     const kinds=[],used=new Set();
-    for(const k of shuffle(Object.keys(C.items))){const c=C.items[k].clash;if(c&&used.has(c))continue;if(c)used.add(c);kinds.push(k);if(kinds.length===L.k)break}
-    const vals=shuffle([...Array(L.v[1]-L.v[0]+1)].map((_,i)=>L.v[0]+i)).slice(0,L.k);
+    for(const k of shuffle(src.slice())){const c=C.items[k].clash;if(c&&used.has(c))continue;if(c)used.add(c);kinds.push(k);if(kinds.length===K)break}
+    if(kinds.length<K)continue;
+    const vals=shuffle([...Array(L.v[1]-L.v[0]+1)].map((_,i)=>L.v[0]+i)).slice(0,K);
     const val=Object.fromEntries(kinds.map((k,i)=>[k,vals[i]]));
-    const bk=shuffle(kinds.slice()).slice(0,L.inBasket),basket=Object.fromEntries(bk.map(k=>[k,ri(L.cnt[0],L.cnt[1])]));
+    const bk=shuffle(kinds.slice()).slice(0,Math.min(L.inBasket,K)),basket=Object.fromEntries(bk.map(k=>[k,ri(L.cnt[0],L.cnt[1])]));
     const sig=cat+'/'+kinds.map(k=>k+val[k]+':'+(basket[k]||0)).sort().join('|');
     if(CNT_SEEN.includes(sig))continue;
     CNT_SEEN=[...CNT_SEEN.slice(-499),sig];try{localStorage.setItem(CNT_SEEN_KEY,JSON.stringify(CNT_SEEN))}catch(e){}
@@ -73,13 +77,15 @@ function makeScene(level){
 }
 function sceneSVG(sc,box=true){
   const W=640,k=sc.kinds.length,cw=W/k;
+  /* ชื่อแบบมีสี (เช่น เสื้อยืด / สีแดง) แสดง 2 บรรทัด */
+  const two=sc.kinds.some(f=>ITEM[f].sub),dy=two?18:0,fs=k>=6?13.5:15;
   const leg=sc.kinds.map((f,i)=>{const x=cw*i+cw/2,F=ITEM[f];
-    return `${fruitG(f,x,54,1.3)}<text x="${x}" y="116" text-anchor="middle" font-size="15" font-weight="600" fill="var(--ink)">${F.name}</text><text x="${x}" y="137" text-anchor="middle" font-size="14" fill="var(--ink-2)">(${F.unit}ละ ${sc.val[f]})</text>`}).join('');
-  if(!box)return `<svg viewBox="0 0 ${W} 150" width="100%" style="max-width:${W}px" role="img" aria-label="ค่าของ${sc.C.noun}แต่ละชนิด" font-family="inherit">${leg}</svg>`;
+    return `${fruitG(f,x,54,1.3)}<text x="${x}" y="116" text-anchor="middle" font-size="${fs}" font-weight="600" fill="var(--ink)">${F.base||F.name}</text>${two?`<text x="${x}" y="134" text-anchor="middle" font-size="${fs}" font-weight="600" fill="var(--ink)">${F.sub||''}</text>`:''}<text x="${x}" y="${137+dy}" text-anchor="middle" font-size="14" fill="var(--ink-2)">(${F.unit}ละ ${sc.val[f]})</text>`}).join('');
+  if(!box)return `<svg viewBox="0 0 ${W} ${150+dy}" width="100%" style="max-width:${W}px" role="img" aria-label="ค่าของ${sc.C.noun}แต่ละชนิด" font-family="inherit">${leg}</svg>`;
   /* ของในตะกร้า: วางเป็นตารางแล้วเหลื่อมกับหมุนเล็กน้อย ไม่ซ้อนทับกัน */
   const items=shuffle(Object.entries(sc.basket).flatMap(([f,c])=>Array(c).fill(f)));
   const cols=Math.min(items.length,items.length>8?6:items.length>4?5:4),rows=Math.ceil(items.length/cols),cell=92;
-  const bw=cols*cell+40,bx=(W-bw)/2,by=170,bh=rows*cell+34;
+  const bw=cols*cell+40,bx=(W-bw)/2,by=170+dy,bh=rows*cell+34;
   const fr=items.map((f,i)=>{const r=Math.floor(i/cols),c=i%cols,n=r===rows-1?items.length-r*cols:cols,off=(cols-n)*cell/2;
     return fruitG(f,bx+20+off+c*cell+cell/2+ri(-7,7),by+24+r*cell+cell/2+ri(-6,6),1.12,ri(-sc.C.rot,sc.C.rot))}).join('');
   const H=by+bh+12,bl=28+sc.C.box.length*11;
@@ -114,7 +120,7 @@ const mulStep=(sc,f,n)=>[`${qty(f,n)} × ${sc.val[f]} = ${n*sc.val[f]}`,`${un_(f
 const CNT_Q={
   buy:sc=>{const n=sc.level>=4?3:2,fs=shuffle(sc.kinds.slice()).slice(0,n),q=fs.map(()=>ri(sc.L.buy[0],sc.L.buy[1])),ans=fs.reduce((a,f,i)=>a+q[i]*sc.val[f],0);
     const t=fs.map((f,i)=>qty(f,q[i]));
-    return{stem:`ถ้าต้องการ ${t.slice(0,-1).join(', ')} และ${t[t.length-1]} รวมเป็นค่าเท่าใด`,ans,steps:[...fs.map((f,i)=>mulStep(sc,f,q[i])),[`รวม ${fs.map((f,i)=>q[i]*sc.val[f]).join(' + ')} = ${ans}`,'บวกกัน']]}},
+    return{stem:`ถ้า${sc.C.want||'ต้องการ'} ${t.slice(0,-1).join(', ')} และ${t[t.length-1]} รวมเป็นค่าเท่าใด`,ans,steps:[...fs.map((f,i)=>mulStep(sc,f,q[i])),[`รวม ${fs.map((f,i)=>q[i]*sc.val[f]).join(' + ')} = ${ans}`,'บวกกัน']]}},
   total:sc=>({stem:`${sc.C.noun}ทั้งหมดใน${sc.C.box}รวมกันมีค่าเท่าใด`,ans:bkTotal(sc),steps:bkSteps(sc)}),
   kindTotal:sc=>{const f=rnd(Object.keys(sc.basket).filter(f=>sc.basket[f]>1))||null;if(!f)return null;const c=sc.basket[f];
     return{stem:`${fn_(sc,f)}ที่อยู่ใน${sc.C.box}ทั้งหมดมีค่ารวมเท่าใด`,ans:c*sc.val[f],steps:[[`ใน${sc.C.box}มี${qty(f,c)}`,'นับจากรูป'],mulStep(sc,f,c)]}},
@@ -127,7 +133,7 @@ const CNT_Q={
     return{stem:`ถ้า${sc.C.add}${qty(a,na)} และ${qty(b,nb)} เพิ่มเข้าไปใน${sc.C.box} ${sc.C.noun}ใน${sc.C.box}จะมีค่ารวมเท่าใด`,ans,steps:[...bkSteps(sc),mulStep(sc,a,na),mulStep(sc,b,nb),[`${t} + ${na*sc.val[a]} + ${nb*sc.val[b]} = ${ans}`,'ของเดิม + ของที่เพิ่ม']]}},
   remove:sc=>{const fs=Object.keys(sc.basket);if(fs.length<2)return null;const rm=shuffle(fs.slice()).slice(0,2),t=bkTotal(sc),out=rm.reduce((a,f)=>a+sc.val[f],0);
     const p=pairChoices(t,t-out,sc.g,(x,y)=>`รวม ${x} เหลือ ${y}`);
-    return{stem:`${sc.C.noun}ใน${sc.C.box}รวมกันมีค่าเท่าใด และถ้านำ${fn_(sc,rm[0])}ออก 1 ${un_(rm[0])} กับ${fn_(sc,rm[1])}ออก 1 ${un_(rm[1])} จะเหลือค่าเท่าใด`,choices:p.choices,answer:p.answer,
+    return{stem:`${sc.C.noun}ใน${sc.C.box}รวมกันมีค่าเท่าใด และถ้า${sc.C.take||'นำ'}${fn_(sc,rm[0])}ออก 1 ${un_(rm[0])} กับ${fn_(sc,rm[1])}ออก 1 ${un_(rm[1])} จะเหลือค่าเท่าใด`,choices:p.choices,answer:p.answer,
       steps:[...bkSteps(sc),[`นำออก ${sc.val[rm[0]]} + ${sc.val[rm[1]]} = ${out}`,'ค่าของที่นำออก'],[`เหลือ ${t} − ${out} = ${t-out}`,'ลบกัน']]}},
   equiv:sc=>{for(let g=0;g<30;g++){const [a,b]=shuffle(sc.kinds.slice()),nb=ri(2,12),v=nb*sc.val[b];if(v%sc.val[a])continue;const na=v/sc.val[a];if(na<4)continue;
       return{stem:`ต้องใช้${fn_(sc,a)}กี่${un_(a)} จึงจะมีค่าเท่ากับ${qty(b,nb)}`,ans:na,g:1,steps:[mulStep(sc,b,nb),[`${v} ÷ ${sc.val[a]} = ${na} ${un_(a)}`,`${fn_(sc,a)} ${un_(a)}ละ ${sc.val[a]}`]]}}return null},
@@ -135,13 +141,13 @@ const CNT_Q={
     return{stem:`มีงบ ${M} ซื้อ${qty(a,na)}แล้ว งบที่เหลือซื้อ${fn_(sc,b)}ได้มากที่สุดกี่${un_(b)}`,ans,g:1,steps:[mulStep(sc,a,na),[`งบเหลือ ${M} − ${na*sc.val[a]} = ${rest}`,'ลบกัน'],[`${rest} ÷ ${sc.val[b]} = ${ans} เศษ ${rest%sc.val[b]} จึงได้ ${ans} ${un_(b)}`,'ซื้อได้เต็มหน่วยเท่านั้น']]}},
   maxKind:sc=>{const fs=Object.keys(sc.basket);if(fs.length<4)return null;const tot=fs.map(f=>sc.basket[f]*sc.val[f]),m=Math.max(...tot);if(tot.filter(x=>x===m).length>1)return null;
     const ans=fs[tot.indexOf(m)],ch=shuffle(fs.slice()).slice(0,4);if(!ch.includes(ans))return null;
-    return{stem:`${sc.C.noun}ชนิดใดใน${sc.C.box}มีค่ารวมมากที่สุด`,choices:ch.map(f=>ITEM[f].name),answer:ch.indexOf(ans),steps:[[fs.map((f,i)=>`${fn_(sc,f)} ${sc.basket[f]} × ${sc.val[f]} = ${tot[i]}`).join(' · '),'นับจากรูป × ค่าต่อหน่วย'],[`มากที่สุดคือ${fn_(sc,ans)} (${m})`,'เทียบค่ารวม']]}},
+    return{stem:`${sc.C.noun}${sc.C.kindW||'ชนิด'}ใดใน${sc.C.box}มีค่ารวมมากที่สุด`,choices:ch.map(f=>ITEM[f].name),answer:ch.indexOf(ans),steps:[[fs.map((f,i)=>`${fn_(sc,f)} ${sc.basket[f]} × ${sc.val[f]} = ${tot[i]}`).join(' · '),'นับจากรูป × ค่าต่อหน่วย'],[`มากที่สุดคือ${fn_(sc,ans)} (${m})`,'เทียบค่ารวม']]}},
   share:sc=>{const t=bkTotal(sc),ds=[2,3,4,5,6].filter(d=>t%d===0&&t/d>=4);if(!ds.length)return null;const d=rnd(ds);
     return{stem:`ถ้าแบ่งค่าของ${sc.C.noun}ทั้งหมดใน${sc.C.box}ให้ ${d} คนเท่าๆ กัน จะได้คนละเท่าใด`,ans:t/d,g:1,steps:[...bkSteps(sc),[`${t} ÷ ${d} = ${t/d}`,'หารเท่าๆ กัน']]}},
   replace:sc=>{const fs=Object.keys(sc.basket),a=rnd(fs),others=sc.kinds.filter(f=>f!==a),b=rnd(others),c=sc.basket[a],t=bkTotal(sc),ans=t-c*sc.val[a]+c*sc.val[b];if(ans===t)return null;
-    return{stem:`ถ้านำ${fn_(sc,a)}ใน${sc.C.box}ออกทั้งหมด แล้ว${sc.C.add}${fn_(sc,b)}แทนในจำนวนเท่ากัน ${sc.C.noun}ใน${sc.C.box}จะมีค่ารวมเท่าใด`,ans,steps:[...bkSteps(sc),[`นำ${qty(a,c)}ออก ค่า ${c} × ${sc.val[a]} = ${c*sc.val[a]}`,'นับจากรูป'],[`${sc.C.add}${qty(b,c)} ค่า ${c} × ${sc.val[b]} = ${c*sc.val[b]}`,`${un_(b)}ละ ${sc.val[b]}`],[`${t} − ${c*sc.val[a]} + ${c*sc.val[b]} = ${ans}`,'ของเดิม − ออก + เข้า']]}},
+    return{stem:`ถ้า${sc.C.take||'นำ'}${fn_(sc,a)}ใน${sc.C.box}ออกทั้งหมด แล้ว${sc.C.add}${fn_(sc,b)}แทนในจำนวนเท่ากัน ${sc.C.noun}ใน${sc.C.box}จะมีค่ารวมเท่าใด`,ans,steps:[...bkSteps(sc),[`นำ${qty(a,c)}ออก ค่า ${c} × ${sc.val[a]} = ${c*sc.val[a]}`,'นับจากรูป'],[`${sc.C.add}${qty(b,c)} ค่า ${c} × ${sc.val[b]} = ${c*sc.val[b]}`,`${un_(b)}ละ ${sc.val[b]}`],[`${t} − ${c*sc.val[a]} + ${c*sc.val[b]} = ${ans}`,'ของเดิม − ออก + เข้า']]}},
   addRemove:sc=>{const fs=Object.keys(sc.basket),a=rnd(fs),ra=ri(1,sc.basket[a]),b=rnd(sc.kinds),nb=ri(2,6),t=bkTotal(sc),ans=t-ra*sc.val[a]+nb*sc.val[b];
-    return{stem:`ถ้านำ${qty(a,ra)}ออกจาก${sc.C.box} แล้ว${sc.C.add}${qty(b,nb)}เพิ่ม ${sc.C.noun}ใน${sc.C.box}จะมีค่ารวมเท่าใด`,ans,steps:[...bkSteps(sc),[`ออก ${ra} × ${sc.val[a]} = ${ra*sc.val[a]} · เข้า ${nb} × ${sc.val[b]} = ${nb*sc.val[b]}`,'ค่าต่อหน่วย'],[`${t} − ${ra*sc.val[a]} + ${nb*sc.val[b]} = ${ans}`,'ของเดิม − ออก + เข้า']]}},
+    return{stem:`ถ้า${sc.C.take||'นำ'}${qty(a,ra)}ออกจาก${sc.C.box} แล้ว${sc.C.add}${qty(b,nb)}เพิ่ม ${sc.C.noun}ใน${sc.C.box}จะมีค่ารวมเท่าใด`,ans,steps:[...bkSteps(sc),[`ออก ${ra} × ${sc.val[a]} = ${ra*sc.val[a]} · เข้า ${nb} × ${sc.val[b]} = ${nb*sc.val[b]}`,'ค่าต่อหน่วย'],[`${t} − ${ra*sc.val[a]} + ${nb*sc.val[b]} = ${ans}`,'ของเดิม − ออก + เข้า']]}},
 };
 const CNT_TYPES={1:['total','buy','kindTotal','addOne','diff'],2:['total','remove','buy','addTwo','equiv','diff','kindTotal'],
   3:['remove','buy','addTwo','equiv','budget','maxKind','share','diff'],4:['remove','buy','addTwo','equiv','budget','maxKind','replace','addRemove','share'],5:['remove','buy','equiv','budget','maxKind','replace','addRemove','share']};
@@ -158,7 +164,7 @@ function genCountSet(level,n){
   const lv=Math.min(5,Math.max(1,Math.round(+level||1)));
   for(let g=0;g<10;g++){
     const sc=makeScene(lv);if(!sc)continue;
-    const out=[],seen=new Set(),types=CNT_TYPES[lv];let order=shuffle(types.slice()),i=0,guard=0;
+    const out=[],seen=new Set(),types=CNT_TYPES[lv].filter(t=>!(sc.C.skip||[]).includes(t));let order=shuffle(types.slice()),i=0,guard=0;
     /* ข้อที่ถามยอดรวมในตะกร้าอยู่ก่อน เพื่อให้คนทำนับของในรูปครั้งเดียวแล้วใช้ต่อ */
     order.sort((a,b)=>(b==='total'||b==='remove')-(a==='total'||a==='remove'));
     while(out.length<n&&guard++<n*30){
@@ -170,4 +176,4 @@ function genCountSet(level,n){
   return [];
 }
 /* ข้อเดี่ยวสำหรับผสมในวิชาคณิตศาสตร์ทั่วไป: สถานการณ์ใหม่ทุกข้อ */
-function genCount1(level){const lv=Math.min(5,Math.max(1,Math.round(+level||1))),sc=makeScene(lv);return sc?sceneQ(sc,rnd(CNT_TYPES[lv])):null}
+function genCount1(level){const lv=Math.min(5,Math.max(1,Math.round(+level||1))),sc=makeScene(lv);return sc?sceneQ(sc,rnd(CNT_TYPES[lv].filter(t=>!(sc.C.skip||[]).includes(t)))):null}

@@ -67,14 +67,15 @@ function makeScene(level){
     if(CNT_SEEN.includes(sig))continue;
     CNT_SEEN=[...CNT_SEEN.slice(-499),sig];try{localStorage.setItem(CNT_SEEN_KEY,JSON.stringify(CNT_SEEN))}catch(e){}
     const sc={level:Math.max(1,level),C,L,kinds,val,basket,g:vals.reduce(gcd,0)};
-    sc.svg=sceneSVG(sc);return sc;
+    sc.svg=sceneSVG(sc);sc.legSvg=sceneSVG(sc,false);return sc;
   }
   return null;
 }
-function sceneSVG(sc){
+function sceneSVG(sc,box=true){
   const W=640,k=sc.kinds.length,cw=W/k;
   const leg=sc.kinds.map((f,i)=>{const x=cw*i+cw/2,F=ITEM[f];
     return `${fruitG(f,x,54,1.3)}<text x="${x}" y="116" text-anchor="middle" font-size="15" font-weight="600" fill="var(--ink)">${F.name}</text><text x="${x}" y="137" text-anchor="middle" font-size="14" fill="var(--ink-2)">(${F.unit}ละ ${sc.val[f]})</text>`}).join('');
+  if(!box)return `<svg viewBox="0 0 ${W} 150" width="100%" style="max-width:${W}px" role="img" aria-label="ค่าของ${sc.C.noun}แต่ละชนิด" font-family="inherit">${leg}</svg>`;
   /* ของในตะกร้า: วางเป็นตารางแล้วเหลื่อมกับหมุนเล็กน้อย ไม่ซ้อนทับกัน */
   const items=shuffle(Object.entries(sc.basket).flatMap(([f,c])=>Array(c).fill(f)));
   const cols=Math.min(items.length,items.length>8?6:items.length>4?5:4),rows=Math.ceil(items.length/cols),cell=92;
@@ -145,10 +146,12 @@ const CNT_Q={
 const CNT_TYPES={1:['total','buy','kindTotal','addOne','diff'],2:['total','remove','buy','addTwo','equiv','diff','kindTotal'],
   3:['remove','buy','addTwo','equiv','budget','maxKind','share','diff'],4:['remove','buy','addTwo','equiv','budget','maxKind','replace','addRemove','share'],5:['remove','buy','equiv','budget','maxKind','replace','addRemove','share']};
 
+/* แบบที่ไม่ใช้ของในตะกร้า แสดงแค่ค่าของแต่ละชนิด ไม่มีตะกร้าให้ดูเกิน */
+const CNT_NOBOX=new Set(['buy','equiv','budget']);
 function sceneQ(sc,type){
   const r=CNT_Q[type](sc);if(!r)return null;
   const c=r.choices?{choices:r.choices,answer:r.answer}:apChoices(r.ans,r.g||sc.g);
-  return{kind:'mc',stem:'จากรูป '+r.stem,svg:sc.svg,...c,steps:r.steps,topic:'นับของ'};
+  return{kind:'mc',stem:'จากรูป '+r.stem,svg:CNT_NOBOX.has(type)?sc.legSvg:sc.svg,...c,steps:r.steps,topic:'นับของ'};
 }
 /* 1 สถานการณ์ → n ข้อ (ข้อแรกๆ ใช้แบบคำถามไม่ซ้ำกันก่อน ถ้า n มากกว่าจำนวนแบบ ใช้แบบเดิมด้วยตัวเลขใหม่) */
 function genCountSet(level,n){

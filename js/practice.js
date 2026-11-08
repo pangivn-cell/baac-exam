@@ -24,7 +24,7 @@ async function start(go){
   const s=subj(),level=lvOf(s.id),n=P.count;
   R={subject:s.id,level,mode:P.mode,items:[],picks:[],i:0,status:'loading',go:go===true};
   const ai=!!activeAI(),nb=bankFor(s).length;
-  if(!ai||(!s.ai&&!cardMixCount(s,n)&&!nb)){
+  if(!ai||s.scene||(!s.ai&&!cardMixCount(s,n)&&!nb)){
     if(s.ai&&!nb){R.status='needai';render();return}
     R.items=mixAll(offlineItems(s,level,n));R.status='play';R.t0=Date.now();render();return}
   if(!R.go){R.status='idle';render();return}

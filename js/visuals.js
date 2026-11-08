@@ -13,6 +13,8 @@ function tierMix(level,n){
   return out.filter(x=>x.k>0);
 }
 function localItems(s,level,n){
+  /* วิชาที่ทั้งรอบใช้รูปเดียวกัน (นับของ): สร้างสถานการณ์เดียวทั้งรอบ ไม่แบ่งตามระดับย่อย */
+  if(s.scene)return LOCAL[s.id](level,n).map(q=>({...q,sub:s.id,subName:s.name}));
   const gen=(t,k)=>s.id==='ineq'?genIneq2(t,k):LOCAL[s.id](t,k);
   return shuffle(tierMix(level,n).flatMap(({t,k})=>gen(t,k))).slice(0,n).map(q=>({...q,sub:s.id,subName:s.name}));
 }

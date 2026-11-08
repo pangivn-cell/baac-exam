@@ -279,7 +279,7 @@ async function makeItems(s,level,n,o={}){return mixAll((typeof fixAll==='functio
 const MIX_KEY='exam-ans-pos';let MIXPOS={};try{MIXPOS=JSON.parse(localStorage.getItem(MIX_KEY)||'{}')}catch(e){}
 const ORDER_WORDS=/ทุกข้อ|ไม่มีข้อ|ไม่มีคำตอบ|ถูกทั้ง|ผิดทั้ง|ทั้งหมด|ทั้งสอง|ทั้งคู่|ทั้ง\s*[กขคง1-4](?![ก-๙])|ข้อ\s*[กขคง1-4](?![ก-๙])|^\s*[กขคง1-4]\s*[.)]?\s*(และ|หรือ|,)|all of|none of|both|neither/i;
 function canMix(q){
-  if(!q||q.keepOrder||(q.kind&&q.kind!=='mc')||!Array.isArray(q.choices)||q.choices.length<2||!(q.answer>=0&&q.answer<q.choices.length))return false;
+  if(!q||q.keepOrder||q.chSvg||(q.kind&&q.kind!=='mc')||!Array.isArray(q.choices)||q.choices.length<2||!(q.answer>=0&&q.answer<q.choices.length))return false;
   if(q.choices.some(c=>ORDER_WORDS.test(String(c))||/^\s*[กขคง1-4]\s*\.?\s*$/.test(String(c))))return false;
   const st=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).join(' ');
   return !/(ตอบ|ข้อ|ตัวเลือก)\s*[กขคง](?![ก-๙])|(^|[\s(])[กขคง]\s*\.\s/.test(st);

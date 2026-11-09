@@ -7,14 +7,34 @@
 let PSC=null,PSC_META=null,pscP=null;
 const PSC_H={'ระยะเวลาดำเนินโครงการ':'ระยะเวลาโครงการ','ระยะเวลาดำเนินการ':'ระยะเวลาโครงการ','หลักประกันเงินกู้':'หลักประกัน','กำหนดระยะเวลาชำระคืนเงินกู้':'ระยะเวลาการกู้','ระยะเวลาการผ่อนชำระ':'ระยะเวลาการกู้'};
 function setPSC(d){PSC=d.map((a,i)=>({...a,k:i,secs:a.secs.map(([h,v])=>[PSC_H[h]||h,v])}))}
+/* ที่มาของข้อมูล:
+   1. เข้าสู่ระบบเว็บนี้แล้ว → คลังกลาง (ครบรวมเรื่องที่ AI อ่านจากรูป)
+   2. ไม่ได้เข้าสู่ระบบเว็บนี้ แต่เชื่อมต่อ Product Catalog แล้ว (มี token ของตัวเอง) → ดึงสดจาก Product Catalog เอง
+      Product Catalog เป็นคนตรวจสิทธิ์พนักงาน (token ไม่ถูก = ไม่ได้ข้อมูล) · ไม่มีเรื่องที่มีแต่รูป */
 function loadPSC(){
   if(PSC)return Promise.resolve(PSC);
   return pscP=pscP||(async()=>{
-    if(typeof ME==='undefined'||!ME)throw{code:'psc_login'};
-    const f=await fb(),m=await f.fs.getDoc(fsDoc('config','psc'));if(!m.exists())throw{code:'psc_empty'};
-    const meta=m.data(),parts=await Promise.all([...Array(meta.parts)].map((_,i)=>f.fs.getDoc(fsDoc('config','psc_p'+i))));
-    setPSC(JSON.parse(parts.map(p=>p.data().d).join('')));PSC_META=meta;return PSC;
+    const me=typeof ME!=='undefined'&&ME,tk=pscTok();
+    if(me){try{
+      const f=await fb(),m=await f.fs.getDoc(fsDoc('config','psc'));if(!m.exists())throw{code:'psc_empty'};
+      const meta=m.data(),parts=await Promise.all([...Array(meta.parts)].map((_,i)=>f.fs.getDoc(fsDoc('config','psc_p'+i))));
+      setPSC(JSON.parse(parts.map(p=>p.data().d).join('')));PSC_META=meta;return PSC;
+    }catch(e){if(!tk)throw e}}
+    if(!tk)throw{code:'psc_login'};
+    const {posts,cats}=await pscFetchAll(tk.token,tk.id);
+    setPSC(posts.map(p=>pscParse(p,cats)).filter(a=>a.secs.length));PSC_META={live:true,n:PSC.length};return PSC;
   })().catch(e=>{pscP=null;throw e&&e.code?e:{code:'psc_load'}});
+}
+/* ดึงทุกเรื่องจาก API ของ Product Catalog ด้วย token (เว็บนั้นอนุญาตเว็บสอบนี้ไว้แล้ว) */
+async function pscFetchAll(token,uid,{onProg=()=>{},signal}={}){
+  const api=(path,q)=>`https://psc.baac.tech/wp-json/wp/v2/${path}?${q}&token=${encodeURIComponent(token)}${uid?`&id=${encodeURIComponent(uid)}`:''}`;
+  const get=async url=>{let r;try{r=await fetch(url,{credentials:'omit',signal})}/* token ผิด/หมดอายุ: เว็บตอบหน้าล็อกอินที่ไม่มีสิทธิ์ข้ามเว็บ เบราว์เซอร์จึงขึ้นเป็น error เครือข่าย */
+    catch(e){throw{code:e&&e.name==='AbortError'?'cancelled':navigator.onLine===false?'psc_net':'psc_token'}}
+    const t=await r.text();if(!r.ok||!/^\s*[\[{]/.test(t))throw{code:/sklogin/.test(t)?'psc_token':'psc_net'};return{d:JSON.parse(t),pages:+r.headers.get('X-WP-TotalPages')||1}};
+  onProg('กำลังอ่านรายชื่อหมวด…');
+  const cats=Object.fromEntries((await get(api('categories','per_page=100&_fields=id,name'))).d.map(c=>[c.id,pscUnesc(c.name)]));
+  const posts=[];for(let pg=1,n=1;pg<=n;pg++){onProg(`กำลังดึงเรื่อง หน้า ${pg}${n>1?`/${n}`:''}…`);const r=await get(api('posts',`per_page=100&page=${pg}&_fields=id,modified,link,title,content,categories`));n=r.pages;posts.push(...r.d)}
+  return{posts,cats};
 }
 
 /* ---------- อ่านเรื่องจากเว็บ ---------- */
@@ -90,12 +110,7 @@ ${a.secs.length?`ข้อความในหน้าเว็บ:\n${a.secs.
 /* ดึงทั้งหมด → แยกหัวข้อ → อ่านรูป → บันทึกขึ้นคลาวด์ (save=false ใช้ทดสอบ ไม่บันทึก) */
 async function pscUpdate(link,{onProg=()=>{},readImg=true,save=true,signal}={}){
   const u=new URL(link),token=u.searchParams.get('token'),uid=u.searchParams.get('id');if(!token)throw{code:'psc_token'};
-  const api=(path,q)=>`https://psc.baac.tech/wp-json/wp/v2/${path}?${q}&token=${encodeURIComponent(token)}${uid?`&id=${encodeURIComponent(uid)}`:''}`;
-  const get=async url=>{let r;try{r=await fetch(url,{credentials:'omit',signal})}catch(e){throw{code:e&&e.name==='AbortError'?'cancelled':'psc_net'}}
-    const t=await r.text();if(!r.ok||!/^\s*[\[{]/.test(t))throw{code:/sklogin/.test(t)?'psc_token':'psc_net'};return{d:JSON.parse(t),pages:+r.headers.get('X-WP-TotalPages')||1}};
-  onProg('กำลังอ่านรายชื่อหมวด…');
-  const cats=Object.fromEntries((await get(api('categories','per_page=100&_fields=id,name'))).d.map(c=>[c.id,pscUnesc(c.name)]));
-  const posts=[];for(let pg=1,n=1;pg<=n;pg++){onProg(`กำลังดึงเรื่อง หน้า ${pg}${n>1?`/${n}`:''}…`);const r=await get(api('posts',`per_page=100&page=${pg}&_fields=id,modified,link,title,content,categories`));n=r.pages;posts.push(...r.d)}
+  const {posts,cats}=await pscFetchAll(token,uid,{onProg,signal});
   let old=[];try{old=await loadPSC()}catch(e){}
   const prev=new Map(old.map(a=>[a.id,a])),rep={total:posts.length,added:0,changed:0,removed:0,skipped:0,img:0,imgFail:0,imgErr:''};
   const out=[];
@@ -325,10 +340,8 @@ async function pscItems(s,level,n,o={}){
    เบราว์เซอร์ที่ยังไม่เข้าระบบ Product Catalog จะถูกส่งไปหน้าล็อกอินแล้วกลับไปหน้า Home เสมอ
    แต่ลิงก์เรื่องที่ต่อ ?token=&id= ของผู้ใช้เอง เปิดหน้านั้นได้ทันที → แต่ละคนวางลิงก์ของตัวเองไว้ในเครื่องครั้งเดียว (ไม่ขึ้นคลาวด์) */
 const PSC_LINK_KEY='exam-psc-link';
-function pscLinkParams(){
-  try{const u=new URL(localStorage.getItem(PSC_LINK_KEY)||''),t=u.searchParams.get('token'),id=u.searchParams.get('id');
-    return t?`token=${encodeURIComponent(t)}${id?`&id=${encodeURIComponent(id)}`:''}`:''}catch(e){return ''}
-}
+function pscTok(){try{const u=new URL(localStorage.getItem(PSC_LINK_KEY)||''),t=u.searchParams.get('token');return t?{token:t,id:u.searchParams.get('id')||''}:null}catch(e){return null}}
+function pscLinkParams(){const t=pscTok();return t?`token=${encodeURIComponent(t.token)}${t.id?`&id=${encodeURIComponent(t.id)}`:''}`:''}
 const pscHref=url=>{const p=pscLinkParams();return p&&/^https:\/\/psc\.baac\.tech\//.test(url)?url+(url.includes('?')?'&':'?')+p:url};
 /* ส่วนลิงก์ในบรรทัดที่มา (practice.js explainHTML) */
 function pscLinkHTML(url){
@@ -343,9 +356,9 @@ async function pscAskLink(){
   /* กลับมาที่หน้านี้ (หรือกดปุ่มวาง): ลองอ่านคลิปบอร์ด เจอลิงก์ที่มี token ก็บันทึกให้เลย */
   const grab=async()=>{try{const m=(await navigator.clipboard.readText()).match(PSC_LINK_RE);const i=document.getElementById('psclinkq');if(m&&i){i.value=m[0];closeModal(1)}}catch(e){}};
   const onBack=()=>setTimeout(grab,300);window.addEventListener('focus',onBack);
-  const p=modal(`<p class="mt">เชื่อมต่อ Product Catalog</p>
-    <p>ทำครั้งเดียว แล้วลิงก์ในเฉลยจะเปิดตรงหน้าผลิตภัณฑ์ได้ทันที</p>
-    <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิด Product Catalog เพื่อเข้าระบบ</button></li>
+  const p=modal(`<p class="mt">เข้าสู่ระบบ Product Catalog</p>
+    <p>ทำครั้งเดียวต่อเครื่อง ใช้ทำข้อสอบวิชานี้ และให้ลิงก์ในเฉลยเปิดตรงหน้าผลิตภัณฑ์</p>
+    <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิดหน้าเข้าสู่ระบบ Product Catalog</button></li>
       <li>เข้าระบบให้เสร็จ แล้วกด <b>Ctrl+L</b> ตามด้วย <b>Ctrl+C</b> (คัดลอกที่อยู่เว็บ) · บนมือถือ: แตะช่องที่อยู่แล้วกดคัดลอก</li>
       <li>กลับมาที่หน้านี้ ระบบจะหยิบลิงก์ให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
     <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="หรือวางลิงก์ที่มี token= ที่นี่" value="${esc(cur)}" style="width:100%">
@@ -360,7 +373,7 @@ async function pscAskLink(){
   try{localStorage.setItem(PSC_LINK_KEY,v.trim())}catch(e){}
   document.querySelectorAll('a[data-pscurl]').forEach(a=>{a.href=pscHref(a.dataset.pscurl)});
   document.querySelectorAll('[data-psclink]').forEach(b=>{const s=b.nextElementSibling;if(s&&s.classList.contains('src'))s.remove();b.remove()});
-  toast('บันทึกแล้ว ลิงก์จะเปิดหน้าผลิตภัณฑ์ได้ทันที');
+  toast('เข้าสู่ระบบ Product Catalog แล้ว');
 }
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-psclink]'))pscAskLink()});
 

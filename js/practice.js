@@ -25,7 +25,7 @@ async function start(go){
   R={subject:s.id,level,mode:P.mode,items:[],picks:[],i:0,status:'loading',go:go===true};
   const ai=!!activeAI(),nb=bankFor(s).length;
   /* ข้อมูลผลิตภัณฑ์โหลดตอนใช้วิชานี้ครั้งแรก */
-  if(s.psc&&!PSC){const my=R;render();try{await loadPSC()}catch(e){if(R!==my)return;R.status='error';R.code=e&&e.code;R.err=errCopy(e&&e.code,'โหลดข้อมูลผลิตภัณฑ์');render();return}if(R!==my)return}
+  if(s.psc&&!PSC){const my=R;R.status='pscload';render();try{await loadPSC()}catch(e){if(R!==my)return;R.status='error';R.code=e&&e.code;R.err=errCopy(e&&e.code,'โหลดข้อมูลผลิตภัณฑ์');render();return}if(R!==my)return}
   if(!ai||s.scene||(!s.ai&&!s.psc&&!cardMixCount(s,n)&&!nb)){
     if(s.ai&&!nb){R.status='needai';render();return}
     R.items=mixAll(offlineItems(s,level,n));R.status='play';R.t0=Date.now();render();return}
@@ -267,12 +267,13 @@ function render(){
   if(VIEW!=='practice')return;
   renderSide();
   const el=document.getElementById('sheet');if(!R)return;
+  if(R.status==='pscload'){el.innerHTML=`<div class="state"><div class="spin" aria-hidden="true"></div><p><b>กำลังโหลดข้อมูลผลิตภัณฑ์</b></p></div>`;return}
   if(R.status==='loading'){el.innerHTML=`<div class="state"><div class="spin" aria-hidden="true"></div><p><b>กำลังให้ AI สร้างโจทย์ใหม่ ระดับ ${R.level}</b></p><p class="src" id="genp">ใช้เวลาประมาณครึ่งนาทีถึงหนึ่งนาที</p><button class="ghost" id="cancelgen">ยกเลิก</button></div>`;document.getElementById('cancelgen').onclick=()=>{genCtl&&genCtl.abort();R.status='error';R.err='ยกเลิกแล้ว กดสร้างชุดใหม่เมื่อพร้อม';render()};return}
   if(R.status==='idle'){el.innerHTML=`<div class="state"><p><b>พร้อมสร้างโจทย์ชุดใหม่ ระดับ ${R.level}</b></p><p class="src">AI จะสร้างโจทย์ ${P.count} ข้อตามระดับของคุณ ใช้ ${AINAME[activeAI()]||'AI'} จากบัญชีของคุณ</p><button class="primary" id="go">สร้างโจทย์</button></div>`;document.getElementById('go').onclick=()=>start(true);return}
   if(R.status==='needai'){el.innerHTML=`<div class="state"><p><b>${aiReady?'วิชานี้ต้องใช้ AI สร้างโจทย์':'กำลังเชื่อมต่อ AI...'}</b></p><p class="src">${aiReady?(inViewer?'หน้านี้ยังใช้ Claude ไม่ได้ ลองกดอีกครั้งแล้วกดอนุญาต ส่วนอีก '+SUBJ.filter(s=>!s.ai).length+' วิชาระบบสร้างโจทย์เองได้':'ใส่ API key ของ Gemini หรือ OpenAI ในเมนู ตั้งค่า AI ด้านซ้ายก่อน ส่วนอีก '+SUBJ.filter(s=>!s.ai).length+' วิชาระบบสร้างโจทย์เองได้โดยไม่ต้องใช้ AI'):''}</p>${aiReady?'<button class="primary" id="retry">ลองอีกครั้ง</button>':''}</div>`;const r=document.getElementById('retry');if(r)r.onclick=()=>{if(!inViewer&&!activeAI()){const d=document.getElementById('aiset');d.open=true;d.scrollIntoView({block:'nearest'});return}start(true)};return}
-  /* วิชาที่ต้องเข้าสู่ระบบ (ผลิตภัณฑ์ ธ.ก.ส.): ปุ่มเข้าสู่ระบบ แล้วชวนเชื่อมต่อ Product Catalog ต่อ ก่อนเริ่มชุด */
-  if(R.status==='error'&&R.code==='psc_login'){el.innerHTML=`<div class="state"><p><b>${esc(R.err)}</b></p><button class="primary" id="psclogin">🔑 เข้าสู่ระบบ</button></div>`;
-    document.getElementById('psclogin').onclick=async()=>{if(!(await loginDialog()))return;for(let i=0;i<20&&!ME;i++)await new Promise(r=>setTimeout(r,250));if(!pscLinkParams())await pscAskLink();start(true)};return}
+  /* วิชาผลิตภัณฑ์ ธ.ก.ส.: เข้าสู่ระบบ Product Catalog (เก็บ token ของผู้ใช้) แล้วเริ่มชุดทันที */
+  if(R.status==='error'&&(R.code==='psc_login'||R.code==='psc_token')){el.innerHTML=`<div class="state"><p><b>${esc(R.err)}</b></p><button class="primary" id="psclogin">🔑 เข้าสู่ระบบ Product Catalog</button></div>`;
+    document.getElementById('psclogin').onclick=async()=>{await pscAskLink();if(pscTok())start(true)};return}
   if(R.status==='error'){el.innerHTML=`<div class="state"><p><b>${esc(R.err||'เกิดข้อผิดพลาด')}</b></p><button class="primary" id="retry">สร้างชุดใหม่</button></div>`;document.getElementById('retry').onclick=()=>start(true);return}
   if(R.status==='done'){renderDone(el);return}
   const n=R.items.length,q=R.items[R.i],pick=R.picks[R.i],locked=R.mode==='now'&&pick!=null,shown=R.more?Math.max(R.target||n,n):n,wait=R.more&&R.i+1>=n;

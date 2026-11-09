@@ -272,7 +272,7 @@ async function aiJSON(input,{signal,onText,task}={}){
 }
 const HIDE_CODES=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'];
 function errCopy(code,what){
-  if(code==='psc_login')return 'วิชาผลิตภัณฑ์ ธ.ก.ส. ต้องเข้าสู่ระบบก่อน (ข้อมูลเปิดให้เฉพาะพนักงาน)';
+  if(code==='psc_login')return 'วิชาผลิตภัณฑ์ ธ.ก.ส. ต้องเข้าสู่ระบบ Product Catalog ก่อน (ข้อมูลเปิดให้เฉพาะพนักงาน)';
   if(code==='psc_empty')return 'ยังไม่มีข้อมูลผลิตภัณฑ์ในระบบ รอแอดมินกดอัปเดตจาก Product Catalog';
   if(code==='psc_load')return 'โหลดข้อมูลผลิตภัณฑ์ไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
   if(code==='psc_token')return 'ลิงก์ Product Catalog ใช้ไม่ได้หรือ token หมดอายุ เข้า Product Catalog ใหม่แล้วคัดลอกลิงก์ล่าสุดมาวาง';

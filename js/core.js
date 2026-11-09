@@ -52,7 +52,7 @@ function rebuildSubjects(){
   SPEC.forEach(x=>{if(RN[x[0]]){if(!x[3].includes(x[1]))x[3].push(x[1]);x[1]=RN[x[0]]}});
   SPEC.forEach(([id,name,scope,kw])=>SUBJ.push({id,name,desc:scope,ai:true,group:'spec',kw}));
   /* ผลิตภัณฑ์จาก Product Catalog (psc.js): มีข้อมูลในตัว ไม่ต้องมี AI ก็ออกโจทย์ได้ · ไม่อยู่ใน SPEC จึงไม่ถูกสุ่มเข้า "รวมทุกวิชา" ที่ให้ AI แต่งเอง */
-  SUBJ.push({id:'psc',name:'ผลิตภัณฑ์ ธ.ก.ส.',desc:'สินเชื่อ เงินฝาก สลาก ประกัน มาตรการหนี้ และโครงการรัฐ จาก Product Catalog BAAC · เฉลยบอกเรื่อง หัวข้อ และเลขที่บันทึกให้ศึกษาต่อ · ต้องเข้าสู่ระบบ · มี AI จะได้โจทย์สถานการณ์เพิ่ม',ai:false,psc:true,group:'spec',kw:[]});
+  SUBJ.push({id:'psc',name:'ผลิตภัณฑ์ ธ.ก.ส.',desc:'สินเชื่อ เงินฝาก สลาก ประกัน มาตรการหนี้ และโครงการรัฐ จาก Product Catalog BAAC · เฉลยบอกเรื่อง หัวข้อ และเลขที่บันทึกให้ศึกษาต่อ · ต้องเข้าสู่ระบบ Product Catalog · มี AI จะได้โจทย์สถานการณ์เพิ่ม',ai:false,psc:true,group:'spec',kw:[]});
   for(const a of SUBJ_CFG.add||[]){const s=SUBJ.find(x=>x.id===a.id);if(s)s.custom=true}
   /* ซ่อนรายวิชา: เอาออกจากเมนูและการสร้างโจทย์ ข้อมูลในคลังยังอยู่ (เปิดกลับได้) */
   SUBJ_ALL=SUBJ.map(s=>({id:s.id,name:s.name,group:s.group,custom:!!s.custom}));

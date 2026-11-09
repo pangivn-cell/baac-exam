@@ -79,7 +79,8 @@ function syncDocFromMeta(m){
 function syncRememberFigs(doc,figs){
   for(const f of figs||[])if(f&&f.id)PFIG.set(f.id,{id:f.id,docId:doc.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0});
 }
-async function syncAdopt(m){
+/* many=true: เรียกทีละหลายเอกสาร (syncPull) ผู้เรียกจัดรายวิชาครั้งเดียวตอนจบ — เดิมจัดทุกเอกสาร 138 × ~50 ms หน้าเว็บค้าง 6 วินาที */
+async function syncAdopt(m,many){
   const id=m.localId||(/^l/.test(m.id)&&!m.sha?m.id.slice(1):m.id);
   let doc=DOCS.find(d=>d.id===id&&!d.central)||DOCS.find(d=>!d.central&&syncKey(d)===m.id);
   if(!doc&&m.sha){doc=DOCS.find(d=>!d.central&&d.sha===m.sha)}
@@ -92,7 +93,7 @@ async function syncAdopt(m){
     if(have<rc)syncHydrateQueue(doc,{cards:true});
     if(m.stage!=='ready'&&(!doc.pages||!doc.pages.length)&&(m.pagesParts||0)>0)syncHydrateQueue(doc,{cards:false,pages:true});
   }
-  syncDocSubjects();
+  if(!many)syncDocSubjects();
 }
 /* คิวโหลดเนื้อหา: ทีละไฟล์ กันยิง Firestore พร้อมกันหลายสิบรายการตอนเพิ่งล็อกอิน */
 const SYNC_HYQ=[];let SYNC_HYRUN=false;
@@ -163,7 +164,7 @@ async function syncPull(){
          (ไม่ลบบนคลาวด์ เพราะอาจเป็นไฟล์ที่อีกเครื่องเพิ่งอัปโหลดและยังส่งหน้าไม่เสร็จ) */
       if(m.stage!=='ready'&&!(+m.pagesParts>0)&&!m.driveId&&!m.srcFile&&!(+m.cardsParts>0)&&!((m.counts&&+m.counts.cards)>0)
         &&!DOCS.some(d=>!d.central&&(d.id===(m.localId||m.id)||syncKey(d)===m.id)))continue;
-      await syncAdopt(m);
+      await syncAdopt(m,true);
     }
     if(!SYNC.firstPush){SYNC.firstPush=true;syncPushLocal(metas).catch(e=>syErr(e))}
     SYNC.last=Date.now();SYNC.err='';

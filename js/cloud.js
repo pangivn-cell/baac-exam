@@ -462,7 +462,7 @@ async function renderReview(){
   const el=document.getElementById('sheet');
   if(!isReviewerMe()){el.innerHTML='<div class="state"><p><b>หน้านี้สำหรับผู้ตรวจและแอดมิน</b></p></div>';return}
   const tab=(v,t)=>`<button data-rt="${v}" aria-pressed="${RV.tab===v}">${t}</button>`;
-  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">${tab('subs','รออนุมัติ')}${tab('reports','รายงานเฉลยผิด')}${tab('dels','ขอลบข้อสอบ')}${tab('feedback','ข้อความ')}${tab('kb','คลังกลาง')}${ME.role==='admin'?tab('users','สมาชิก')+tab('psc','Product Catalog'):''}</div><div id="rvbody"><div class="state"><div class="spin"></div></div></div>`;
+  el.innerHTML=`<div class="seg" role="group" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">${tab('subs','รออนุมัติ')}${tab('reports','รายงานเฉลยผิด')}${tab('dels','ขอลบข้อสอบ')}${tab('feedback','ข้อความ')}${tab('kb','คลังกลาง')}${ME.role==='admin'?tab('users','สมาชิก')+tab('psc','ข้อมูลผลิตภัณฑ์'):''}</div><div id="rvbody"><div class="state"><div class="spin"></div></div></div>`;
   el.querySelectorAll('[data-rt]').forEach(b=>b.onclick=()=>{RV.tab=b.dataset.rt;renderReview()});
   const body=document.getElementById('rvbody');
   try{

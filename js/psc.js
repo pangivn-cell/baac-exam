@@ -383,6 +383,11 @@ async function pscAskLink(){
   toast('เข้าสู่ระบบ Product Catalog แล้ว');
 }
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-psclink]'))pscAskLink()});
+/* เข้าสู่ระบบ Product Catalog จากอีกแท็บ: แท็บนี้ที่ค้างหน้า "ต้องเข้าสู่ระบบ" เริ่มชุดให้เอง */
+window.addEventListener('storage',e=>{
+  if(e.key!==PSC_LINK_KEY||!e.newValue||typeof R==='undefined'||!R||R.status!=='error'||!/^psc_/.test(R.code||''))return;
+  PSC=null;pscP=null;start(true);
+});
 
 /* ---------- แท็บ Product Catalog (แอดมินเท่านั้น) ---------- */
 async function renderPscAdmin(body){
@@ -418,3 +423,5 @@ async function renderPscAdmin(body){
     $('pscgo').disabled=false;
   };
 }
+/* เปิดวิชานี้ก่อนที่การเข้าสู่ระบบเว็บสอบจะโหลดเสร็จ (ขึ้น "ต้องเข้าสู่ระบบ") → พอเข้าสู่ระบบแล้วเริ่มชุดให้เอง */
+function pscOnAuth(){if(typeof R!=='undefined'&&R&&R.status==='error'&&R.code==='psc_login'&&typeof VIEW!=='undefined'&&VIEW==='practice'){PSC=null;pscP=null;start(true)}}

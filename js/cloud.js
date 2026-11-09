@@ -29,7 +29,7 @@ async function cloudInit(){
         if(s.exists())ME.role=s.data().role||'user';
         else await f.fs.setDoc(fsDoc('users',u.uid),{name:ME.name,email:ME.email,role:'user',createdAt:f.fs.serverTimestamp()});
       }catch(e){}
-      renderAcct();renderSide();refreshCloudViews();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();pullAIP();setTimeout(()=>{if(typeof loadSrcIndex==='function'&&!SRC.ready)loadSrcIndex()},3000);setTimeout(()=>poolCleanup(),8000);
+      renderAcct();renderSide();refreshCloudViews();if(typeof pscOnAuth==="function")pscOnAuth();checkSubs();loadMyPoints().then(flushPoints);flushShares();pullQLog();pullAIP();setTimeout(()=>{if(typeof loadSrcIndex==='function'&&!SRC.ready)loadSrcIndex()},3000);setTimeout(()=>poolCleanup(),8000);
       /* ซิงก์คิว/คลังส่วนตัวข้ามเครื่อง (ต้องเผยแพร่กฎใน firestore.rules) */
       setTimeout(()=>{if(typeof syncStart==='function'){syncStart();if(typeof syncFlushDeletes==='function')syncFlushDeletes().catch(()=>{})}},600);
     });

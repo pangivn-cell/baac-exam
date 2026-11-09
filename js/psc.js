@@ -6,7 +6,21 @@
    ทุกข้อบอกเรื่อง หัวข้อ เลขที่บันทึก และลิงก์หน้าผลิตภัณฑ์ไว้ในเฉลยเท่านั้น (เปิดได้เฉพาะคนที่มีสิทธิ์เข้าระบบ) */
 let PSC=null,PSC_META=null,pscP=null;
 const PSC_H={'ระยะเวลาดำเนินโครงการ':'ระยะเวลาโครงการ','ระยะเวลาดำเนินการ':'ระยะเวลาโครงการ','หลักประกันเงินกู้':'หลักประกัน','กำหนดระยะเวลาชำระคืนเงินกู้':'ระยะเวลาการกู้','ระยะเวลาการผ่อนชำระ':'ระยะเวลาการกู้'};
-function setPSC(d){PSC=d.map((a,i)=>({...a,k:i,secs:a.secs.map(([h,v])=>[PSC_H[h]||h,v])}))}
+/* เรื่องที่ไม่เอามาออกข้อสอบ: ปิดการรับฝาก / ยกเลิกแล้ว (ดูจากชื่อเรื่อง)
+   ระวัง "…จนกว่าธนาคารแจ้งปิดการรับฝาก" ในเรื่องที่ยังเปิดอยู่ จึงจับเฉพาะขึ้นต้นชื่อเรื่อง หรือ "ปิดรับฝากแล้ว" */
+const PSC_CLOSED=/^\s*[(（]?\s*(ปิด(การ)?รับฝาก|ยกเลิก)|ปิด(การ)?รับฝากแล้ว|ยกเลิก(ผลิตภัณฑ์|โครงการ|การให้บริการ|มาตรการ|แคมเปญ)?แล้ว/;
+/* เรื่องเดียวกันหลายฉบับ (ปรับปรุงครั้งที่ / แก้ไขเพิ่มเติมครั้งที่): ใช้ฉบับปรับปรุงครั้งล่าสุด ถ้าเท่ากันใช้ฉบับที่อัปเดตล่าสุด */
+const PSC_REV=/[(（]?\s*(?:ปรับปรุง|แก้ไขเพิ่มเติม|แก้ไข)\s*(?:ครั้งที่|ครั้ง)\s*(\d+)\s*[)）]?/g;
+const pscRev=t=>{let n=0;for(const m of String(t).matchAll(PSC_REV))n=Math.max(n,+m[1]);return n};
+const pscBase=t=>pscN(String(t).replace(PSC_REV,'').replace(/^\s*วิธีปฏิบัติ/,'').replace(/&/g,'')).replace(/^โครงการ/,'');
+function pscActive(list){
+  const best=new Map();
+  for(const a of list){if(PSC_CLOSED.test(a.title))continue;const b=pscBase(a.title),o=best.get(b);
+    if(!o||pscRev(a.title)>pscRev(o.title)||(pscRev(a.title)===pscRev(o.title)&&String(a.mod||a.date)>String(o.mod||o.date)))best.set(b,a)}
+  return list.filter(a=>best.get(pscBase(a.title))===a);
+}
+let PSC_ALL=null;   /* ทุกเรื่องตามที่ดึงมา (ใช้ตอนอัปเดตเทียบของเดิม) · PSC = เฉพาะเรื่องที่ใช้ออกข้อสอบ */
+function setPSC(d){PSC_ALL=d;PSC=pscActive(d).map((a,i)=>({...a,k:i,secs:a.secs.map(([h,v])=>[PSC_H[h]||h,v])}))}
 /* ที่มาของข้อมูล:
    1. เข้าสู่ระบบเว็บนี้แล้ว → คลังกลาง (ครบรวมเรื่องที่ AI อ่านจากรูป)
    2. ไม่ได้เข้าสู่ระบบเว็บนี้ แต่เชื่อมต่อ Product Catalog แล้ว (มี token ของตัวเอง) → ดึงสดจาก Product Catalog เอง
@@ -111,7 +125,7 @@ ${a.secs.length?`ข้อความในหน้าเว็บ:\n${a.secs.
 async function pscUpdate(link,{onProg=()=>{},readImg=true,save=true,signal}={}){
   const u=new URL(link),token=u.searchParams.get('token'),uid=u.searchParams.get('id');if(!token)throw{code:'psc_token'};
   const {posts,cats}=await pscFetchAll(token,uid,{onProg,signal});
-  let old=[];try{old=await loadPSC()}catch(e){}
+  let old=[];try{await loadPSC();old=PSC_ALL||[]}catch(e){}
   const prev=new Map(old.map(a=>[a.id,a])),rep={total:posts.length,added:0,changed:0,removed:0,skipped:0,img:0,imgFail:0,imgErr:''};
   const out=[];
   for(const p of posts){
@@ -443,6 +457,8 @@ function pscOnAuth(){if(typeof R!=='undefined'&&R&&R.status==='error'&&R.code===
 /* ข้อที่เคยตอบผิดแล้วระบบเอากลับมาให้ตอบใหม่: ข้อที่สร้างก่อนมีตัวกรองหัวข้อ/ตัวเลือก ถ้าไม่ผ่านเกณฑ์ปัจจุบันก็ไม่เอากลับมา */
 function pscRetryOK(q){
   if(!Array.isArray(q.choices)||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem||''))return false;
+  /* เรื่องที่ปิดรับฝาก/ยกเลิก หรือมีฉบับปรับปรุงใหม่กว่าแล้ว */
+  if(PSC&&q.psc&&!PSC.some(a=>a.id===q.psc))return false;
   if(q.gen==='ai')return true;
   if(q.ph)return pscOkH(q.ph)&&(q.ptype!=='t3'||PSC_FACTH.test(q.ph));
   return !/^ข้อใดถูกต้องเกี่ยวกับ/.test(q.stem||'');

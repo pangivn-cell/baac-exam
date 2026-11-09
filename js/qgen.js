@@ -166,7 +166,8 @@ function renderQGen(){
       <label class="rad"><input type="checkbox" id="qg-auto" ${QGEN.auto?'checked':''}><span><b>เติมโจทย์อัตโนมัติเมื่อว่าง</b><span class="src">${host?'เครื่องนี้มี AI ในเครื่อง เติมให้ได้':'ทำงานเฉพาะเครื่องที่เปิด AI ในเครื่องไว้ (ตั้งที่ ตั้งค่า AI → AI ในเครื่องนี้)'}</span></span></label>
       <div class="hopt"><label for="qg-min">ขั้นต่ำต่อวิชา</label><input class="tx" type="number" id="qg-min" min="10" max="500" step="10" value="${QGEN.min}" style="width:90px"><span class="src">ข้อ</span>
         <button class="ghost" id="qg-re">นับใหม่</button>${typeof isReviewerMe==='function'&&isReviewerMe()?'<button class="ghost" id="qg-merge">🔗 รวมรายวิชา</button>':''}</div>
-      <p class="src">AI ในเครื่อง: ${host?'<b class="okt">พร้อม</b>':'ไม่พร้อม'} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา</p>
+      <p class="src">AI ในเครื่อง: ${host?`<b class="okt">พร้อม</b> (${esc(LLMHOST.model)})`:`ไม่พร้อม${LLMHOST.on&&LOCALAI.why?` (${esc(LOCALAI.why)})`:''}`} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา
+        ${host?'':`<button class="ghost" id="qg-local">${LLMHOST.on?'🔄 ตรวจ AI ในเครื่องอีกครั้ง':'⚡ เปิดใช้ AI ในเครื่อง (Ollama)'}</button> <button class="ghost" id="qg-aiset">ตั้งค่า AI</button>`}</p>
       <div class="qgrun">${QGEN.run?'<button class="ghost danger" id="qg-stop">■ หยุด</button>':`<button class="primary" id="qg-start" ${due&&(host||(cloud&&cloud!=='claude'))?'':'disabled'}>▶ เริ่มสร้างตามแผน</button>`}
         <span class="src">${QGEN.run?'กำลังไล่เติมทุกวิชาที่ยังไม่ครบ กดหยุดได้ตลอด (ชุดที่กำลังสร้างจะถูกยกเลิก)':due?`เติม ${due} วิชาที่ยังไม่ครบให้ถึง ${QGEN.min} ข้อ ทีละวิชา ทีละ ${QGEN_BATCH} ข้อ · ${host?'ใช้ AI ในเครื่อง':'ใช้ AI คลาวด์ (เสียเครดิต)'} · ต้องเปิดหน้าเว็บไว้`:'ทุกวิชาครบขั้นต่ำแล้ว'}</span></div>
       <div id="qg-stat">${qgenStatHTML()}</div>
@@ -182,6 +183,11 @@ function renderQGen(){
   $('qg-min').onchange=e=>{QGEN.min=Math.max(10,Math.min(500,Math.round(+e.target.value/10)*10||50));saveQGen();renderQGen()};
   if($('qg-merge'))$('qg-merge').onclick=()=>mergeSubjectsDialog();
   if($('qg-start'))$('qg-start').onclick=()=>{qgenLoop()};
+  /* เปิด AI ในเครื่องจากหน้านี้เลย (เหมือนติ๊ก "ใช้เครื่องนี้ประมวลผลไฟล์ด้วย AI ในเครื่อง" ในตั้งค่า AI) แล้วตรวจการเชื่อมต่อ */
+  if($('qg-local'))$('qg-local').onclick=async()=>{const b=$('qg-local');b.disabled=true;b.textContent='กำลังตรวจ…';
+    LLMHOST.on=true;saveHost();await pingLocal();if(typeof hostTick==='function')hostTick().catch(()=>{});
+    toast(localUp()?`AI ในเครื่องพร้อมแล้ว (${LLMHOST.model}) ใช้สร้างโจทย์ฟรี`:(LOCALAI.why||'เชื่อมต่อ AI ในเครื่องไม่ได้'),localUp()?'':'bad');renderQGen();if(localUp())qgenTick()};
+  if($('qg-aiset'))$('qg-aiset').onclick=()=>setView('aiset');
   if($('qg-stop'))$('qg-stop').onclick=()=>qgenStop();
   if($('qg-bal'))$('qg-bal').onclick=async()=>{QGEN.busy='balance';renderQGen();let r={ok:0,tried:0};
     try{r=await balanceSome(5,balRt)}catch(e){toast('ปรับไม่สำเร็จ: '+errCopy(e&&e.code,'ปรับตัวเลือก'),'bad')}finally{QGEN.busy=''}

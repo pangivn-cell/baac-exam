@@ -216,7 +216,9 @@ function pscQ(a,h,stem,choices,steps,keep){
   let ord=shuffle([0,1,2,3]);if(keep)ord=[0,1,2,3].sort((x,y)=>keep(choices[x])-keep(choices[y]));
   return{kind:'mc',stem,choices:ord.map(i=>choices[i]),answer:ord.indexOf(0),steps:[...steps,...pscImgNote(a)],topic:a.title,ph:h,...(keep?{keepOrder:true}:{}),...pscCite(a,h)};
 }
-const pscT=a=>`"${a.title}"`;
+/* ชื่อที่ใช้ในโจทย์/ตัวเลือก: ตัด "วิธีปฏิบัติ" นำหน้าและ "(แก้ไขเพิ่มเติมครั้งที่ n)" ออก เหลือชื่อผลิตภัณฑ์/โครงการ/มาตรการ (ที่มาในเฉลยยังใช้ชื่อเต็ม) */
+const pscName=a=>String(a.title).replace(PSC_REV,' ').replace(/^\s*วิธีปฏิบัติ(ตาม|การ)?\s*/,'').replace(/\s+/g,' ').trim()||a.title;
+const pscT=a=>`"${pscName(a)}"`;
 
 /* 1. {หัวข้อ}ของเรื่อง X เป็นอย่างไร */
 function pscT1(a,h,lv){
@@ -229,7 +231,7 @@ function pscT1(a,h,lv){
 function pscT2(a,h,lv){
   const lim=lv>=4?320:260,v=pscClip(pscSec(a,h),lim);if(pscN(v).length<20)return null;
   const o=pscOthers(a,h,3,lv,x=>pscClip(x,lim));if(o.length<3)return null;
-  return pscQ(a,h,`${h}ต่อไปนี้ เป็นของผลิตภัณฑ์หรือโครงการใด\n"${pscMask(v,a)}"`,[a.title,...o.map(x=>x[0].title)],
+  return pscQ(a,h,`${h}ต่อไปนี้ เป็นของผลิตภัณฑ์ โครงการ หรือมาตรการใด\n"${pscMask(v,a)}"`,[pscName(a),...o.map(x=>pscName(x[0]))],
     [[`เป็น${h}ของ "${a.title}"`,'Product Catalog BAAC'],[`ตัวเลือกอื่นมี${h}ต่างจากนี้ เช่น "${o[0][0].title}": ${pscClip(o[0][1],140)}`,'']]);
 }
 /* 3. ข้อใดถูกต้องเกี่ยวกับเรื่อง X (ตัวลวง = หัวข้อเดียวกันแต่เนื้อหาของเรื่องอื่น) */
@@ -280,7 +282,7 @@ function pscT6(a,lv){
   const it=shuffle(pscItemsOf(v));
   for(const l of it){const n=pscN(l);if(n.length<15)continue;
     const o=pscPool(a,lv,b=>b.secs.some(([x])=>PSC_WHO.test(x))&&!pscN(pscAll(b)).includes(n)).slice(0,3);if(o.length<3)return null;
-    return pscQ(a,h,`ลูกค้าที่มีลักษณะต่อไปนี้ ตรงกับ${h}ของผลิตภัณฑ์หรือโครงการใด\n"${pscMask(l,a)}"`,[a.title,...o.map(b=>b.title)],[[`${a.title} หัวข้อ${h}: ${pscClip(v,500)}`,'Product Catalog BAAC']]);
+    return pscQ(a,h,`ลูกค้าที่มีลักษณะต่อไปนี้ ตรงกับ${h}ของผลิตภัณฑ์ โครงการ หรือมาตรการใด\n"${pscMask(l,a)}"`,[pscName(a),...o.map(b=>pscName(b))],[[`${a.title} หัวข้อ${h}: ${pscClip(v,500)}`,'Product Catalog BAAC']]);
   }
   return null;
 }

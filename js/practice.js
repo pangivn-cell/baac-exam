@@ -18,6 +18,33 @@ async function takePrefetch(s,level,n){
   PREFETCH=null;await pf.p;
   return pf.items&&pf.items.length?pf.items.filter(q=>!qMastered(q)):null;
 }
+/* ---------- ทำต่อ: จำชุดที่ทำค้างไว้ในเครื่อง (ปิดเว็บแล้วกลับมาก็ต่อข้อเดิมได้) ---------- */
+const RUN_KEY='exam-run',RUN_TTL=3*864e5;
+function saveRun(){
+  /* ชุดที่ยังไม่ได้ตอบสักข้อ (เช่น ชุดที่สร้างเองตอนเปิดเว็บ) ไม่ทับชุดที่ทำค้างไว้ */
+  if(!R||R.status!=='play'||!R.items.length||!R.picks.some(p=>p!=null))return;
+  try{localStorage.setItem(RUN_KEY,JSON.stringify({subject:R.subject,level:R.level,mode:R.mode,items:R.items,picks:R.picks,i:R.i,t0:R.t0,at:Date.now()}))}catch(e){}
+}
+function clearRun(){try{localStorage.removeItem(RUN_KEY)}catch(e){}}
+/* ชุดที่ทำค้างของวิชานี้ (ยังมีข้อที่ไม่ได้ตอบ) → {n, next: ลำดับข้อถัดไปที่ยังไม่ตอบ} */
+function runOf(id){
+  let r=null;
+  if(R&&R.subject===id&&R.status==='play'&&R.items.length&&R.picks.some(p=>p!=null))r=R;
+  else try{const x=JSON.parse(localStorage.getItem(RUN_KEY)||'null');if(x&&x.subject===id&&Date.now()-x.at<RUN_TTL&&Array.isArray(x.items)&&x.items.length)r=x}catch(e){}
+  if(!r)return null;
+  const j=r.items.findIndex((_,k)=>r.picks[k]==null);
+  return j<0?null:{run:r,n:r.items.length,next:j+1};
+}
+/* ทำต่อจากข้อแรกที่ยังไม่ตอบ · ไม่มีชุดค้าง = false (ให้เริ่มชุดใหม่) */
+function resumeRun(id){
+  const x=runOf(id);if(!x)return false;
+  P.subject=id;save();
+  if(x.run!==R){if(genCtl){genCtl.abort();genCtl=null}if(R&&R.moreCtl)R.moreCtl.abort();
+    R={...x.run,picks:x.run.picks.slice(),status:'play',go:true,t0:x.run.t0||Date.now()};delete R.at}
+  R.i=x.next-1;
+  setView('practice');renderSide();
+  return true;
+}
 async function start(go){
   if(genCtl){genCtl.abort();genCtl=null}
   if(R&&R.moreCtl){R.moreCtl.abort();R.moreCtl=null}
@@ -280,6 +307,7 @@ function render(){
   if(R.status==='done'){renderDone(el);return}
   const n=R.items.length,q=R.items[R.i],pick=R.picks[R.i],locked=R.mode==='now'&&pick!=null,shown=R.more?Math.max(R.target||n,n):n,wait=R.more&&R.i+1>=n;
   const done=R.picks.filter((p,j)=>p!=null&&p===R.items[j].answer).length;
+  saveRun();
   el.innerHTML=fx(`<div class="meta"><span id="pmeta">ข้อ ${R.i+1} จาก ${shown}</span><span>${R.mode==='now'?`ถูก ${done}`:`ตอบแล้ว ${R.picks.filter(p=>p!=null).length}`}</span></div>
    <div class="bar"><i style="width:${R.i/shown*100}%"></i></div>
    ${questionHTML(q)}
@@ -301,7 +329,7 @@ function finish(){
   const perfect=n>=5&&score===n;P.streak=perfect?(P.streak||0)+1:0;
   const pts=perfect?2*P.streak:passed?1:0;
   if(pts)awardPass(pts);
-  save();Object.assign(R,{status:'done',score,pct,passed,before,after:myLevel(),pts,streak:P.streak});recordCards(R.items,R.picks);logQs(R.items,R.picks);
+  save();clearRun();Object.assign(R,{status:'done',score,pct,passed,before,after:myLevel(),pts,streak:P.streak});recordCards(R.items,R.picks);logQs(R.items,R.picks);
   const sn=(SUBJ.find(s=>s.id===R.subject)||subj()).name,t0=R.t0||Date.now();
   addHist({at:t0,kind:'practice',title:`ฝึก · ${sn}`,n,score,pct,used:(Date.now()-t0)/1000,groups:[{name:sn,ok:score,n}],viol:0,auto:''});
   render();

@@ -132,7 +132,7 @@ function renderHome(){
           <div class="hbar" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100" aria-label="ความคืบหน้าสู่ระดับถัดไป"><i style="width:${pct}%"></i></div></div>
       </div>
       <div class="hcta">
-        ${last?`<button class="primary big" id="hlast">▶ ทำต่อ: ${esc(last.name)}</button>`:`<button class="primary big" id="hstart">▶ เริ่มฝึกรายวิชา</button>`}
+        ${last?`<button class="primary big" id="hlast">▶ ทำต่อ: ${esc(last.name)}${(r=>r?` (ข้อ ${r.next}/${r.n})`:'')(runOf(last.id))}</button>`:`<button class="primary big" id="hstart">▶ เริ่มฝึกรายวิชา</button>`}
         <button class="ghost big" data-go="mock">⏱ สอบจริง (จับเวลา)</button>
       </div>
     </div>
@@ -166,7 +166,8 @@ function renderHome(){
   el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>setView(b.dataset.go));
   const go=id=>{P.subject=id;if(SUBJ.find(s=>s.id===id).group==='spec')P.lastSpec=id;save();setView('practice');renderSide();start(true)};
   el.querySelectorAll('[data-hs]').forEach(b=>b.onclick=()=>go(b.dataset.hs));
-  if($('hlast'))$('hlast').onclick=()=>go(last.id);
+  /* มีชุดที่ทำค้าง: ต่อข้อถัดไปที่ยังไม่ตอบ · ไม่มี: เริ่มชุดใหม่ */
+  if($('hlast'))$('hlast').onclick=()=>{if(!resumeRun(last.id))go(last.id)};
   if($('hcount'))$('hcount').onchange=e=>{P.count=+e.target.value;save()};
   el.querySelectorAll('[data-hm]').forEach(b=>b.onclick=()=>{P.mode=b.dataset.hm;save();renderHome()});
   if($('hq'))$('hq').oninput=e=>{const q=e.target.value.trim().toLowerCase();$('hspec').querySelectorAll('[data-hs]').forEach(b=>{const s=SUBJ.find(x=>x.id===b.dataset.hs);b.hidden=!!q&&!(s.name+' '+s.desc+' '+(s.kw||[]).join(' ')).toLowerCase().includes(q)})};

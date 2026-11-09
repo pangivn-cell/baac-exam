@@ -335,14 +335,27 @@ function pscLinkHTML(url){
   const has=!!pscLinkParams();
   return ` · <a href="${esc(pscHref(url))}" data-pscurl="${esc(url)}" target="_blank" rel="noopener">เปิดหน้าผลิตภัณฑ์</a> ${has?'':`<button type="button" class="ghost" data-psclink style="padding:2px 8px;font-size:.85em">ให้เปิดตรงหน้านี้</button> <span class="src">(ตอนนี้ถ้ายังไม่ได้เข้าระบบ จะไปหน้า Home)</span>`}`;
 }
+/* เชื่อมต่อ Product Catalog: เปิดเว็บให้เข้าระบบ → ผู้ใช้คัดลอกที่อยู่ (Ctrl+L, Ctrl+C) → กลับมาหน้านี้ ระบบหยิบลิงก์จากคลิปบอร์ดเอง
+   (เบราว์เซอร์ไม่ให้เว็บเราอ่านที่อยู่ของเว็บอื่นโดยตรง คลิปบอร์ดจึงเป็นทางที่สั้นที่สุด) */
+const PSC_LINK_RE=/https:\/\/psc\.baac\.tech\/\S*[?&]token=[0-9a-f]{16,}\S*/i;
 async function pscAskLink(){
   let cur='';try{cur=localStorage.getItem(PSC_LINK_KEY)||''}catch(e){}
-  const r=await modal(`<p class="mt">ให้ลิงก์เปิดหน้าผลิตภัณฑ์ได้ทันที</p>
-    <p>เข้า Product Catalog ตามปกติ แล้วคัดลอกลิงก์จากช่องที่อยู่ด้านบน (ลิงก์ที่มีคำว่า <b>token=</b>) มาวางที่นี่</p>
-    <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="https://psc.baac.tech/?token=...&id=..." value="${esc(cur)}" style="width:100%">
-    <p class="src">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นระบบ · ถ้าวันหลังลิงก์พาไปหน้าล็อกอินอีก แปลว่า token หมดอายุ ให้วางลิงก์ใหม่</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
+  /* กลับมาที่หน้านี้ (หรือกดปุ่มวาง): ลองอ่านคลิปบอร์ด เจอลิงก์ที่มี token ก็บันทึกให้เลย */
+  const grab=async()=>{try{const m=(await navigator.clipboard.readText()).match(PSC_LINK_RE);const i=document.getElementById('psclinkq');if(m&&i){i.value=m[0];closeModal(1)}}catch(e){}};
+  const onBack=()=>setTimeout(grab,300);window.addEventListener('focus',onBack);
+  const p=modal(`<p class="mt">เชื่อมต่อ Product Catalog</p>
+    <p>ทำครั้งเดียว แล้วลิงก์ในเฉลยจะเปิดตรงหน้าผลิตภัณฑ์ได้ทันที</p>
+    <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิด Product Catalog เพื่อเข้าระบบ</button></li>
+      <li>เข้าระบบให้เสร็จ แล้วกด <b>Ctrl+L</b> ตามด้วย <b>Ctrl+C</b> (คัดลอกที่อยู่เว็บ) · บนมือถือ: แตะช่องที่อยู่แล้วกดคัดลอก</li>
+      <li>กลับมาที่หน้านี้ ระบบจะหยิบลิงก์ให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
+    <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="หรือวางลิงก์ที่มี token= ที่นี่" value="${esc(cur)}" style="width:100%">
+    <p style="margin:4px 0 0"><button type="button" class="ghost" id="pscpaste">📋 วางจากคลิปบอร์ด</button></p>
+    <p class="src">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นระบบ · ถ้าวันหลังลิงก์พาไปหน้าล็อกอินอีก แปลว่า token หมดอายุ ให้เชื่อมต่อใหม่</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
+  document.getElementById('pscopen').onclick=()=>window.open('https://psc.baac.tech/','_blank');
+  document.getElementById('pscpaste').onclick=grab;
+  const r=await p;window.removeEventListener('focus',onBack);
   if(r!==1)return;
-  const v=(document.getElementById('psclinkq')||{}).value||'';
+  const v=((document.getElementById('psclinkq')||{}).value||'').match(PSC_LINK_RE)?.[0]||'';
   if(!/^https:\/\/psc\.baac\.tech\/.*[?&]token=/.test(v.trim())){toast('ลิงก์ต้องเป็นของ psc.baac.tech และมี token=','bad');return}
   try{localStorage.setItem(PSC_LINK_KEY,v.trim())}catch(e){}
   document.querySelectorAll('a[data-pscurl]').forEach(a=>{a.href=pscHref(a.dataset.pscurl)});

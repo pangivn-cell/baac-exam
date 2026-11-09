@@ -2,9 +2,14 @@
 # ทำไมต้องมี: AI (Gemini/OpenAI/Claude) เข้า psc.baac.tech ไม่ได้ (เว็บเปิดเฉพาะบางเครือข่าย) และเบราว์เซอร์อ่านรูปข้ามเว็บเองไม่ได้ (ไม่มี CORS)
 #   → เครื่องนี้โหลดรูปแทน แล้วส่งให้หน้าเว็บที่ http://localhost:8795/img?u=<ลิงก์รูป> หน้าเว็บส่งตัวรูปต่อให้ AI อ่าน
 # รับเฉพาะรูปใน psc.baac.tech/wp-content/uploads/ และตอบเฉพาะหน้าเว็บสอบ · เปิดไว้ระหว่างกดอัปเดต แล้วปิดหน้าต่างได้เลย
-import http.server, urllib.request, urllib.parse, socketserver, sys
+# เปิดอัตโนมัติ: หน้าเว็บเรียกลิงก์ baacpsc://start (ติดตั้งครั้งเดียวด้วย install-psc-helper.ps1) → เปิดแบบไม่มีหน้าต่าง (--auto)
+#   ไม่มีใครเรียกใช้ 10 นาทีแล้วปิดตัวเอง
+import http.server, urllib.request, urllib.parse, socketserver, sys, threading, time
 
 PORT = 8795
+AUTO = '--auto' in sys.argv
+IDLE_SEC = 600
+last_use = time.time()
 ALLOW_ORIGINS = {'https://pangivn-cell.github.io', 'http://localhost:8781', 'http://localhost:8783'}
 ALLOW_PREFIX = 'https://psc.baac.tech/wp-content/uploads/'
 MAX_BYTES = 15 * 1024 * 1024
@@ -27,6 +32,8 @@ class H(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        global last_use
+        last_use = time.time()
         p = urllib.parse.urlparse(self.path)
         if p.path == '/ping':
             return self.reply(200, b'ok', 'text/plain')
@@ -73,4 +80,10 @@ if __name__ == '__main__':
         sys.exit(0)
     print('Product Catalog image helper running on http://localhost:%d' % PORT)
     print('Keep this window open while you press Update on the exam site. Close it when done.')
+    if AUTO:
+        def idle():
+            while time.time() - last_use < IDLE_SEC:
+                time.sleep(15)
+            srv.shutdown()
+        threading.Thread(target=idle, daemon=True).start()
     srv.serve_forever()

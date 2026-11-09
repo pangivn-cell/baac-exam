@@ -58,6 +58,13 @@ const pscNeedImg=a=>a.imgs.length&&pscLen(a)<400;
    → ให้ตัวช่วยในเครื่องแอดมิน (tools/psc-img-helper.bat, localhost:8795) โหลดรูปให้ แล้วส่งตัวรูปให้ AI */
 const PSC_HELPER='http://localhost:8795';
 async function pscHelperOK(){try{const r=await fetch(PSC_HELPER+'/ping',{signal:AbortSignal.timeout(2500)});return r.ok}catch(e){return false}}
+/* เปิดตัวช่วยเอง: ลิงก์ baacpsc://start (ติดตั้งครั้งเดียวด้วย tools\install-psc-helper.ps1) ต้องเรียกตอนกดปุ่มทันที
+   Chrome ถามครั้งแรกว่าจะเปิดโปรแกรมไหม ติ๊ก "อนุญาตเสมอ" ครั้งต่อไปจะเปิดเองเงียบๆ · รอให้ตัวช่วยตอบไม่เกิน 20 วิ */
+async function pscStartHelper(){
+  const f=document.createElement('iframe');f.style.display='none';f.src='baacpsc://start';document.body.append(f);setTimeout(()=>f.remove(),3000);
+  for(let i=0;i<20;i++){await new Promise(r=>setTimeout(r,1000));if(await pscHelperOK())return true}
+  return false;
+}
 const pscB64=b=>new Promise((ok,no)=>{const f=new FileReader();f.onload=()=>ok(String(f.result).split(',')[1]);f.onerror=no;f.readAsDataURL(b)});
 async function pscImgData(url,signal){
   for(const via of [url,`${PSC_HELPER}/img?u=${encodeURIComponent(url)}`]){
@@ -330,14 +337,17 @@ async function renderPscAdmin(body){
     <p class="src" id="pscprog"></p></div>`;
   const $=id=>body.querySelector('#'+id);
   /* AI อ่านรูปจาก psc.baac.tech เองไม่ได้ ต้องเปิดตัวช่วยในเครื่องนี้ก่อน */
-  const helpTxt=ok=>ok?'✓ ตัวช่วยโหลดรูปทำงานอยู่ (localhost:8795)':'ตัวช่วยโหลดรูปยังไม่เปิด: ดับเบิลคลิก tools\\psc-img-helper.bat ในโฟลเดอร์ baac-exam ค้างหน้าต่างไว้ระหว่างอัปเดต (ไม่เปิดก็อัปเดตเรื่องที่เป็นตัวหนังสือได้ตามปกติ)';
-  pscHelperOK().then(ok=>{const e=$('pschelp');if(e)e.textContent=helpTxt(ok)});
+  const helpTxt=ok=>ok?'✓ ตัวช่วยโหลดรูปทำงานอยู่ (localhost:8795)':'ตัวช่วยโหลดรูปยังไม่เปิด ระบบจะเปิดให้เองตอนกดอัปเดต (ถ้า Chrome ถาม ให้กดเปิดและติ๊กอนุญาตเสมอ) · ถ้าเปิดไม่ขึ้น: รัน tools\\install-psc-helper.ps1 ครั้งเดียว หรือดับเบิลคลิก tools\\psc-img-helper.bat (ไม่เปิดก็อัปเดตเรื่องที่เป็นตัวหนังสือได้ตามปกติ)';
+  let helpUp=false;pscHelperOK().then(ok=>{helpUp=ok;const e=$('pschelp');if(e)e.textContent=helpTxt(ok)});
   $('pscgo').onclick=async()=>{
     const l=$('psclink').value.trim();if(!/token=/.test(l)){toast('วางลิงก์ที่มี token ก่อน','bad');return}
     try{localStorage.setItem(PSC_LINK_KEY,l)}catch(e){}
     $('pscgo').disabled=true;const pr=$('pscprog');
     try{
-      const help=await pscHelperOK();$('pschelp').textContent=helpTxt(help);
+      /* ต้องอ่านรูปแต่ตัวช่วยยังไม่เปิด: สั่งเปิดตอนนี้เลย (ยังอยู่ในจังหวะกดปุ่ม Chrome จึงยอมเปิดโปรแกรม) */
+      let help=helpUp||await pscHelperOK();
+      if(!help&&$('pscimg').checked){pr.textContent='กำลังเปิดตัวช่วยโหลดรูป…';help=await pscStartHelper()}
+      helpUp=help;$('pschelp').textContent=helpTxt(help);
       const r=await pscUpdate(l,{readImg:$('pscimg').checked&&help,onProg:t=>{pr.textContent=t}});
       pr.innerHTML=`✓ อัปเดตแล้ว ${r.n} เรื่อง · เพิ่ม ${r.added} · เปลี่ยน ${r.changed} · ลบ ${r.removed}${r.img?` · AI อ่านรูปได้ ${r.img} เรื่อง`:''}${r.imgFail?` · <b>อ่านรูปไม่ได้ ${r.imgFail} เรื่อง</b> (${esc(errCopy(r.imgErr,'อ่านรูป'))}) กดอัปเดตอีกครั้งเพื่อลองเฉพาะเรื่องที่ค้าง`:''}${r.skipped?` · ข้าม ${r.skipped} เรื่องที่ไม่มีเนื้อหาให้ออกข้อสอบ (แบบฟอร์มที่มีแต่ไฟล์แนบ${help?'':' และเรื่องที่มีแต่รูป ซึ่งต้องเปิดตัวช่วยโหลดรูปก่อน'})`:''}`;
       toast('อัปเดตข้อมูลผลิตภัณฑ์แล้ว');

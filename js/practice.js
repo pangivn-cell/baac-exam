@@ -24,7 +24,9 @@ async function start(go){
   const s=subj(),level=lvOf(s.id),n=P.count;
   R={subject:s.id,level,mode:P.mode,items:[],picks:[],i:0,status:'loading',go:go===true};
   const ai=!!activeAI(),nb=bankFor(s).length;
-  if(!ai||s.scene||(!s.ai&&!cardMixCount(s,n)&&!nb)){
+  /* ข้อมูลผลิตภัณฑ์โหลดตอนใช้วิชานี้ครั้งแรก */
+  if(s.psc&&!PSC){const my=R;render();try{await loadPSC()}catch(e){if(R!==my)return;R.status='error';R.err=errCopy(e&&e.code,'โหลดข้อมูลผลิตภัณฑ์');render();return}if(R!==my)return}
+  if(!ai||s.scene||(!s.ai&&!s.psc&&!cardMixCount(s,n)&&!nb)){
     if(s.ai&&!nb){R.status='needai';render();return}
     R.items=mixAll(offlineItems(s,level,n));R.status='play';R.t0=Date.now();render();return}
   if(!R.go){R.status='idle';render();return}
@@ -101,7 +103,7 @@ function explainHTML(q,pick){
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
   if(q.fixed&&!q.fixed.balance)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
-  if(q.cite)h+=`<p class="cite">📄 อ้างอิง: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}</p>`;
+  if(q.cite)h+=`<p class="cite">${q.citeUrl?'📚 ศึกษาเพิ่มเติม':'📄 อ้างอิง'}: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}${/^https:\/\//.test(q.citeUrl||'')?` · <a href="${esc(q.citeUrl)}" target="_blank" rel="noopener">เปิดหน้าผลิตภัณฑ์</a> <span class="src">(ต้องเข้าระบบ Product Catalog)</span>`:''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
   {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=isMC(q)&&q.stem&&(q.card&&CARDS.some(x=>x.id===q.card&&x.type==='q')||q.poolId||q.pool||q.gen==='ai'||q.orig)?qdelRef(q):'';
    const sk=q.card&&CARDS.some(x=>x.id===q.card)?q.card:'',on=sk&&SKIPT['c:'+sk];

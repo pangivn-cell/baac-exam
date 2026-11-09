@@ -158,7 +158,7 @@ async function anthClient(){
 }
 async function anthCall(model,turns,signal,json){
   const c=await anthClient(),fb=ANTH_FALLBACK.includes(model);
-  const messages=turns.map(t=>({role:t.role,content:typeof t.content==='string'?t.content:[...t.content.images.map(i=>({type:'image',source:{type:'base64',media_type:i.mime,data:i.data}})),{type:'text',text:t.content.text}]}));
+  const messages=turns.map(t=>({role:t.role,content:typeof t.content==='string'?t.content:[...t.content.images.map(i=>({type:'image',source:i.url?{type:'url',url:i.url}:{type:'base64',media_type:i.mime,data:i.data}})),{type:'text',text:t.content.text}]}));
   const params={model,max_tokens:64000,messages,...(fb?{betas:['server-side-fallback-2026-07-01'],fallbacks:'default'}:{})};
   let msg;
   try{msg=await (fb?c.beta.messages:c.messages).stream(params,{signal}).finalMessage()}
@@ -180,13 +180,13 @@ async function keyCallOnce(prov,model,input,json,signal){
     if(prov==='gemini'){
       res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal,
         headers:{'Content-Type':'application/json','x-goog-api-key':AIP.gemini.key},
-        body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>({inline_data:{mime_type:i.mime,data:i.data}}))]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})})});
+        body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>i.url?{file_data:{mime_type:i.mime,file_uri:i.url}}:{inline_data:{mime_type:i.mime,data:i.data}})]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})})});
     }else{
       const meta=prov==='meta',oai=OAI_PROVS[prov],cus=prov==='custom'||prov==='local'||!!oai,cf=oai?{...cfgOf(prov),url:oai.url}:cfgOf(prov);
       /* custom: ไม่ส่ง response_format เพราะหลายเจ้า/โมเดลในเครื่องไม่รองรับ (looseJSON แกะ JSON จากข้อความให้) */
       res=await fetch(cus?chatURL(cf.url):meta?'https://api.meta.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions',{method:'POST',signal,
         headers:{'Content-Type':'application/json',...(cf.key?{'Authorization':'Bearer '+cf.key}:{})},
-        body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{})})});
+        body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:i.url||`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{})})});
     }
   }catch(e){if(e&&e.name==='AbortError')throw{code:'cancelled'};throw{code:'network',message:String(e)}}
   if(!res.ok)await httpFail(res);
@@ -272,6 +272,11 @@ async function aiJSON(input,{signal,onText,task}={}){
 }
 const HIDE_CODES=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'];
 function errCopy(code,what){
+  if(code==='psc_login')return 'วิชาผลิตภัณฑ์ ธ.ก.ส. ต้องเข้าสู่ระบบก่อน (ข้อมูลเปิดให้เฉพาะสมาชิก)';
+  if(code==='psc_empty')return 'ยังไม่มีข้อมูลผลิตภัณฑ์ในระบบ รอแอดมินกดอัปเดตจาก Product Catalog';
+  if(code==='psc_load')return 'โหลดข้อมูลผลิตภัณฑ์ไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
+  if(code==='psc_token')return 'ลิงก์ Product Catalog ใช้ไม่ได้หรือ token หมดอายุ เข้า Product Catalog ใหม่แล้วคัดลอกลิงก์ล่าสุดมาวาง';
+  if(code==='psc_net')return 'ติดต่อ Product Catalog ไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
   if(code==='no_credit')return 'เครดิต AI หมด (บัญชีนี้ยังไม่ได้เติมเงิน หรือเงินหมด) เติมเงินในเว็บของผู้ให้บริการ หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
   if(code==='quota')return 'โควตาฟรีของ AI หมดแล้ว ระบบจะประมวลผลต่อเองเมื่อโควตากลับมา (ทุก 60 นาที / วันถัดไป) หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
   return code==='rate_limited'?`${what}ถี่เกินไปหรือโควตาหมด รอสักครู่แล้วลองใหม่`:code==='bad_key'?'API key ไม่ถูกต้องหรือไม่มีสิทธิ์ ตรวจในตั้งค่า AI':code==='bad_model'?'ไม่พบชื่อโมเดลนี้ แก้ชื่อโมเดลในตั้งค่า AI':code==='overloaded'?'เซิร์ฟเวอร์ AI มีคนใช้เยอะชั่วคราว ระบบลองซ้ำและลองโมเดลสำรองแล้วยังไม่ได้ รอสักครู่แล้วลองใหม่':code==='network'?'เชื่อมต่อผู้ให้บริการ AI ไม่ได้ ตรวจอินเทอร์เน็ต':code==='session_expired'?'กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง':code==='invalid_json'||code==='truncated'?'ได้โจทย์ไม่ครบ ลองลดจำนวนข้อแล้วสร้างใหม่':(code==='refused'||code==='empty_completion')?'AI ไม่ตอบข้อนี้ ลองใหม่อีกครั้ง':`${what}ไม่สำเร็จ ลองใหม่อีกครั้ง`;

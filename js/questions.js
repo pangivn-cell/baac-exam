@@ -342,6 +342,7 @@ async function makeItems1(s,level,n,o={}){
 }
 async function makeItems0(s,level,n,o={}){
   /* real questions from the bank first (up to half; all of them for picture subjects), the rest newly generated in the same style */
+  if(s.psc)return pscItems(s,level,n,o);
   const pool=atLevel(bankFor(s),level);
   if(!activeAI())return offlineItems(s,level,n);
   const orig=pickBank(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));

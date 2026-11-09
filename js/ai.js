@@ -276,6 +276,7 @@ function errCopy(code,what){
   if(code==='psc_empty')return 'ยังไม่มีข้อมูลผลิตภัณฑ์ในระบบ รอแอดมินกดอัปเดตจาก Product Catalog';
   if(code==='psc_load')return 'โหลดข้อมูลผลิตภัณฑ์ไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
   if(code==='psc_token')return 'ลิงก์ Product Catalog ใช้ไม่ได้หรือ token หมดอายุ เข้า Product Catalog ใหม่แล้วคัดลอกลิงก์ล่าสุดมาวาง';
+  if(code==='psc_helper')return 'โหลดรูปจาก Product Catalog ไม่ได้ ดับเบิลคลิก tools\\psc-img-helper.bat ค้างหน้าต่างไว้แล้วกดอัปเดตอีกครั้ง';
   if(code==='psc_net')return 'ติดต่อ Product Catalog ไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
   if(code==='no_credit')return 'เครดิต AI หมด (บัญชีนี้ยังไม่ได้เติมเงิน หรือเงินหมด) เติมเงินในเว็บของผู้ให้บริการ หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';
   if(code==='quota')return 'โควตาฟรีของ AI หมดแล้ว ระบบจะประมวลผลต่อเองเมื่อโควตากลับมา (ทุก 60 นาที / วันถัดไป) หรือเปลี่ยนไปใช้ AI ตัวอื่นในตั้งค่า AI';

@@ -54,15 +54,28 @@ function pscParse(p,cats){
 const pscLen=a=>a.secs.reduce((x,s)=>x+s[1].length,0);
 /* เรื่องที่เนื้อหาเป็นตัวหนังสือน้อย แต่มีรูป → ให้ AI อ่านรูป */
 const pscNeedImg=a=>a.imgs.length&&pscLen(a)<400;
+/* AI เข้า psc.baac.tech ไม่ได้ (เว็บเปิดเฉพาะบางเครือข่าย) และเบราว์เซอร์อ่านรูปข้ามเว็บเองไม่ได้
+   → ให้ตัวช่วยในเครื่องแอดมิน (tools/psc-img-helper.bat, localhost:8795) โหลดรูปให้ แล้วส่งตัวรูปให้ AI */
+const PSC_HELPER='http://localhost:8795';
+async function pscHelperOK(){try{const r=await fetch(PSC_HELPER+'/ping',{signal:AbortSignal.timeout(2500)});return r.ok}catch(e){return false}}
+const pscB64=b=>new Promise((ok,no)=>{const f=new FileReader();f.onload=()=>ok(String(f.result).split(',')[1]);f.onerror=no;f.readAsDataURL(b)});
+async function pscImgData(url,signal){
+  for(const via of [url,`${PSC_HELPER}/img?u=${encodeURIComponent(url)}`]){
+    try{const r=await fetch(via,{signal:signal||AbortSignal.timeout(40000)});if(!r.ok)continue;const b=await r.blob();if(!/^image\//.test(b.type))continue;return{mime:b.type,data:await pscB64(b)}}
+    catch(e){if(signal&&signal.aborted)throw{code:'cancelled'}}
+  }
+  return null;
+}
 async function pscReadImg(a,signal){
-  const ext=u=>/\.png$/i.test(u)?'image/png':/\.webp$/i.test(u)?'image/webp':'image/jpeg';
+  const images=[];for(const u of a.imgs){const im=await pscImgData(u,signal);if(im)images.push(im)}
+  if(!images.length)throw{code:'psc_helper'};
   const r=await aiVisionJSON(`ภาพต่อไปนี้มาจาก Product Catalog ของ ธ.ก.ส. เรื่อง "${a.title}"
 ${a.secs.length?`ข้อความในหน้าเว็บ:\n${a.secs.map(([h,v])=>`${h}: ${v}`).join('\n')}\n`:''}
 ถอดข้อมูลผลิตภัณฑ์ แคมเปญ หรือโครงการในภาพออกมาเป็นหัวข้อกับเนื้อหา เช่น วัตถุประสงค์ กลุ่มเป้าหมาย คุณสมบัติ ระยะเวลา เงื่อนไข สิทธิประโยชน์ อัตราดอกเบี้ย ของรางวัล วิธีเข้าร่วม
 - คัดลอกตัวเลข วันที่ จำนวนเงิน และเงื่อนไขตามภาพทุกตัวอักษร ห้ามเดา ห้ามเติมสิ่งที่ไม่มีในภาพ ส่วนที่อ่านไม่ออกให้ข้าม
 - ไม่ต้องใส่เบอร์โทร ชื่อคน QR code หรือคำโฆษณาที่ไม่มีข้อมูล
 - ถ้าภาพไม่มีข้อมูลที่ใช้ออกข้อสอบได้ ให้ secs เป็น []
-ตอบเป็น JSON เท่านั้น: {"secs":[["หัวข้อ","เนื้อหา"]]}`,a.imgs.map(url=>({url,mime:ext(url)})),{signal,task:'proc'});
+ตอบเป็น JSON เท่านั้น: {"secs":[["หัวข้อ","เนื้อหา"]]}`,images,{signal,task:'proc'});
   const s=(r&&Array.isArray(r.secs)?r.secs:[]).filter(x=>Array.isArray(x)&&x[0]&&x[1]).map(([h,v])=>[String(h).slice(0,60),String(v).replace(PSC_PHONE,'').trim()]).filter(x=>x[1].length>=3);
   return s;
 }
@@ -86,7 +99,7 @@ async function pscUpdate(link,{onProg=()=>{},readImg=true,save=true,signal}={}){
       if(o&&o.mod===p.modified&&o.img){out.push(o);continue}
       if(readImg){onProg(`AI กำลังอ่านรูป: ${a.title.slice(0,40)}…`);
         try{const s=await pscReadImg(a,signal);if(s.length){a.secs=[...a.secs.filter(x=>x[0]!=='รายละเอียด'||x[1].length>=120),...s];a.img=true;rep.img++}else a.needImg=false}
-        catch(e){if(e&&e.code==='cancelled')throw e;a.needImg=true;rep.imgFail++;rep.imgErr=rep.imgErr||(e&&e.code)||'error'}}
+        catch(e){if(e&&e.code==='cancelled')throw e;a.needImg=true;rep.imgFail++;rep.imgErr=rep.imgErr||(e&&e.code)||'error';if(e&&e.code==='psc_helper')readImg=false}}
       else a.needImg=true;
     }
     if(!a.secs.length){rep.skipped++;continue}
@@ -312,16 +325,21 @@ async function renderPscAdmin(body){
     <label class="lbl" for="psclink">ลิงก์เข้า Product Catalog ของคุณ (มี token) · เก็บไว้ในเครื่องนี้เท่านั้น</label>
     <input id="psclink" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="https://psc.baac.tech/?token=...&id=..." value="${esc(link)}">
     <label class="chk"><input type="checkbox" id="pscimg" ${canVision('proc')?'checked':'disabled'}> ให้ AI อ่านรูป (เรื่องที่มีแต่รูป)${canVision('proc')?'':' · ต้องตั้งค่า AI ที่ดูรูปได้'}</label>
+    <p class="src" id="pschelp">กำลังตรวจตัวช่วยโหลดรูป…</p>
     <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="pscgo">อัปเดตจาก Product Catalog</button></div>
     <p class="src" id="pscprog"></p></div>`;
   const $=id=>body.querySelector('#'+id);
+  /* AI อ่านรูปจาก psc.baac.tech เองไม่ได้ ต้องเปิดตัวช่วยในเครื่องนี้ก่อน */
+  const helpTxt=ok=>ok?'✓ ตัวช่วยโหลดรูปทำงานอยู่ (localhost:8795)':'ตัวช่วยโหลดรูปยังไม่เปิด: ดับเบิลคลิก tools\\psc-img-helper.bat ในโฟลเดอร์ baac-exam ค้างหน้าต่างไว้ระหว่างอัปเดต (ไม่เปิดก็อัปเดตเรื่องที่เป็นตัวหนังสือได้ตามปกติ)';
+  pscHelperOK().then(ok=>{const e=$('pschelp');if(e)e.textContent=helpTxt(ok)});
   $('pscgo').onclick=async()=>{
     const l=$('psclink').value.trim();if(!/token=/.test(l)){toast('วางลิงก์ที่มี token ก่อน','bad');return}
     try{localStorage.setItem(PSC_LINK_KEY,l)}catch(e){}
     $('pscgo').disabled=true;const pr=$('pscprog');
     try{
-      const r=await pscUpdate(l,{readImg:$('pscimg').checked,onProg:t=>{pr.textContent=t}});
-      pr.innerHTML=`✓ อัปเดตแล้ว ${r.n} เรื่อง · เพิ่ม ${r.added} · เปลี่ยน ${r.changed} · ลบ ${r.removed}${r.img?` · AI อ่านรูปได้ ${r.img} เรื่อง`:''}${r.imgFail?` · <b>อ่านรูปไม่ได้ ${r.imgFail} เรื่อง</b> (${esc(errCopy(r.imgErr,'อ่านรูป'))}) กดอัปเดตอีกครั้งเพื่อลองเฉพาะเรื่องที่ค้าง`:''}${r.skipped?` · ข้ามเรื่องที่ไม่มีเนื้อหา ${r.skipped} เรื่อง`:''}`;
+      const help=await pscHelperOK();$('pschelp').textContent=helpTxt(help);
+      const r=await pscUpdate(l,{readImg:$('pscimg').checked&&help,onProg:t=>{pr.textContent=t}});
+      pr.innerHTML=`✓ อัปเดตแล้ว ${r.n} เรื่อง · เพิ่ม ${r.added} · เปลี่ยน ${r.changed} · ลบ ${r.removed}${r.img?` · AI อ่านรูปได้ ${r.img} เรื่อง`:''}${r.imgFail?` · <b>อ่านรูปไม่ได้ ${r.imgFail} เรื่อง</b> (${esc(errCopy(r.imgErr,'อ่านรูป'))}) กดอัปเดตอีกครั้งเพื่อลองเฉพาะเรื่องที่ค้าง`:''}${r.skipped?` · ข้าม ${r.skipped} เรื่องที่ไม่มีเนื้อหาให้ออกข้อสอบ (แบบฟอร์มที่มีแต่ไฟล์แนบ${help?'':' และเรื่องที่มีแต่รูป ซึ่งต้องเปิดตัวช่วยโหลดรูปก่อน'})`:''}`;
       toast('อัปเดตข้อมูลผลิตภัณฑ์แล้ว');
     }catch(e){pr.textContent=errCopy(e&&e.code,'อัปเดต')}
     $('pscgo').disabled=false;

@@ -152,10 +152,21 @@ const pscSim=(a,b)=>{const x=pscBi(a),y=pscBi(b);let c=0;for(const k of x)if(y.h
 const pscNear=(n,list)=>list.some(u=>u.includes(n)||n.includes(u)||pscSim(u,n)>.7);
 function pscClip(v,lim=200){
   const ls=String(v).split('\n');let o='';
-  for(const l of ls){if(!o){o=l;continue}if((o+' '+l).length>lim)break;o+=' '+l}
+  /* บรรทัดเกริ่น ("…ดังนี้" "…:") ต้องมีบรรทัดเนื้อหาตามมาด้วยเสมอ ไม่งั้นตัวเลือกไม่มีสาระ */
+  for(const l of ls){if(!o){o=l;continue}if((o+' '+l).length>lim&&!PSC_INTRO.test(o))break;o+=' '+l}
   if(o.length>lim){const c=o.lastIndexOf(' ',lim);o=o.slice(0,c>lim*.6?c:lim)+' …'}
   return o;
 }
+/* หัวข้อที่เป็นสาระของผลิตภัณฑ์ (ใช้ออกโจทย์ได้) · ตัดขั้นตอนงานภายใน (ตรวจสอบรายชื่อ ส่งไฟล์ ระบบ เอกสาร อำนาจอนุมัติ ฯลฯ)
+   และหัวข้อที่ที่จริงเป็นแถวตาราง (ตัวเลข ช่วงอายุ วันที่) */
+const PSC_GOODH=/วัตถุประสงค์|คุณสมบัติ|คุณลักษณะ|กลุ่มเป้าหมาย|ผู้มีสิทธิ|วงเงิน|อัตรา|ดอกเบี้ย|ระยะเวลา|อายุสลาก|หลักประกัน|ค่าธรรมเนียม|ค่ารักษาบัญชี|เงื่อนไข|หลักเกณฑ์|คุ้มครอง|ประเภท|ลักษณะ|ชำระ|จำนวนเงิน|เบี้ย|ผู้รับผลประโยชน์|ทรัพย์|สิทธิประโยชน์|พื้นที่|หน่วยละ|เปิดรับฝาก|รอคอย|ความรับผิด|คืนดอกเบี้ย/;
+const PSC_BADH=/ตรวจสอบ|ระบบ|ช่องทาง|ขั้นตอน|แนวทาง|การดำเนิน|อำนาจ|มอบ|เอกสาร|นโยบายบัญชี|จัดชั้น|รหัสโครงการ|ชื่อโครงการ|ชื่อผลิตภัณฑ์|บันทึก|เคลม|สร้างบัญชี|วิธีปฏิบัติ|ข้อควรระวัง|ตรวจเยี่ยม|ต่างสาขา|การเบิก|อนุมัติ/;
+const pscOkH=h=>!!h&&PSC_GOODH.test(h)&&!PSC_BADH.test(h)&&!/^[\d*.\s–-]/.test(h);
+/* หัวข้อที่เป็นข้อเท็จจริงเฉพาะของแต่ละเรื่อง (ตัวเลข/คุณสมบัติ) ใช้กับโจทย์ "ข้อใดถูกต้อง" เพราะเงื่อนไขทั่วไปของเรื่องอื่นอาจจริงกับเรื่องนี้ด้วย */
+const PSC_FACTH=/อัตรา|ดอกเบี้ย|วงเงิน|ระยะเวลา|ค่าธรรมเนียม|จำนวนเงิน|อายุสลาก|หน่วยละ|เบี้ย|หลักประกัน|วัตถุประสงค์/;
+const PSC_INTRO=/(ดังนี้|ดังต่อไปนี้|ได้แก่|[:：])\s*[-–]?\s*$/;
+/* ตัวเลือกที่ใช้ไม่ได้: ประโยคเกริ่นที่ไม่มีเนื้อหา ชื่อไฟล์/รหัสระบบ */
+const pscBadV=t=>{const x=String(t).replace(/\s*…$/,'').trim();return PSC_INTRO.test(x)||/\.(csv|xlsx?|pdf|docx?)\b|_[A-Z]{2,}[A-Z0-9_]*/i.test(x)||(x.length<3&&!/\d/.test(x))};
 const pscSec=(a,h)=>{const s=a.secs.find(x=>x[0]===h);return s?s[1]:''};
 const pscAll=a=>a.secs.map(([h,v])=>`${h}: ${v}`).join('\n');
 const pscCat=c=>String(c||'').replace(/_/g,' · ');
@@ -175,15 +186,17 @@ function pscItemsOf(v){
 /* เรื่องอื่น เรียงให้หมวดเดียวกันมาก่อนเมื่อระดับ 3 ขึ้นไป (แยกยากกว่า) */
 const pscPool=(a,level,f)=>{const p=shuffle(PSC.filter(b=>b!==a&&(!f||f(b))));if(level>=3)p.sort((x,y)=>(y.cat[0]===a.cat[0])-(x.cat[0]===a.cat[0]));return p};
 function pscOthers(a,h,k,level,clip){
-  const used=[pscN(clip(pscSec(a,h)))],out=[];
-  for(const b of pscPool(a,level,b=>pscSec(b,h))){const v=clip(pscSec(b,h)),n=pscN(v);if(n.length<6||pscNear(n,used))continue;used.push(n);out.push([b,v]);if(out.length===k)break}
+  /* ตัวลวงต้องไม่ซ้ำ/ไม่คล้ายกัน และต้องไม่มีอยู่ในเนื้อหาของเรื่องนี้เอง (ไม่งั้นตัวลวงอาจถูกด้วย) */
+  const used=[pscN(clip(pscSec(a,h)))],mine=pscN(pscAll(a)),own=pscItemsOf(pscSec(a,h)).map(pscN),out=[];
+  for(const b of pscPool(a,level,b=>pscSec(b,h))){const v=clip(pscSec(b,h)),n=pscN(v.replace(/\s*…$/,''));
+    if(n.length<6||pscBadV(v)||pscNear(n,used)||mine.includes(n)||own.some(o=>o.length>=15&&(n.includes(o)||pscSim(o,n)>.7)))continue;used.push(n);out.push([b,v]);if(out.length===k)break}
   return out;
 }
-const pscHeads=()=>{const m=new Map();for(const a of PSC)for(const [h] of a.secs)if(!PSC_NOQ.has(h))m.set(h,(m.get(h)||0)+1);return[...m].filter(([,c])=>c>=4).map(([h])=>h)};
+const pscHeads=()=>{const m=new Map();for(const a of PSC)for(const [h] of a.secs)if(!PSC_NOQ.has(h)&&pscOkH(h))m.set(h,(m.get(h)||0)+1);return[...m].filter(([,c])=>c>=4).map(([h])=>h)};
 /* choices[0] = คำตอบที่ถูกเสมอ แล้วสลับ (keep: เรียงตามที่ให้มา เช่น ตัวเลขน้อยไปมาก) */
 function pscQ(a,h,stem,choices,steps,keep){
   let ord=shuffle([0,1,2,3]);if(keep)ord=[0,1,2,3].sort((x,y)=>keep(choices[x])-keep(choices[y]));
-  return{kind:'mc',stem,choices:ord.map(i=>choices[i]),answer:ord.indexOf(0),steps:[...steps,...pscImgNote(a)],topic:a.title,...(keep?{keepOrder:true}:{}),...pscCite(a,h)};
+  return{kind:'mc',stem,choices:ord.map(i=>choices[i]),answer:ord.indexOf(0),steps:[...steps,...pscImgNote(a)],topic:a.title,ph:h,...(keep?{keepOrder:true}:{}),...pscCite(a,h)};
 }
 const pscT=a=>`"${a.title}"`;
 
@@ -203,7 +216,7 @@ function pscT2(a,h,lv){
 }
 /* 3. ข้อใดถูกต้องเกี่ยวกับเรื่อง X (ตัวลวง = หัวข้อเดียวกันแต่เนื้อหาของเรื่องอื่น) */
 function pscT3(a,lv){
-  const hs=shuffle(a.secs.map(s=>s[0]).filter(h=>!PSC_NOQ.has(h)&&pscN(pscSec(a,h)).length>=6));if(hs.length<2)return null;
+  const hs=shuffle(a.secs.map(s=>s[0]).filter(h=>!PSC_NOQ.has(h)&&pscOkH(h)&&PSC_FACTH.test(h)&&pscN(pscSec(a,h)).length>=6&&!pscBadV(pscClip(pscSec(a,h),150))));if(hs.length<2)return null;
   const clip=v=>pscClip(v,150),tH=hs[0],ch=[`${tH}: ${clip(pscSec(a,tH))}`],steps=[];
   for(const h of [...hs.slice(1),...hs.slice(1),tH]){if(ch.length===4)break;const o=pscOthers(a,h,1,lv,clip)[0];if(!o)continue;
     const c=`${h}: ${pscMask(o[1],o[0])}`;if(pscNear(pscN(c),ch.map(pscN)))continue;ch.push(c);steps.push([`"${h}: ${pscClip(o[1],90)}" เป็นของ "${o[0].title}"`,''])}
@@ -245,7 +258,7 @@ function pscT5(a,h,lv){
 /* 6. ลูกค้าลักษณะนี้ตรงกับคุณสมบัติของโครงการใด */
 const PSC_WHO=/คุณสมบัติ|กลุ่มเป้าหมาย|ผู้มีสิทธิ|ผู้ฝาก|ผู้กู้/;
 function pscT6(a,lv){
-  const hs=a.secs.filter(([h])=>PSC_WHO.test(h));if(!hs.length)return null;const [h,v]=rnd(hs);
+  const hs=a.secs.filter(([h])=>PSC_WHO.test(h)&&pscOkH(h));if(!hs.length)return null;const [h,v]=rnd(hs);
   const it=shuffle(pscItemsOf(v));
   for(const l of it){const n=pscN(l);if(n.length<15)continue;
     const o=pscPool(a,lv,b=>b.secs.some(([x])=>PSC_WHO.test(x))&&!pscN(pscAll(b)).includes(n)).slice(0,3);if(o.length<3)return null;
@@ -281,7 +294,7 @@ function pscLocal(level,n){
     const h=rnd(hs),cand=(ty==='t1'||ty==='t2'||ty==='t4'||ty==='t5')?PSC.filter(a=>pscSec(a,h)):PSC;
     const fresh=cand.filter(a=>!usedA.has(a.id)),a=rnd(fresh.length?fresh:cand);if(!a)continue;
     const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):ty==='t8'?pscT8(a):pscT9(a,lv);
-    if(!q||(typeof qValid==='function'&&!qValid(q)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
+    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
   }
   return shuffle(out);
 }
@@ -425,3 +438,10 @@ async function renderPscAdmin(body){
 }
 /* เปิดวิชานี้ก่อนที่การเข้าสู่ระบบเว็บสอบจะโหลดเสร็จ (ขึ้น "ต้องเข้าสู่ระบบ") → พอเข้าสู่ระบบแล้วเริ่มชุดให้เอง */
 function pscOnAuth(){if(typeof R!=='undefined'&&R&&R.status==='error'&&R.code==='psc_login'&&typeof VIEW!=='undefined'&&VIEW==='practice'){PSC=null;pscP=null;start(true)}}
+/* ข้อที่เคยตอบผิดแล้วระบบเอากลับมาให้ตอบใหม่: ข้อที่สร้างก่อนมีตัวกรองหัวข้อ/ตัวเลือก ถ้าไม่ผ่านเกณฑ์ปัจจุบันก็ไม่เอากลับมา */
+function pscRetryOK(q){
+  if(!Array.isArray(q.choices)||q.choices.some(pscBadV))return false;
+  if(q.gen==='ai')return true;
+  if(q.ph)return pscOkH(q.ph)&&(q.ptype!=='t3'||PSC_FACTH.test(q.ph));
+  return !/^ข้อใดถูกต้องเกี่ยวกับ/.test(q.stem||'');
+}

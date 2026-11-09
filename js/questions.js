@@ -268,6 +268,7 @@ async function pullQLog(){
 function retryItems(s,k){
   if(k<=0)return[];
   return Object.values(QLOG).filter(e=>e.s==='w'&&e.q&&(e.sub===s.id||(s.id==='specall'&&SPEC_TOPICS.includes(e.q.topic||e.q.subName))))
+    .filter(e=>!(e.q.sub==='psc'&&typeof pscRetryOK==='function'&&!pscRetryOK(e.q)))
     .sort((a,b)=>a.t-b.t).slice(0,k).map(e=>({...JSON.parse(JSON.stringify(e.q)),retry:true,sub:e.q.sub||s.id,subName:e.q.subName||s.name}));
 }
 /* ตัดข้อที่ตอบถูกแล้ว และข้อซ้ำกันในชุดเดียวกัน */

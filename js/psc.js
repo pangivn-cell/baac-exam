@@ -354,19 +354,26 @@ const PSC_LINK_RE=/https:\/\/psc\.baac\.tech\/\S*[?&]token=[0-9a-f]{16,}\S*/i;
 async function pscAskLink(){
   let cur='';try{cur=localStorage.getItem(PSC_LINK_KEY)||''}catch(e){}
   /* กลับมาที่หน้านี้ (หรือกดปุ่มวาง): ลองอ่านคลิปบอร์ด เจอลิงก์ที่มี token ก็บันทึกให้เลย */
-  const grab=async()=>{try{const m=(await navigator.clipboard.readText()).match(PSC_LINK_RE);const i=document.getElementById('psclinkq');if(m&&i){i.value=m[0];closeModal(1)}}catch(e){}};
+  /* หน้าเข้าสู่ระบบเปิดเป็นหน้าต่างเล็กทับหน้านี้ · ได้ลิงก์แล้วปิดหน้าต่างนั้นให้เอง ผู้ใช้กลับมาอยู่หน้าเดิม
+     ผู้ใช้ปิดหน้าต่างนั้นเอง (หรือกลับมาคลิกหน้านี้) ก็ลองหยิบลิงก์จากคลิปบอร์ดทันที */
+  let win=null,watch=null;
+  const grab=async()=>{try{const m=(await navigator.clipboard.readText()).match(PSC_LINK_RE);const i=document.getElementById('psclinkq');if(m&&i){i.value=m[0];if(win&&!win.closed)win.close();closeModal(1)}}catch(e){}};
   const onBack=()=>setTimeout(grab,300);window.addEventListener('focus',onBack);
   const p=modal(`<p class="mt">เข้าสู่ระบบ Product Catalog</p>
     <p>ทำครั้งเดียวต่อเครื่อง ใช้ทำข้อสอบวิชานี้ และให้ลิงก์ในเฉลยเปิดตรงหน้าผลิตภัณฑ์</p>
     <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิดหน้าเข้าสู่ระบบ Product Catalog</button></li>
       <li>เข้าระบบให้เสร็จ แล้วกด <b>Ctrl+L</b> ตามด้วย <b>Ctrl+C</b> (คัดลอกที่อยู่เว็บ) · บนมือถือ: แตะช่องที่อยู่แล้วกดคัดลอก</li>
-      <li>กลับมาที่หน้านี้ ระบบจะหยิบลิงก์ให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
+      <li>ปิดหน้าต่าง Product Catalog หรือคลิกกลับมาที่หน้านี้ ระบบจะหยิบลิงก์และปิดหน้าต่างนั้นให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
     <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="หรือวางลิงก์ที่มี token= ที่นี่" value="${esc(cur)}" style="width:100%">
     <p style="margin:4px 0 0"><button type="button" class="ghost" id="pscpaste">📋 วางจากคลิปบอร์ด</button></p>
     <p class="src">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นระบบ · ถ้าวันหลังลิงก์พาไปหน้าล็อกอินอีก แปลว่า token หมดอายุ ให้เชื่อมต่อใหม่</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
-  document.getElementById('pscopen').onclick=()=>window.open('https://psc.baac.tech/','_blank');
+  document.getElementById('pscopen').onclick=()=>{
+    const w=Math.min(1100,screen.availWidth-40),h=Math.min(820,screen.availHeight-60);
+    win=window.open('https://sklogin.baac.tech/catalog','pscLogin',`popup,width=${w},height=${h},left=${(screen.availWidth-w)/2|0},top=${(screen.availHeight-h)/2|0}`)||window.open('https://sklogin.baac.tech/catalog','_blank');
+    clearInterval(watch);watch=setInterval(()=>{if(win&&win.closed){clearInterval(watch);window.focus();setTimeout(grab,300)}},500);
+  };
   document.getElementById('pscpaste').onclick=grab;
-  const r=await p;window.removeEventListener('focus',onBack);
+  const r=await p;window.removeEventListener('focus',onBack);clearInterval(watch);
   if(r!==1)return;
   const v=((document.getElementById('psclinkq')||{}).value||'').match(PSC_LINK_RE)?.[0]||'';
   if(!/^https:\/\/psc\.baac\.tech\/.*[?&]token=/.test(v.trim())){toast('ลิงก์ต้องเป็นของ psc.baac.tech และมี token=','bad');return}

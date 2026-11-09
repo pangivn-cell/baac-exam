@@ -203,10 +203,12 @@ function pscItemsOf(v){
 const pscPool=(a,level,f)=>{const p=shuffle(PSC.filter(b=>b!==a&&(!f||f(b))));if(level>=3)p.sort((x,y)=>(y.cat[0]===a.cat[0])-(x.cat[0]===a.cat[0]));return p};
 function pscOthers(a,h,k,level,clip){
   /* ตัวลวงต้องไม่ซ้ำ/ไม่คล้ายกัน และต้องไม่มีอยู่ในเนื้อหาของเรื่องนี้เอง (ไม่งั้นตัวลวงอาจถูกด้วย) */
-  const used=[pscN(clip(pscSec(a,h)))],mine=pscN(pscAll(a)),own=pscItemsOf(pscSec(a,h)).map(pscN),out=[];
+  const me=clip(pscSec(a,h)),used=[pscN(me)],mine=pscN(pscAll(a)),own=pscItemsOf(pscSec(a,h)).map(pscN),out=[];
   for(const b of pscPool(a,level,b=>pscSec(b,h))){const v=clip(pscSec(b,h)),n=pscN(v.replace(/\s*…$/,''));
-    if(n.length<6||pscBadV(v)||pscNear(n,used)||mine.includes(n)||own.some(o=>o.length>=15&&(n.includes(o)||pscSim(o,n)>.7)))continue;used.push(n);out.push([b,v]);if(out.length===k)break}
-  return out;
+    if(n.length<6||pscBadV(v)||pscNear(n,used)||mine.includes(n)||own.some(o=>o.length>=15&&(n.includes(o)||pscSim(o,n)>.7)))continue;used.push(n);out.push([b,v]);if(out.length===k*4)break}
+  /* เลือกตัวลวงที่หน้าตาคล้ายคำตอบ (มี/ไม่มีเลขข้อ 1. 2. และยาวใกล้กัน) ไม่งั้นคำตอบโดดออกมาจนเดาได้ */
+  const num=t=>/(^|\s)\d+[.)]\s/.test(t),far=v=>(num(v)!==num(me)?2:0)+Math.abs(Math.log((v.length+20)/(me.length+20)));
+  return out.sort((x,y)=>far(x[1])-far(y[1])).slice(0,k);
 }
 const pscHeads=()=>{const m=new Map();for(const a of PSC)for(const [h] of a.secs)if(!PSC_NOQ.has(h)&&pscOkH(h))m.set(h,(m.get(h)||0)+1);return[...m].filter(([,c])=>c>=4).map(([h])=>h)};
 /* choices[0] = คำตอบที่ถูกเสมอ แล้วสลับ (keep: เรียงตามที่ให้มา เช่น ตัวเลขน้อยไปมาก) */
@@ -330,6 +332,7 @@ ${arts.map(a=>`[P${a.k}] ${a.title}\n${pscAll(a).slice(0,2600)}`).join('\n\n')}
 - ใส่ ref เป็นรหัสเรื่องที่ใช้ เช่น "P12" ข้อละหนึ่งเรื่อง และ topic เป็นชื่อหัวข้อในเอกสารที่ใช้ตอบ (เช่น "อัตราดอกเบี้ย")
 - ถามรายละเอียดที่พนักงานต้องรู้จริง: คุณสมบัติผู้กู้/ผู้ฝาก วงเงิน อัตราดอกเบี้ย ระยะเวลา หลักประกัน ค่าธรรมเนียม เงื่อนไข ขั้นตอน ${!level||level>=3?'อย่างน้อยครึ่งหนึ่งเป็นโจทย์สถานการณ์ เช่น ลูกค้าแบบนี้ขอกู้/ฝากได้ไหม ได้ดอกเบี้ยเท่าไร ต้องใช้หลักประกันอะไร ผ่อนได้กี่งวด':'ถามข้อเท็จจริงตรงๆ'}
 - ตัวลวงใช้ตัวเลขหรือเงื่อนไขที่ใกล้เคียง หรือของเรื่องอื่นในเอกสาร แต่ต้องผิดชัดเจนเมื่ออ่านเอกสาร
+- ตัวเลือกทั้ง 4 ต้องเป็นเรื่องเดียวกับที่ถาม รูปแบบและความยาวใกล้กัน สรุปเป็นประโยคสั้นๆ ไม่ลอกข้อความยาวหรือรายการ 1. 2. 3. มาทั้งก้อน ห้ามให้คำตอบที่ถูกโดดออกมาจนเดาได้โดยไม่ต้องรู้เนื้อหา
 - ห้ามใส่ลิงก์ เลขที่บันทึก หรือรหัสเรื่องลงในโจทย์และตัวเลือก
 - ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว
 ${CHOICE_RULE}
@@ -352,7 +355,8 @@ async function pscItems(s,level,n,o={}){
   await loadPSC();
   const tag=q=>({...q,sub:s.id,subName:s.name});
   if(!activeAI())return pscLocal(level,n).map(tag);
-  const kAI=Math.max(1,Math.round(n*.6));let ai=[];
+  /* มี AI: ให้ AI คิดโจทย์และตัวเลือกทั้งหมด · โจทย์จากระบบใช้เติมเฉพาะส่วนที่ AI สร้างไม่ครบ */
+  const kAI=n;let ai=[];
   try{ai=(await poolTake(s,level,kAI)).map(pscFresh).filter(Boolean)}catch(e){}
   if(ai.length<kAI){
     try{

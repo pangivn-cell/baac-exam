@@ -25,7 +25,11 @@ function pscActive(list){
   return list.filter(a=>best.get(pscBase(a.title))===a);
 }
 let PSC_ALL=null;   /* ทุกเรื่องตามที่ดึงมา (ใช้ตอนอัปเดตเทียบของเดิม) · PSC = เฉพาะเรื่องที่ใช้ออกข้อสอบ */
-function setPSC(d){PSC_ALL=d;PSC=pscActive(d).map((a,i)=>({...a,k:i,secs:a.secs.map(([h,v])=>[PSC_H[h]||h,v])}))}
+/* เอกสาร PDF แนบของหน้าผลิตภัณฑ์: เก็บข้อความครั้งเดียวต่อไฟล์ ในเรื่องพิเศษ id "__docs" ({docs:{ลิงก์:{label,text}}})
+   เพราะบางไฟล์ (ข้อตกลงการใช้บัตร ฯลฯ) ใช้ร่วมกันหลายผลิตภัณฑ์ · แต่ละเรื่องเก็บแค่ a.docs=[{label,url}] */
+let PSC_DOCTXT={};
+const PSC_DOCS_ID='__docs';
+function setPSC(d){PSC_DOCTXT=(d.find(a=>a.id===PSC_DOCS_ID)||{}).docs||{};d=d.filter(a=>a.id!==PSC_DOCS_ID);PSC_ALL=d;PSC=pscActive(d).map((a,i)=>({...a,k:i,secs:a.secs.map(([h,v])=>[PSC_H[h]||h,v])}))}
 /* ที่มาของข้อมูล:
    1. เข้าสู่ระบบเว็บนี้แล้ว → คลังกลาง (ครบรวมเรื่องที่ AI อ่านจากรูป)
    2. ไม่ได้เข้าสู่ระบบเว็บนี้ แต่เชื่อมต่อ Product Catalog แล้ว (มี token ของตัวเอง) → ดึงสดจาก Product Catalog เอง
@@ -179,8 +183,10 @@ function pwebParse(html,url){
   for(const it of get('InfoTable'))for(const tb of it.tables||[]){const v=pwebTable(tb);if(v.length>=10)extra.push([`ตาราง${pwebT(it.title)||''}`,v])}
   const faq=get('Accordion').flatMap(a=>a.items||[]).map(x=>`ถาม: ${pwebT(x.title)}\nตอบ: ${pscTxt(String(x.content||''))}`).join('\n');
   if(faq)extra.push(['คำถามที่พบบ่อย',faq]);
+  /* เอกสารดาวน์โหลด (PDF) ของหน้านี้ ใช้กับทุกผลิตภัณฑ์ในหน้า */
+  const docs=get('DocumentDownload').flatMap(d=>d.documents||[]).filter(d=>d.src&&/\.pdf$/i.test(d.src)).map(d=>({label:pwebT(d.label)||'เอกสาร',url:/^https?:/.test(d.src)?d.src:PWEB+d.src}));
   const mk=(id,t,secs)=>{secs=secs.filter(([h,v])=>h&&v.length>=2&&!/^ชื่อผลิตภัณฑ์$|^ช่องทาง/.test(h));
-    return{id,url,title:t,cat:cat?[cat]:[],date,memo:'',imgs:[],secs,mod:pscHash(JSON.stringify([t,secs]))}};
+    return{id,url,title:t,cat:cat?[cat]:[],date,memo:'',imgs:[],secs,docs,mod:pscHash(JSON.stringify([t,secs,docs]))}};
   const named=tabs.filter(it=>(it.sections||[]).some(s=>pwebT(s.title)==='ชื่อผลิตภัณฑ์'));
   if(named.length>=2)return named.map(it=>{const nm=pwebT((it.sections.find(s=>pwebT(s.title)==='ชื่อผลิตภัณฑ์')||{}).content)||pwebT(it.title);
     return mk(`${path}#${it.id||it.order}`,nm,it.sections.map(sec))}).filter(a=>a.secs.length);
@@ -191,6 +197,24 @@ async function pwebGet(url,signal){
   let r;try{r=await fetch(`${PSC_HELPER}/page?u=${encodeURIComponent(url)}`,{signal:signal||AbortSignal.timeout(60000)})}
   catch(e){throw{code:signal&&signal.aborted?'cancelled':'psc_helper'}}
   if(!r.ok)throw{code:'psc_net'};return r.text();
+}
+/* ดาวน์โหลด PDF แนบทุกไฟล์ (ไฟล์ละครั้ง) ผ่านตัวช่วย แล้วถอดข้อความด้วย pdf.js (readPDF ใน kb.js)
+   ไฟล์ที่โหลด/อ่านไม่ได้ใช้ข้อความเดิม · หน้าที่เป็นรูป (ไม่มีชั้นข้อความ) ข้ามไป */
+const PSC_DOC_MAX=20000;
+async function pwebDocs(arts,{onProg=()=>{},signal,rep={}}={}){
+  const old=PSC_DOCTXT||{},urls=[...new Set(arts.flatMap(a=>(a.docs||[]).map(d=>d.url)))],label={};
+  for(const a of arts)for(const d of a.docs||[])label[d.url]=label[d.url]||d.label;
+  const out={};let i=0,done=0;rep.docs=urls.length;rep.docFail=0;rep.docEmpty=0;
+  await Promise.all([...Array(3)].map(async()=>{while(i<urls.length){const u=urls[i++];
+    try{
+      let r;try{r=await fetch(`${PSC_HELPER}/doc?u=${encodeURIComponent(u)}`,{signal:signal||AbortSignal.timeout(90000)})}catch(e){if(signal&&signal.aborted)throw{code:'cancelled'};throw e}
+      if(!r.ok)throw new Error('http '+r.status);
+      const p=await readPDF(await r.arrayBuffer()),bad=new Set(p.bad);
+      const text=p.pages.filter(x=>!bad.has(x.n)).map(x=>x.text).join('\n').replace(PSC_PHONE,'').trim().slice(0,PSC_DOC_MAX);
+      if(text.length<50){rep.docEmpty++;if(old[u])out[u]=old[u]}else out[u]={label:label[u],text};
+    }catch(e){if(e&&e.code==='cancelled')throw e;rep.docFail++;if(old[u])out[u]=old[u]}
+    onProg(`กำลังอ่านเอกสาร PDF ${++done}/${urls.length}…`)}}));
+  return out;
 }
 async function pwebUpdate({onProg=()=>{},save=true,signal}={}){
   if(!await pscHelperOK())throw{code:'psc_helper'};
@@ -213,9 +237,10 @@ async function pwebUpdate({onProg=()=>{},save=true,signal}={}){
   if(!out.length)throw{code:'psc_net'};
   out.sort((x,y)=>x.id<y.id?-1:1);
   const ids=new Set(out.map(a=>a.id));rep.removed=old.filter(a=>!ids.has(a.id)).length;rep.n=out.length;
-  const clean=out.map(({k,...a})=>a);
+  const docs=await pwebDocs(out,{onProg,signal,rep});
+  const clean=[...out.map(({k,_fn,...a})=>a),{id:PSC_DOCS_ID,title:'',secs:[],docs}];
   if(save)await pscSave(clean,onProg);
-  setPSC(clean);PSC_META={...(PSC_META||{}),n:clean.length,parts:0,ver:Date.now(),img:0};pscP=null;
+  setPSC(clean);PSC_META={...(PSC_META||{}),n:out.length,parts:0,ver:Date.now(),img:0};pscP=null;
   return rep;
 }
 
@@ -276,9 +301,18 @@ const PSC_PERSON=/(?:^|[\s(])(?:นาย|นางสาว|นาง|น\.ส\
 const pscBadV=t=>{const x=String(t).replace(/\s*…$/,'').trim();return PSC_INTRO.test(x)||PSC_PERSON.test(x)||/\.(csv|xlsx?|pdf|docx?)\b|_[A-Z]{2,}[A-Z0-9_]*/i.test(x)||(x.length<3&&!/\d/.test(x))};
 const pscSec=(a,h)=>{const s=a.secs.find(x=>x[0]===h);return s?s[1]:''};
 const pscAll=a=>a.secs.map(([h,v])=>`${h}: ${v}`).join('\n');
+/* เนื้อหาเต็ม = หน้าเว็บ + เอกสาร PDF แนบ (เอกสารเฉพาะของผลิตภัณฑ์ก่อน เอกสารที่ใช้ร่วมกันหลายผลิตภัณฑ์ไว้ท้าย)
+   ใช้ให้ AI สร้างโจทย์/ตรวจเฉลย และกันตัวลวงที่ที่จริงถูกตามเอกสาร */
+const pscDocUse=()=>{const m={};for(const a of PSC||[])for(const d of a.docs||[])m[d.url]=(m[d.url]||0)+1;return m};
+function pscFull(a,ai){
+  const ds=(a.docs||[]).filter(d=>PSC_DOCTXT[d.url]&&PSC_DOCTXT[d.url].text);if(!ds.length)return pscAll(a);
+  const use=ai?pscDocUse():{};ds.sort((x,y)=>(use[x.url]||0)-(use[y.url]||0));
+  return pscAll(a)+ds.map(d=>`\n\nเอกสารแนบ "${d.label}":\n${PSC_DOCTXT[d.url].text}`).join('');
+}
+const pscFullN=a=>a._fn||(a._fn=pscN(pscFull(a)));
 const pscCat=c=>String(c||'').replace(/_/g,' · ');
 /* ที่มา (แสดงในเฉลยเท่านั้น): เรื่อง หัวข้อ เลขที่บันทึก และลิงก์หน้าผลิตภัณฑ์ */
-const pscCite=(a,h)=>({cite:`${PSC_LABEL} › ${a.title}${h&&!PSC_NOQ.has(h)?` › หัวข้อ${h}`:''}${a.memo?` · บันทึกที่ ${a.memo}`:''}${a.date?` · ${PSC_WEB?'ข้อมูล ณ':'ปรับปรุง'} ${a.date}`:''}`,citeUrl:a.url,srcText:pscAll(a).slice(0,3000),psc:a.id,pscMod:a.mod});
+const pscCite=(a,h)=>({cite:`${PSC_LABEL} › ${a.title}${h&&!PSC_NOQ.has(h)?` › หัวข้อ${h}`:''}${a.memo?` · บันทึกที่ ${a.memo}`:''}${a.date?` · ${PSC_WEB?'ข้อมูล ณ':'ปรับปรุง'} ${a.date}`:''}`,citeUrl:a.url,srcText:pscFull(a).slice(0,14000),psc:a.id,pscMod:a.mod});
 const pscImgNote=a=>a.img?[['ข้อมูลเรื่องนี้ AI อ่านจากภาพประกาศ ถ้าสงสัยให้เปิดหน้าผลิตภัณฑ์ตรวจอีกครั้ง','']]:[];
 /* ซ่อนชื่อเรื่องในเนื้อหา ไม่ให้เฉลยตัวเอง */
 const pscMask=(t,a)=>{let o=t;for(const x of [a.title,a.title.replace(/\s*\(.*?\)\s*/g,' ').trim()])if(x.length>=8)o=o.split(x).join('(โครงการนี้)');return o};
@@ -294,7 +328,7 @@ function pscItemsOf(v){
 const pscPool=(a,level,f)=>{const p=shuffle(PSC.filter(b=>b!==a&&(!f||f(b))));if(level>=3||PSC_WEB)p.sort((x,y)=>(y.cat[0]===a.cat[0])-(x.cat[0]===a.cat[0]));return p};
 function pscOthers(a,h,k,level,clip){
   /* ตัวลวงต้องไม่ซ้ำ/ไม่คล้ายกัน และต้องไม่มีอยู่ในเนื้อหาของเรื่องนี้เอง (ไม่งั้นตัวลวงอาจถูกด้วย) */
-  const me=clip(pscSec(a,h)),used=[pscN(me)],mine=pscN(pscAll(a)),own=pscItemsOf(pscSec(a,h)).map(pscN),out=[];
+  const me=clip(pscSec(a,h)),used=[pscN(me)],mine=pscFullN(a),own=pscItemsOf(pscSec(a,h)).map(pscN),out=[];
   for(const b of pscPool(a,level,b=>pscSec(b,h))){const v=clip(pscSec(b,h)),n=pscN(v.replace(/\s*…$/,''));
     if(n.length<6||pscBadV(v)||pscNear(n,used)||mine.includes(n)||own.some(o=>o.length>=15&&(n.includes(o)||pscSim(o,n)>.7)))continue;used.push(n);out.push([b,v]);if(out.length===k*4)break}
   /* เลือกตัวลวงที่หน้าตาคล้ายคำตอบ (มี/ไม่มีเลขข้อ 1. 2. และยาวใกล้กัน) ไม่งั้นคำตอบโดดออกมาจนเดาได้ */
@@ -358,7 +392,7 @@ function pscT4(a,h,lv){
 /* 5. ข้อใด "ไม่ใช่" {หัวข้อ}ของเรื่อง X */
 function pscT5(a,h,lv){
   const it=shuffle(pscItemsOf(pscSec(a,h))),pick=[];for(const x of it)if(pick.length<3&&!pscNear(pscN(x),pick.map(pscN)))pick.push(x);if(pick.length<3)return null;
-  const mine=pscN(pscAll(a)),own=pscItemsOf(pscAll(a)).map(pscN);
+  const mine=pscFullN(a),own=pscItemsOf(pscAll(a)).map(pscN);
   /* ตัวลวง (ข้อที่ "ไม่ใช่") ต้องไม่อยู่ในเรื่องนี้ และไม่คล้ายข้อใดของเรื่องนี้ */
   for(const b of pscPool(a,lv,b=>pscSec(b,h))){
     const f=pscItemsOf(pscSec(b,h)).find(x=>{const n=pscN(x);return n.length>=20&&!mine.includes(n)&&!pscNear(n,own)});
@@ -372,7 +406,7 @@ function pscT6(a,lv){
   const hs=a.secs.filter(([h])=>PSC_WHO.test(h)&&pscOkH(h));if(!hs.length)return null;const [h,v]=rnd(hs);
   const it=shuffle(pscItemsOf(v));
   for(const l of it){const n=pscN(l);if(n.length<15)continue;
-    const o=pscPool(a,lv,b=>b.secs.some(([x])=>PSC_WHO.test(x))&&!pscN(pscAll(b)).includes(n)).slice(0,3);if(o.length<3)return null;
+    const o=pscPool(a,lv,b=>b.secs.some(([x])=>PSC_WHO.test(x))&&!pscFullN(b).includes(n)).slice(0,3);if(o.length<3)return null;
     return pscQ(a,h,`ลูกค้าที่มีลักษณะต่อไปนี้ ตรงกับ${h}ของผลิตภัณฑ์ โครงการ หรือมาตรการใด\n"${pscMask(l,a)}"`,[pscName(a),...o.map(b=>pscName(b))],[[`${a.title} หัวข้อ${h}: ${pscClip(v,500)}`,PSC_LABEL]]);
   }
   return null;
@@ -419,7 +453,7 @@ function pscPrompt(arts,k,level){
 ${level?`ระดับความยาก ${level}: ${levelTxt(level)}`:'ระดับข้อสอบจริง'}
 เลขสุ่ม ${Math.random().toString(36).slice(2,8)} ใช้แค่ทำให้โจทย์ชุดนี้ต่างจากชุดก่อน ห้ามใส่เลขนี้ลงในโจทย์
 เอกสาร (แต่ละเรื่องมีรหัสในวงเล็บเหลี่ยม):
-${arts.map(a=>`[P${a.k}] ${a.title}\n${pscAll(a).slice(0,2600)}`).join('\n\n')}
+${arts.map(a=>`[P${a.k}] ${a.title}\n${pscFull(a,1).slice(0,9000)}`).join('\n\n')}
 
 กติกา:
 - ทุกข้อต้องตอบได้จากเอกสารข้างบนเท่านั้น ห้ามใช้ความรู้นอกเอกสาร ห้ามแต่งตัวเลข อัตราดอกเบี้ย วันที่ หรือเงื่อนไขที่ไม่มีในเอกสาร
@@ -572,7 +606,7 @@ function renderPwebAdmin(body,meta,when){
       if(!help){pr.textContent='กำลังเปิดตัวช่วยอ่านหน้าเว็บ…';help=await pscStartHelper()}
       $('pschelp').textContent=helpTxt(help);if(!help)throw{code:'psc_helper'};
       const r=await pscUpdate('',{onProg:t=>{pr.textContent=t}});
-      pr.innerHTML=`✓ อัปเดตแล้ว ${r.n} ผลิตภัณฑ์ (จาก ${r.total} หน้า) · เพิ่ม ${r.added} · เปลี่ยน ${r.changed} · ลบ ${r.removed}${r.skipped?` · ข้าม ${r.skipped} หน้าที่ไม่มีรายละเอียด`:''}${r.fail?` · <b>อ่านไม่ได้ ${r.fail} หน้า</b> กดอัปเดตอีกครั้งเพื่อลองใหม่`:''}`;
+      pr.innerHTML=`✓ อัปเดตแล้ว ${r.n} ผลิตภัณฑ์ (จาก ${r.total} หน้า) · เพิ่ม ${r.added} · เปลี่ยน ${r.changed} · ลบ ${r.removed}${r.skipped?` · ข้าม ${r.skipped} หน้าที่ไม่มีรายละเอียด`:''}${r.docs?` · เอกสาร PDF ${r.docs-r.docFail-r.docEmpty}/${r.docs} ไฟล์${r.docEmpty?` (เป็นภาพ อ่านไม่ได้ ${r.docEmpty})`:''}${r.docFail?` <b>(โหลดไม่ได้ ${r.docFail})</b>`:''}`:''}${r.fail?` · <b>อ่านไม่ได้ ${r.fail} หน้า</b> กดอัปเดตอีกครั้งเพื่อลองใหม่`:''}`;
       toast('อัปเดตข้อมูลผลิตภัณฑ์แล้ว');
     }catch(e){pr.textContent=errCopy(e&&e.code,'อัปเดต')}
     $('pscgo').disabled=false;

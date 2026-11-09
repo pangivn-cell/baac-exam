@@ -14,6 +14,7 @@ last_use = time.time()
 ALLOW_ORIGINS = {'https://pangivn-cell.github.io', 'http://localhost:8781', 'http://localhost:8783'}
 ALLOW_PREFIX = 'https://psc.baac.tech/wp-content/uploads/'
 PAGE_PREFIX = 'https://www.baac.or.th/products'
+DOC_PREFIX = 'https://www.baac.or.th/document/'
 MAX_BYTES = 15 * 1024 * 1024
 
 
@@ -41,6 +42,8 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.reply(200, b'ok', 'text/plain')
         if p.path == '/page':
             return self.page(urllib.parse.parse_qs(p.query).get('u', [''])[0])
+        if p.path == '/doc':
+            return self.doc(urllib.parse.parse_qs(p.query).get('u', [''])[0])
         if p.path != '/img':
             return self.reply(404, b'not found', 'text/plain')
         u = urllib.parse.parse_qs(p.query).get('u', [''])[0]
@@ -72,6 +75,22 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.reply(415, b'not a page', 'text/plain')
             print('page', len(data) // 1024, 'KB', u[-60:], flush=True)
             return self.reply(200, data, 'text/html; charset=utf-8')
+        except Exception as e:
+            print('fail', u[-60:], e, flush=True)
+            return self.reply(502, str(e).encode('utf-8', 'replace'), 'text/plain; charset=utf-8')
+
+    # เอกสารแนบของหน้าผลิตภัณฑ์ (Sale Sheet ข้อตกลง ฯลฯ) www.baac.or.th/document/... เป็น PDF
+    def doc(self, u):
+        if not u.startswith(DOC_PREFIX) or '..' in u or not u.lower().split('?')[0].endswith('.pdf'):
+            return self.reply(403, b'only www.baac.or.th/document pdf', 'text/plain')
+        try:
+            req = urllib.request.Request(urllib.parse.quote(u, safe=':/?&=%#'), headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                data = r.read(MAX_BYTES + 1)
+            if not data.startswith(b'%PDF') or len(data) > MAX_BYTES:
+                return self.reply(415, b'not a pdf', 'text/plain')
+            print('doc', len(data) // 1024, 'KB', u[-60:], flush=True)
+            return self.reply(200, data, 'application/pdf')
         except Exception as e:
             print('fail', u[-60:], e, flush=True)
             return self.reply(502, str(e).encode('utf-8', 'replace'), 'text/plain; charset=utf-8')

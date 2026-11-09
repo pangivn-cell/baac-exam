@@ -32,7 +32,8 @@ function setPSC(d){PSC_ALL=d;PSC=pscActive(d).map((a,i)=>({...a,k:i,secs:a.secs.
       Product Catalog เป็นคนตรวจสิทธิ์พนักงาน (token ไม่ถูก = ไม่ได้ข้อมูล) · ไม่มีเรื่องที่มีแต่รูป */
 function loadPSC(){
   if(PSC)return Promise.resolve(PSC);
-  return pscP=pscP||(async()=>{
+  /* เน็ตช้า/คลังกลางไม่ตอบ: ไม่ปล่อยให้หมุนค้าง 25 วิแล้วขึ้นให้ลองใหม่ */
+  return pscP=pscP||Promise.race([new Promise((_,no)=>setTimeout(()=>no({code:'psc_load'}),25000)),(async()=>{
     const me=typeof ME!=='undefined'&&ME,tk=PSC_WEB?null:pscTok();
     /* เว็บไซต์ ธ.ก.ส.: อ่านจากคลังกลางอย่างเดียว (เบราว์เซอร์อ่านเว็บ ธ.ก.ส. ตรงๆ ไม่ได้) */
     if(PSC_WEB&&!me)throw{code:'pweb_login'};
@@ -44,7 +45,7 @@ function loadPSC(){
     if(!tk)throw{code:'psc_login'};
     const {posts,cats}=await pscFetchAll(tk.token,tk.id);
     setPSC(posts.map(p=>pscParse(p,cats)).filter(a=>a.secs.length));PSC_META={live:true,n:PSC.length};return PSC;
-  })().catch(e=>{pscP=null;throw e&&e.code?e:{code:'psc_load'}});
+  })()]).catch(e=>{pscP=null;throw e&&e.code?e:{code:'psc_load'}});
 }
 /* ดึงทุกเรื่องจาก API ของ Product Catalog ด้วย token (เว็บนั้นอนุญาตเว็บสอบนี้ไว้แล้ว) */
 async function pscFetchAll(token,uid,{onProg=()=>{},signal}={}){
@@ -451,7 +452,8 @@ async function pscItems(s,level,n,o={}){
   /* มี AI: ให้ AI คิดโจทย์และตัวเลือกทั้งหมด · โจทย์จากระบบใช้เติมเฉพาะส่วนที่ AI สร้างไม่ครบ */
   const kAI=n;let ai=[];
   try{ai=(await poolTake(s,level,kAI)).map(pscFresh).filter(Boolean)}catch(e){}
-  if(ai.length<kAI){
+  /* fast = ข้อแรกๆ ของชุด: ไม่รอ AI (ใช้คลังกลาง + โจทย์จากระบบ) ให้เริ่มทำได้ทันที ที่เหลือ AI สร้างต่อเบื้องหลัง */
+  if(ai.length<kAI&&!o.fast){
     try{
       const gen=(await genAIChunks((k,b)=>pscPrompt(pscPick(Math.max(2,Math.ceil(k/2))),k,level),kAI-ai.length,{signal:o.signal,onProg:o.onProg}))
         .map(q=>{const r=String(q.ref||'').trim(),a=/^P\d+$/i.test(r)&&PSC[+r.slice(1)];if(!a)return null;const h=a.secs.some(x=>x[0]===q.topic)?q.topic:null;

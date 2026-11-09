@@ -36,7 +36,7 @@ async function start(go){
     const pre=await takePrefetch(s,level,n);
     /* ข้อแรกขึ้นทันที: สร้าง 2 ข้อก่อนให้เริ่มทำได้เลย ที่เหลือสร้างต่อเบื้องหลัง */
     const quick=!(pre&&pre.length>=Math.ceil(n*.6))&&n>=4;
-    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,quick?2:n,{signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
+    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,quick?2:n,{fast:quick,signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
     if(R!==my)return;
     if(!items.length){R.status='error';R.err='ได้โจทย์ที่ใช้ไม่ได้ ลองสร้างชุดใหม่อีกครั้ง';render();return}
     R.items=items;R.status='play';R.t0=Date.now();

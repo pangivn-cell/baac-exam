@@ -321,8 +321,37 @@ async function pscItems(s,level,n,o={}){
   return shuffle([...ai,...pscLocal(level,n-ai.length)]).map(tag);
 }
 
+/* ---------- ลิงก์ "เปิดหน้าผลิตภัณฑ์" ในเฉลย ----------
+   เบราว์เซอร์ที่ยังไม่เข้าระบบ Product Catalog จะถูกส่งไปหน้าล็อกอินแล้วกลับไปหน้า Home เสมอ
+   แต่ลิงก์เรื่องที่ต่อ ?token=&id= ของผู้ใช้เอง เปิดหน้านั้นได้ทันที → แต่ละคนวางลิงก์ของตัวเองไว้ในเครื่องครั้งเดียว (ไม่ขึ้นคลาวด์) */
+const PSC_LINK_KEY='exam-psc-link';
+function pscLinkParams(){
+  try{const u=new URL(localStorage.getItem(PSC_LINK_KEY)||''),t=u.searchParams.get('token'),id=u.searchParams.get('id');
+    return t?`token=${encodeURIComponent(t)}${id?`&id=${encodeURIComponent(id)}`:''}`:''}catch(e){return ''}
+}
+const pscHref=url=>{const p=pscLinkParams();return p&&/^https:\/\/psc\.baac\.tech\//.test(url)?url+(url.includes('?')?'&':'?')+p:url};
+/* ส่วนลิงก์ในบรรทัดที่มา (practice.js explainHTML) */
+function pscLinkHTML(url){
+  const has=!!pscLinkParams();
+  return ` · <a href="${esc(pscHref(url))}" data-pscurl="${esc(url)}" target="_blank" rel="noopener">เปิดหน้าผลิตภัณฑ์</a> ${has?'':`<button type="button" class="ghost" data-psclink style="padding:2px 8px;font-size:.85em">ให้เปิดตรงหน้านี้</button> <span class="src">(ตอนนี้ถ้ายังไม่ได้เข้าระบบ จะไปหน้า Home)</span>`}`;
+}
+async function pscAskLink(){
+  let cur='';try{cur=localStorage.getItem(PSC_LINK_KEY)||''}catch(e){}
+  const r=await modal(`<p class="mt">ให้ลิงก์เปิดหน้าผลิตภัณฑ์ได้ทันที</p>
+    <p>เข้า Product Catalog ตามปกติ แล้วคัดลอกลิงก์จากช่องที่อยู่ด้านบน (ลิงก์ที่มีคำว่า <b>token=</b>) มาวางที่นี่</p>
+    <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="https://psc.baac.tech/?token=...&id=..." value="${esc(cur)}" style="width:100%">
+    <p class="src">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นระบบ · ถ้าวันหลังลิงก์พาไปหน้าล็อกอินอีก แปลว่า token หมดอายุ ให้วางลิงก์ใหม่</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
+  if(r!==1)return;
+  const v=(document.getElementById('psclinkq')||{}).value||'';
+  if(!/^https:\/\/psc\.baac\.tech\/.*[?&]token=/.test(v.trim())){toast('ลิงก์ต้องเป็นของ psc.baac.tech และมี token=','bad');return}
+  try{localStorage.setItem(PSC_LINK_KEY,v.trim())}catch(e){}
+  document.querySelectorAll('a[data-pscurl]').forEach(a=>{a.href=pscHref(a.dataset.pscurl)});
+  document.querySelectorAll('[data-psclink]').forEach(b=>{const s=b.nextElementSibling;if(s&&s.classList.contains('src'))s.remove();b.remove()});
+  toast('บันทึกแล้ว ลิงก์จะเปิดหน้าผลิตภัณฑ์ได้ทันที');
+}
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-psclink]'))pscAskLink()});
+
 /* ---------- แท็บ Product Catalog (แอดมินเท่านั้น) ---------- */
-const PSC_LINK_KEY='exam-psc-link';   /* ลิงก์ที่มี token เก็บในเครื่องแอดมินเท่านั้น ไม่ขึ้นคลาวด์ */
 async function renderPscAdmin(body){
   if(!ME||ME.role!=='admin'){body.innerHTML='<p class="src" style="text-align:center">เฉพาะแอดมิน</p>';return}
   let meta=null;try{const f=await fb(),m=await f.fs.getDoc(fsDoc('config','psc'));meta=m.exists()?m.data():null}catch(e){}

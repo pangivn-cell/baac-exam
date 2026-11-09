@@ -45,7 +45,7 @@ async function qgenRun(s,k,manual){
   const route=qgenRoute(s,manual);if(!route)throw{code:'no_ai'};
   const level=QGEN_LEVELS[Math.floor(Math.random()*QGEN_LEVELS.length)];
   const ctl=new AbortController();ctl.signal.route=route;
-  QGEN.busy=s.id;if(VIEW==='qgen')renderQGen();
+  QGEN.busy=s.id;QGEN.ctl=ctl;QGEN.cur={sub:s.name,level,by:route.p,at:Date.now(),k};if(VIEW==='qgen')renderQGen();
   const run=async rt=>{ctl.signal.route=rt;
     const prev=GEN_AVOID;GEN_AVOID=[...avoidFor(s),...qgenAvoid(s)].slice(0,40);
     try{return await makeNew0(s,level,k,{signal:ctl.signal},atLevel(bankFor(s,true),level))}finally{GEN_AVOID=prev}};
@@ -69,8 +69,40 @@ async function qgenRun(s,k,manual){
     QGEN.log.unshift({at:Date.now(),sub:s.name,n:items.length,by,level});QGEN.log=QGEN.log.slice(0,30);
     if(QGEN.counts&&QGEN.counts[s.id]){QGEN.counts[s.id].pool+=items.length;QGEN.counts[s.id].total+=items.length}
     saveQGen();return{n:items.length,by};
-  }finally{QGEN.busy='';if(VIEW==='qgen')renderQGen()}
+  }finally{QGEN.busy='';QGEN.ctl=null;QGEN.cur=null;if(VIEW==='qgen')renderQGen()}
 }
+/* ---------- เริ่ม/หยุด: สร้างตามแผน (ไล่เติมทุกวิชาที่ยังไม่ถึงขั้นต่ำ ทีละวิชา ทีละ 10 ข้อ) ----------
+   ใช้ AI ในเครื่องก่อน ไม่มีก็ใช้ AI คลาวด์ · วิชาที่สร้างไม่สำเร็จข้ามไปในรอบนี้ · ครบทุกวิชาหรือเครดิตหมด = หยุดเอง */
+async function qgenLoop(){
+  if(QGEN.run)return;
+  QGEN.run=true;const st=QGEN.runStat={at:Date.now(),n:0,batches:0,fail:0,skip:new Set(),msg:''};if(VIEW==='qgen')renderQGen();
+  try{
+    while(QGEN.run){
+      if(QGEN.busy){await new Promise(r=>setTimeout(r,1500));continue}
+      const cnt=await qgenCounts();
+      const need=SUBJ.filter(s=>qgenSubj(s)&&!st.skip.has(s.id)&&cnt[s.id]&&cnt[s.id].total<QGEN.min&&qgenRoute(s,true)).sort((a,b)=>cnt[a.id].total-cnt[b.id].total);
+      if(!need.length){st.msg=st.skip.size?`เสร็จแล้ว (ข้าม ${st.skip.size} วิชาที่สร้างไม่สำเร็จ)`:'✓ ครบทุกวิชาแล้ว';break}
+      const s=need[0];
+      try{await poolDocs(s);const r=await qgenRun(s,Math.min(QGEN_BATCH,QGEN.min-cnt[s.id].total),true);st.batches++;st.n+=r.n;if(!r.n){st.fail++;st.skip.add(s.id)}}
+      catch(e){const c=e&&e.code;if(c==='cancelled'||!QGEN.run)break;
+        st.fail++;st.skip.add(s.id);QGEN.log.unshift({at:Date.now(),sub:s.name,n:0,by:'',err:String(c||e&&e.message||e)});saveQGen();
+        if(c==='no_credit'||c==='quota'||c==='no_ai'||c==='login'){st.msg='หยุดเอง: '+errCopy(c,'สร้างโจทย์');break}}
+    }
+  }finally{
+    QGEN.run=false;if(st.msg||st.n)toast(`สร้างตามแผน: ${st.msg||'หยุดแล้ว'} · ได้ ${st.n} ข้อ`);
+    st.msg=st.msg||'หยุดแล้ว';if(VIEW==='qgen')renderQGen();
+  }
+}
+function qgenStop(){QGEN.run=false;if(QGEN.ctl)QGEN.ctl.abort();if(VIEW==='qgen')renderQGen()}
+const qgenAgo=t=>{const s=Math.max(0,Math.round((Date.now()-t)/1000));return s<60?`${s} วิ`:`${Math.floor(s/60)} นาที ${s%60} วิ`};
+/* สถานะสด (อัปเดตทุกวินาทีขณะทำงาน) */
+function qgenStatHTML(){
+  const st=QGEN.runStat,c=QGEN.cur;
+  if(!QGEN.run&&!QGEN.busy)return st?`<p class="src">รอบล่าสุด: ${esc(st.msg||'')} · ได้ ${st.n} ข้อ จาก ${st.batches} ชุด${st.fail?` · ไม่สำเร็จ ${st.fail} ชุด`:''}</p>`:'';
+  const now=c?`<b>⏳ กำลังสร้าง “${esc(c.sub)}” ${c.k} ข้อ</b> ระดับ ${c.level} ด้วย ${esc(AINAME[c.by]||c.by)} · ใช้เวลาแล้ว ${qgenAgo(c.at)}`:QGEN.busy==='balance'?'<b>⏳ กำลังปรับตัวเลือกที่เดาง่าย</b>':'<b>⏳ กำลังเตรียมวิชาถัดไป…</b>';
+  return `<div class="qgstat"><span class="qgdot"></span><div>${now}${QGEN.run&&st?`<br><span class="src">สร้างตามแผน เริ่มเมื่อ ${qgenAgo(st.at)}ที่แล้ว · ได้แล้ว ${st.n} ข้อ (${st.batches} ชุด)${st.fail?` · ไม่สำเร็จ ${st.fail}`:''}</span>`:''}</div></div>`;
+}
+setInterval(()=>{if(typeof VIEW!=='undefined'&&VIEW==='qgen'&&(QGEN.run||QGEN.busy)){const e=document.getElementById('qg-stat');if(e)e.innerHTML=qgenStatHTML()}},1000);
 /* โจทย์ที่มีอยู่แล้วในคลังกลาง (บางส่วน) ส่งให้ AI เลี่ยงสร้างซ้ำ */
 function qgenAvoid(s){
   const c=POOL.cache.get(s.id);if(!c)return[];
@@ -79,7 +111,7 @@ function qgenAvoid(s){
 }
 /* เติมอัตโนมัติ: เฉพาะเครื่องที่เปิด AI ในเครื่องไว้ เมื่อไม่มีไฟล์รอประมวลผลและไม่ได้สอบอยู่ */
 async function qgenTick(){
-  if(!QGEN.auto||QGEN.busy||!ME||!localUp())return;
+  if(!QGEN.auto||QGEN.busy||QGEN.run||!ME||!localUp())return;
   if((typeof PROC_ID!=='undefined'&&PROC_ID)||(typeof PROCQ!=='undefined'&&PROCQ.length)||(typeof AUDIT_BUSY!=='undefined'&&AUDIT_BUSY))return;
   if(typeof M!=='undefined'&&M&&M.status==='run')return;
   const cnt=await qgenCounts();
@@ -118,7 +150,7 @@ function renderQGen(){
     return `<div class="qgrow${ok?' ok':''}"><div class="qgn"><b>${esc(s.name)}</b><span class="src">${note}</span></div>
       <div class="qgc">${!s.ai?`${c.real?`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>`:''}<b>⚙️ ไม่ใช้เครดิต</b>`:`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>${s.doc?'':`<span title="โจทย์ที่ AI สร้างในคลังกลาง">✨ ${c.pool}</span>`}<b>${s.doc?c.real:c.total}${s.doc?' ข้อ':'/'+QGEN.min}</b>`}</div>
       <div class="qgbar"><i style="width:${s.ai&&!s.doc?pct:100}%" class="${ok||!s.ai||s.doc?'ok':''}"></i></div>
-      ${qgenSubj(s)?`<button class="ghost" data-qg="${esc(s.id)}" ${QGEN.busy||!rt?'disabled':''}>สร้างเพิ่ม ${QGEN_BATCH} ข้อ</button>`:'<span></span>'}</div>`};
+      ${qgenSubj(s)?`<button class="ghost" data-qg="${esc(s.id)}" ${QGEN.busy||QGEN.run||!rt?'disabled':''}>สร้างเพิ่ม ${QGEN_BATCH} ข้อ</button>`:'<span></span>'}</div>`};
   /* วิชาจากไฟล์: ข้อมูลที่ใช้สร้างโจทย์ = ข้อสอบในไฟล์ + บัตรความรู้ + เนื้อหาหน้าเอกสาร · ไม่มีเลย = ขึ้นปุ่มลบ */
   const docRow=s=>{const d=qgenDocData(s),none=!d.ok;
     const note=none?'⚠️ ไม่มีข้อมูลให้สร้างโจทย์ (ไม่มีข้อสอบ บัตรความรู้ หรือเนื้อหาจากไฟล์)':'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่จากเนื้อหาตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)';
@@ -134,7 +166,10 @@ function renderQGen(){
       <label class="rad"><input type="checkbox" id="qg-auto" ${QGEN.auto?'checked':''}><span><b>เติมโจทย์อัตโนมัติเมื่อว่าง</b><span class="src">${host?'เครื่องนี้มี AI ในเครื่อง เติมให้ได้':'ทำงานเฉพาะเครื่องที่เปิด AI ในเครื่องไว้ (ตั้งที่ ตั้งค่า AI → AI ในเครื่องนี้)'}</span></span></label>
       <div class="hopt"><label for="qg-min">ขั้นต่ำต่อวิชา</label><input class="tx" type="number" id="qg-min" min="10" max="500" step="10" value="${QGEN.min}" style="width:90px"><span class="src">ข้อ</span>
         <button class="ghost" id="qg-re">นับใหม่</button>${typeof isReviewerMe==='function'&&isReviewerMe()?'<button class="ghost" id="qg-merge">🔗 รวมรายวิชา</button>':''}</div>
-      <p class="src">AI ในเครื่อง: ${host?'<b class="okt">พร้อม</b>':'ไม่พร้อม'} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา${QGEN.busy==='balance'?' · กำลังปรับตัวเลือกที่เดาง่าย':QGEN.busy?` · กำลังสร้าง “${esc((SUBJ.find(s=>s.id===QGEN.busy)||{}).name||'')}”`:''}</p>
+      <p class="src">AI ในเครื่อง: ${host?'<b class="okt">พร้อม</b>':'ไม่พร้อม'} · AI คลาวด์: ${cloud?esc(AINAME[cloud]||cloud):'ยังไม่ตั้ง'} · วิชาที่ยังไม่ครบ ${due} วิชา</p>
+      <div class="qgrun">${QGEN.run?'<button class="ghost danger" id="qg-stop">■ หยุด</button>':`<button class="primary" id="qg-start" ${due&&(host||(cloud&&cloud!=='claude'))?'':'disabled'}>▶ เริ่มสร้างตามแผน</button>`}
+        <span class="src">${QGEN.run?'กำลังไล่เติมทุกวิชาที่ยังไม่ครบ กดหยุดได้ตลอด (ชุดที่กำลังสร้างจะถูกยกเลิก)':due?`เติม ${due} วิชาที่ยังไม่ครบให้ถึง ${QGEN.min} ข้อ ทีละวิชา ทีละ ${QGEN_BATCH} ข้อ · ${host?'ใช้ AI ในเครื่อง':'ใช้ AI คลาวด์ (เสียเครดิต)'} · ต้องเปิดหน้าเว็บไว้`:'ทุกวิชาครบขั้นต่ำแล้ว'}</span></div>
+      <div id="qg-stat">${qgenStatHTML()}</div>
     </div>
     <section class="hsec"><div class="hsech"><h2>⚖️ ตัวเลือกที่เดาจากความยาวได้</h2></div>
       <p class="src">ข้อที่คำตอบที่ถูกยาวกว่าตัวเลือกอื่นชัดเจน ระบบให้ AI ย่อข้อถูกและเขียนตัวลวงให้ยาวใกล้กัน แล้วให้ AI แก้โจทย์ใหม่โดยไม่เห็นเฉลย ต้องได้ข้อเดิมจึงใช้ฉบับใหม่ (ทุกคนเห็น) ระหว่างรอปรับ ข้อเหล่านี้ถูกหยิบมาน้อยลง เครื่องที่เปิด AI ในเครื่องปรับให้เองเมื่อว่าง</p>
@@ -146,6 +181,8 @@ function renderQGen(){
   $('qg-auto').onchange=e=>{QGEN.auto=e.target.checked;saveQGen();if(QGEN.auto)qgenTick()};
   $('qg-min').onchange=e=>{QGEN.min=Math.max(10,Math.min(500,Math.round(+e.target.value/10)*10||50));saveQGen();renderQGen()};
   if($('qg-merge'))$('qg-merge').onclick=()=>mergeSubjectsDialog();
+  if($('qg-start'))$('qg-start').onclick=()=>{qgenLoop()};
+  if($('qg-stop'))$('qg-stop').onclick=()=>qgenStop();
   if($('qg-bal'))$('qg-bal').onclick=async()=>{QGEN.busy='balance';renderQGen();let r={ok:0,tried:0};
     try{r=await balanceSome(5,balRt)}catch(e){toast('ปรับไม่สำเร็จ: '+errCopy(e&&e.code,'ปรับตัวเลือก'),'bad')}finally{QGEN.busy=''}
     QGEN.balDone=(QGEN.balDone||0)+r.ok;toast(`ปรับตัวเลือกแล้ว ${r.ok} จาก ${r.tried} ข้อ${r.tried>r.ok?' (ข้อที่ไม่ผ่านการตรวจซ้ำ จะลองใหม่ใน 7 วัน)':''}`);renderQGen()};

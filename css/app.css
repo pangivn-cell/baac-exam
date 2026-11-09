@@ -595,6 +595,11 @@ body.side-off .side{display:none}
 
 /* ---------- สร้างโจทย์ ---------- */
 .qgtop{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:var(--paper)}
+.qgrun{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.qgrun button{font:700 15px var(--f-body);padding:10px 18px;border-radius:10px}
+.qgstat{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;background:var(--sheet);border:1px solid var(--accent)}
+.qgdot{flex:none;width:10px;height:10px;margin-top:6px;border-radius:50%;background:var(--accent);animation:qgpulse 1.2s ease-in-out infinite}
+@keyframes qgpulse{50%{opacity:.25;transform:scale(.7)}}
+@media (prefers-reduced-motion:reduce){.qgdot{animation:none}}
 .qgrow{display:grid;grid-template-columns:minmax(0,1.4fr) auto minmax(80px,1fr) auto;gap:12px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--sheet)}
 .qgn{display:flex;flex-direction:column;min-width:0}
 .qgc{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink-2);white-space:nowrap}.qgc b{color:var(--ink);font-size:15px}

@@ -664,7 +664,7 @@ function renderSetup(el){
         :'<p class="catnote warn">ยังไม่ได้ตั้งค่า AI จึงมีเฉพาะคณิตศาสตร์ อนุกรม เงื่อนไขสัญลักษณ์ และเงื่อนไขภาษา ตั้งค่า AI ในแถบซ้ายเพื่อเพิ่มภาษาไทยและภาษาอังกฤษ</p>')
     :`<p class="catnote">${SPEC_TOPICS.join(' · ')}</p><p class="catnote warn">${!ai?'หมวดนี้ต้องใช้ AI สร้างข้อสอบ ตั้งค่า AI ในแถบซ้ายก่อน':activeCards().some(c=>SPEC_TOPICS.includes(c.topic))?`ออกข้อสอบจากบัตรความรู้ ${activeCards().filter(c=>SPEC_TOPICS.includes(c.topic)).length} ใบที่ AI ย่อยจากเอกสารในคลัง เน้นเรื่องที่ยังไม่เคยถามและที่เคยตอบผิด หัวข้อที่ยังไม่มีบัตร AI ใช้หลักการทั่วไป`:DOCS.length?`AI ใช้เอกสาร ${DOCS.length} ไฟล์ในคลังความรู้ประกอบ ข้อที่มาจากเอกสารจะมีอ้างอิงหน้า หัวข้อที่เอกสารไม่ครอบคลุม AI ใช้ความรู้ทั่วไป`:'ยังไม่มีเอกสารในคลังความรู้ AI สร้างจากความรู้ทั่วไป ตัวเลขหรือระเบียบเฉพาะของ ธ.ก.ส. อาจไม่ตรงกับปัจจุบัน อัปโหลดเอกสารได้ที่เมนูคลังความรู้'}</p>`;
   el.innerHTML=`<div class="form">
-    <div class="field"><span class="fl" id="mcat-l">วิชา</span><div class="seg" role="group" aria-labelledby="mcat-l"><button data-cat="gen" aria-pressed="${MS.cat==='gen'}">${CATS.gen}</button><button data-cat="spec" aria-pressed="${MS.cat==='spec'}">${CATS.spec}</button></div></div>
+    <div class="field"><span class="fl" id="mcat-l">วิชา</span><div class="seg segbig" role="group" aria-labelledby="mcat-l"><button data-cat="gen" aria-pressed="${MS.cat==='gen'}">${CATS.gen}</button><button data-cat="spec" aria-pressed="${MS.cat==='spec'}">${CATS.spec}</button></div></div>
     ${mockPickHTML(ai)}
     ${note}
     <div class="grid2">

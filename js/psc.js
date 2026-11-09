@@ -61,7 +61,8 @@ async function pscHelperOK(){try{const r=await fetch(PSC_HELPER+'/ping',{signal:
 /* เปิดตัวช่วยเอง: ลิงก์ baacpsc://start (ติดตั้งครั้งเดียวด้วย tools\install-psc-helper.ps1) ต้องเรียกตอนกดปุ่มทันที
    Chrome ถามครั้งแรกว่าจะเปิดโปรแกรมไหม ติ๊ก "อนุญาตเสมอ" ครั้งต่อไปจะเปิดเองเงียบๆ · รอให้ตัวช่วยตอบไม่เกิน 20 วิ */
 async function pscStartHelper(){
-  const f=document.createElement('iframe');f.style.display='none';f.src='baacpsc://start';document.body.append(f);setTimeout(()=>f.remove(),3000);
+  /* เปิดจากหน้าหลักโดยตรง (Chrome ไม่เปิดลิงก์โปรแกรมจาก iframe ที่ซ่อนไว้) หน้าเว็บไม่เปลี่ยนเพราะเป็นลิงก์ของโปรแกรม */
+  location.href='baacpsc://start';
   for(let i=0;i<20;i++){await new Promise(r=>setTimeout(r,1000));if(await pscHelperOK())return true}
   return false;
 }

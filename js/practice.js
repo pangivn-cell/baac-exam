@@ -116,7 +116,7 @@ function askHTML(id,q,pick){
    <p class="lbl">สงสัยตรงไหน ถามแย้งได้เลย</p>
    <div class="quick">${!ok&&pick!=null?`<button type="button" class="qk" data-q="ทำไมไม่ตอบว่า ${esc(q.choices[pick])}">ทำไมไม่ตอบว่า ${esc(q.choices[pick])}</button>`:''}<button type="button" class="qk" data-q="อธิบายข้อนี้ให้ง่ายกว่านี้อีก">อธิบายให้ง่ายกว่านี้</button><button type="button" class="qk" data-verify>⚖ ตรวจว่าเฉลยถูกไหม</button></div>
    <div class="thread"></div>
-   <form class="askform"><label for="ai-${id}" class="lbl">พิมพ์คำถามของคุณ</label><textarea id="ai-${id}" rows="2" placeholder="เช่น ถ้าคิดอีกแบบ ข้อนี้น่าจะตอบอีกข้อไม่ใช่เหรอ"></textarea><div class="askrow"><label class="webt"${canWeb()?'':' hidden'}><input type="checkbox" class="webchk"> ค้นเว็บประกอบ</label><span class="asknote"></span><button type="button" class="stop" hidden>หยุด</button><button type="submit" class="send">ถาม</button></div></form>
+   <form class="askform"><label for="ai-${id}" class="lbl">พิมพ์คำถามของคุณ</label><textarea id="ai-${id}" rows="2" placeholder="เช่น ถ้าคิดอีกแบบ ข้อนี้น่าจะตอบอีกข้อไม่ใช่เหรอ (Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่)"></textarea><div class="askrow"><label class="webt"${canWeb()?'':' hidden'}><input type="checkbox" class="webchk"> ค้นเว็บประกอบ</label><span class="asknote"></span><button type="button" class="stop" hidden>หยุด</button><button type="submit" class="send">ถาม</button></div></form>
   </div>`;
 }
 function rulesFor(q,pick){
@@ -177,6 +177,8 @@ function wireAsk(id,q,pick){
   const st=askState(q,pick);box.dataset.k=st.k;
   const form=box.querySelector('form'),inp=box.querySelector('textarea'),stop=box.querySelector('.stop'),web=box.querySelector('.webchk');
   inp.value=st.draft;inp.oninput=()=>{st.draft=inp.value};
+  /* Enter = ถาม · Shift+Enter = ขึ้นบรรทัดใหม่ (ระหว่างพิมพ์ไทยด้วย IME ที่ยังเลือกคำอยู่ ไม่ส่ง) */
+  inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(inp.value.trim())form.requestSubmit()}};
   if(web){web.checked=st.web;web.onchange=()=>{st.web=web.checked}}
   const paint=()=>paintAsk(id,st);
   /* questions without their own source: pull related knowledge cards (meaning-based) on the first question asked */
@@ -283,7 +285,7 @@ function render(){
    ${questionHTML(q)}
    ${choicesHTML(q,pick,locked)}
    ${locked?explainHTML(q,pick)+askHTML('cur',q,pick):''}
-   <div class="navrow"><span class="src">${R.i>0?'<button class="ghost" id="prev">← ข้อก่อนหน้า</button> ':''}${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null||wait?'disabled':''}>${wait?'กำลังสร้างข้อถัดไป...':R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
+   <div class="navrow"><span class="navl">${R.i>0?'<button class="ghost" id="prev">← ข้อก่อนหน้า</button>':''}<span class="src">${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span></span><button class="primary" id="next" ${pick==null||wait?'disabled':''}>${wait?'กำลังสร้างข้อถัดไป...':R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
   el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{R.picks[R.i]=+b.dataset.j;render();if(R.picks.filter(x=>x!=null).length>=Math.ceil(R.items.length/2))prefetchNext();const nb=document.getElementById('next');if(nb&&R.mode==='now')nb.focus({preventScroll:true})});
   if(locked)wireAsk('cur',q,pick);
   /* ย้อนกลับไปดูข้อที่แล้ว: ข้อที่ตอบแล้วในโหมดเฉลยทันทีล็อกคำตอบไว้ เห็นเฉลยเหมือนเดิม */

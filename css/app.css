@@ -140,6 +140,10 @@ input.tx,select{font-size:15px;box-sizing:border-box;width:100%;padding:7px 8px;
 ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
 .src{color:var(--ink-2);font-size:13px}
 .navrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.navl{display:flex;align-items:center;gap:10px}
+.navrow .ghost{font:600 15px var(--f-body);padding:0 14px;border-radius:10px;border-color:var(--accent);color:var(--accent)}
+/* ปุ่มย้อนกลับ/ข้อต่อไป ขนาดเท่ากัน */
+.navrow :is(.ghost,.primary){box-sizing:border-box;height:42px;min-width:136px;padding-top:0;padding-bottom:0}
 .state{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;padding-block:28px}
 .state p{margin:0;max-width:44ch}
 .spin{width:36px;height:36px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:sp 1s linear infinite}

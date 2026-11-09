@@ -165,7 +165,9 @@ const figOK=id=>FIGS.has(id)||PFIG.has(id)||(typeof CFIG!=='undefined'&&CFIG.has
 const figMissing=c=>{const q=c.q||c;return [...String((q.stem||'')+' '+(q.choices||[]).join(' ')).matchAll(FIG_TOK)].some(m=>!figOK(m[1]))};
 /* ข้อความที่มีป้ายรูป → แสดงรูปจริงตรงตำแหน่งป้าย */
 const figText=(t,cls)=>esc(String(t||'')).replace(FIG_TOK,(m,id)=>figHTML(id,cls||'qfig infig'));
-const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!QHIDE[c.id]&&!figMissing(c)&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))]};
+const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!QHIDE[c.id]&&!figMissing(c)&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))].filter(c=>!dupChoices(c))};
+/* ข้อจากไฟล์ที่ตัวเลือกซ้ำกันเอง (อ่านไฟล์พลาด) ตอบไม่ได้ว่าข้อไหนถูก ไม่เอามาออกข้อสอบ */
+const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};
@@ -209,10 +211,15 @@ const QLOG_KEY='exam-qlog';let QLOG={};
 try{QLOG=JSON.parse(localStorage.getItem(QLOG_KEY)||'{}')||{}}catch(e){QLOG={}}
 /* ข้อความที่ใช้ระบุโจทย์: โจทย์บางแบบ (เช่น เงื่อนไขสัญลักษณ์) ไม่มี stem ใช้ข้อความที่แสดงบนจอแทน */
 const qText=q=>q?String(q.stem||qLabel(q)||''):'';
-function qKey(q){
+const djb=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return (h>>>0).toString(36)};
+/* โจทย์ที่มีรูป (มิติสัมพันธ์ นับของ ข้อสอบจากไฟล์ที่มีรูป) ข้อความโจทย์มักเหมือนกันทุกข้อ เช่น "ถ้าหมุนรูปโจทย์ 90° จะได้รูปใด"
+   ต้องนับรูปเข้าไปด้วย ไม่งั้นข้อที่รูปต่างกันถูกตัดเป็นข้อซ้ำ และตอบถูกข้อเดียวข้อแบบเดียวกันหายหมด */
+const qPic=q=>q?String(q.svg||'')+(Array.isArray(q.chSvg)?q.chSvg.join(''):'')+(q.fig||''):'';
+function qKey0(q){
   const t=qText(q).toLowerCase().replace(/[\s"'“”‘’.,:;!?()\[\]\-_/]+/g,'').slice(0,240);
-  let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return 'k'+(h>>>0).toString(36)+t.length;
+  return 'k'+djb(t)+t.length;
 }
+function qKey(q){const p=qPic(q);return p?qKey0(q)+'p'+djb(p+'|'+(q.choices||[]).join('|')):qKey0(q)}
 const qMastered=q=>{if(QLOG_OFF)return false;const e=QLOG[qKey(q)];return!!e&&e.s==='r'};
 /* ลายนิ้วมือบัตรความรู้: ใช้กันบัตรซ้ำเมื่อย่อยไฟล์ซ้ำ/ไฟล์ที่เนื้อหาซ้ำกัน */
 const cardKey=c=>{const n=s=>String(s||'').toLowerCase().replace(/[\s\-_.,:;!?()\[\]{}"'“”]+/g,'');return n(c.topic)+'|'+n(c.title)+'|'+n(c.fact).slice(0,400)};
@@ -226,6 +233,8 @@ function saveQLog(){
 function logQs(items,picks){
   const ch=[];
   items.forEach((q,j)=>{const pk=picks[j];if(pk==null||pk<0||!q||!qText(q))return;const k=qKey(q),now=Date.now();ch.push(k);
+    /* ข้อมีรูปที่ค้างจากคีย์แบบเก่า (นับแค่ข้อความ) ล้างทิ้ง จะได้ไม่วนกลับมาให้ตอบซ้ำ */
+    const k0=qKey0(q);if(k0!==k&&QLOG[k0]&&QLOG[k0].s==='w'){delete QLOG[k0];ch.push(k0)}
     if(pk===q.answer)QLOG[k]={s:'r',t:now,sub:q.sub||'',st:qText(q).slice(0,140)};
     else{const {retry,...keep}=q;QLOG[k]={s:'w',t:now,sub:q.sub||'',st:qText(q).slice(0,140),n:((QLOG[k]&&QLOG[k].n)||0)+1,q:keep}}});
   saveQLog();pushQLog(ch);if(typeof poolMarkUsed==='function')poolMarkUsed(items);
@@ -238,7 +247,7 @@ function qRemoteW(e){const {srcText,...q}=e.q||{};return{t:e.t,sub:e.sub||'',st:
 async function pushQLog(keys){
   if(!ME||!keys.length)return;
   try{const f=await fb(),r={},w={};
-    for(const k of keys){const e=QLOG[k];if(!e)continue;if(e.s==='r'){r[k]=qRemoteR(e);w[k]=f.fs.deleteField()}else w[k]=qRemoteW(e)}
+    for(const k of keys){const e=QLOG[k];if(!e){w[k]=f.fs.deleteField();continue}if(e.s==='r'){r[k]=qRemoteR(e);w[k]=f.fs.deleteField()}else w[k]=qRemoteW(e)}
     if(Object.keys(r).length)await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','r'),{m:r},{merge:true});
     await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','w'),{m:w},{merge:true});
   }catch(e){console.warn('qlog sync',e&&e.code||e)}

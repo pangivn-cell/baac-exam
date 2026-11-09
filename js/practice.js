@@ -454,39 +454,63 @@ ${CHOICE_RULE} ห้ามมีข้อที่กำกวม
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"topic":"ชื่อหัวข้อตามที่กำหนด","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"ref":"","steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
+/* ---------- ตรวจชุดข้อสอบก่อนเริ่ม ----------
+   ทุกข้อต้องสมบูรณ์ (มีโจทย์ มีตัวเลือกไม่ซ้ำกัน เฉลยชี้ตัวเลือกที่มีจริง) และไม่ซ้ำกันในชุด
+   จำนวนต้องครบตามที่ตั้ง: วิชาที่ได้ไม่ครบ ขอเพิ่มอีก 2 รอบ → ยังขาด เติมจากวิชาที่ระบบสร้างเองได้ไม่จำกัด
+   → ยังขาด ใช้ข้อในคลังที่เคยตอบถูกแล้ว → ยังขาดจริงๆ แจ้งว่าวิชาไหนขาดเท่าไรเพราะอะไร */
+function qValid(q){
+  if(!q||!Number.isInteger(q.answer)||q.answer<0||!(qText(q).trim()||q.svg))return false;
+  const ch=q.choices;if(!Array.isArray(ch))return !!q.kind&&q.kind!=='mc';
+  if(ch.length<2||q.answer>=ch.length||ch.some(c=>String(c==null?'':c).trim()===''&&!q.chSvg))return false;
+  return !!q.chSvg||new Set(ch.map(c=>String(c).trim().toLowerCase())).size===ch.length;
+}
+const canMore=id=>{const s=SUBJ.find(x=>x.id===id);return !!s&&!s.ai&&!!LOCAL[id]};
+async function fillSet(plan,level,n,ctl,prog,tag,anyMath){
+  const got=new Map(plan.map(p=>[p.id,[]])),seen=new Set(),rep={bad:0,dup:0,extra:{},old:0,short:[]};
+  const total=()=>[...got.values()].reduce((a,l)=>a+l.length,0);
+  const add=(p,qs,cap)=>{const l=got.get(p.id);for(const q of qs){if(l.length>=cap||total()>=n)break;
+    if(!qValid(q)){rep.bad++;continue}const k=qKey(q);if(seen.has(k)){rep.dup++;continue}seen.add(k);l.push(q)}};
+  const ask=async(p,k)=>{const s=SUBJ.find(x=>x.id===p.id),b=total();
+    try{return (await makeItems(s,level,k,{signal:ctl.signal,onProg:d=>prog(b+d)})).map(q=>tag(q,s))}
+    catch(e){if(e&&e.code==='cancelled')throw e;p.err=p.err||e;return[]}};
+  const live=()=>!G||G.ctl===ctl;
+  /* รอบแรก + ขอเพิ่มอีก 2 รอบเฉพาะวิชาที่ยังได้ไม่ครบ */
+  for(let r=0;r<3&&total()<n;r++){
+    for(const p of plan){const l=got.get(p.id),need=p.k-l.length;if(need<=0||p.dry)continue;
+      const b=l.length;add(p,await ask(p,need),p.k);if(r&&l.length===b)p.dry=true;prog(total());
+      await new Promise(x=>setTimeout(x,0));if(!live())return null}
+    /* ข้อซ้ำที่แจ้งผู้ใช้นับแค่รอบแรก รอบขอเพิ่มจากคลังเล็กได้ข้อเดิมกลับมาเป็นปกติ */
+    if(!r)rep.dup0=rep.dup;
+  }
+  rep.dup=rep.dup0||0;
+  /* ยังขาด: เติมจากวิชาที่ระบบสร้างเองได้ไม่จำกัด (ในชุดนี้) ถ้าไม่มีเลยและเป็นชุดทั่วไปที่ไม่ได้เลือกวิชา ใช้คณิตศาสตร์
+     เลือกวิชาไว้เอง ไม่เติมวิชาที่ไม่ได้เลือก */
+  let fill=plan.filter(p=>canMore(p.id));
+  if(!fill.length&&anyMath&&canMore('math')){const m={id:'math',k:0};plan.push(m);got.set('math',[]);fill=[m]}
+  for(let r=0;r<4&&total()<n&&fill.length;r++)for(const p of fill){const need=n-total();if(need<=0)break;
+    const b=got.get(p.id).length;add(p,await ask(p,Math.ceil(need/fill.length)+2),Infinity);rep.extra[p.id]=(rep.extra[p.id]||0)+got.get(p.id).length-b;
+    if(!live())return null}
+  /* ยังขาด: ข้อในคลังที่เคยตอบถูกแล้ว ดีกว่าได้ชุดไม่ครบ */
+  if(total()<n){QLOG_OFF=true;try{for(const p of plan){const l=got.get(p.id),need=p.k-l.length;if(need<=0||total()>=n)continue;
+      const b=total();add(p,await ask(p,need),p.k);rep.old+=total()-b;if(!live())return null}}finally{QLOG_OFF=false}}
+  for(const p of plan){const l=got.get(p.id).length;if(l<p.k&&!(rep.extra[p.id]))rep.short.push({name:(SUBJ.find(x=>x.id===p.id)||{}).name||p.id,got:l,want:p.k,err:p.err})}
+  if(!total()&&plan[0]&&plan[0].err)throw plan[0].err;
+  return{items:plan.flatMap(p=>got.get(p.id)),rep};
+}
 async function buildMock(){
   const cat=MS.cat,n=MS.n,useAI=!!activeAI(),ctl=new AbortController();
   G={status:'gen',cat,n,ctl};renderMock();
   const prog=k=>{const el=document.getElementById('mgenp');if(el)el.textContent=`ได้แล้ว ${Math.min(k,n)} จาก ${n} ข้อ`};
   try{
-    let items=[];
     const picked=mockPicked(cat).filter(id=>mockOK(SUBJ.find(x=>x.id===id),useAI));
-    if(picked.length){
-      /* เลือกรายวิชาไว้: ออกข้อสอบเฉพาะวิชาที่เลือก แบ่งจำนวนข้อตามสัดส่วน */
-      for(const p of pickPlan(n,picked)){
-        const s=SUBJ.find(x=>x.id===p.id),base=items.length;
-        const qs=await makeItems(s,cat==='gen'?3:0,p.k,{signal:ctl.signal,onProg:d=>prog(base+d)});
-        items.push(...qs.map(q=>({...q,sub:q.sub||s.id,subName:s.name})));prog(items.length);
-        await new Promise(r=>setTimeout(r,0));
-        if(G&&G.ctl!==ctl)return;
-      }
-      items=shuffle(items);
-    }else if(cat==='gen'){
-      for(const p of genPlan(n,useAI)){
-        const s=SUBJ.find(x=>x.id===p.id),base=items.length;
-        const qs=await makeItems(s,3,p.k,{signal:ctl.signal,onProg:d=>prog(base+d)});
-        items.push(...qs);prog(items.length);
-        await new Promise(r=>setTimeout(r,0));
-        if(G&&G.ctl!==ctl)return;
-      }
-      if(items.length<n){const s=SUBJ.find(x=>x.id==='math');items.push(...LOCAL.math(3,n-items.length).map(q=>({...q,sub:'math',subName:s?s.name:'คณิตศาสตร์ทั่วไป'})))}
-    }else{
-      items=(await makeItems(SUBJ.find(x=>x.id==='specall'),0,n,{signal:ctl.signal,onProg:prog}))
-        .map(q=>({...q,sub:'spec',subName:SPEC_TOPICS.includes(q.topic)?q.topic:'อื่นๆ'}));
-    }
-    if(!G||G.ctl!==ctl)return;
-    if(!items.length)throw{code:'empty'};
-    G={status:'ready',cat,n,items:items.slice(0,n),subs:picked.map(id=>SUBJ.find(x=>x.id===id).name)};
+    /* เลือกรายวิชาไว้: ออกข้อสอบเฉพาะวิชาที่เลือก แบ่งจำนวนข้อตามสัดส่วน · ไม่เลือก: สัดส่วนข้อสอบจริง */
+    const plan=picked.length?pickPlan(n,picked):cat==='gen'?genPlan(n,useAI):[{id:'specall',k:n}];
+    const tag=cat==='spec'&&!picked.length?q=>({...q,sub:'spec',subName:SPEC_TOPICS.includes(q.topic)?q.topic:'อื่นๆ'}):(q,s)=>({...q,sub:q.sub||s.id,subName:s.name});
+    const r=await fillSet(plan,cat==='gen'?3:0,n,ctl,prog,tag,cat==='gen'&&!picked.length);
+    if(!r||!G||G.ctl!==ctl)return;
+    if(!r.items.length)throw{code:'empty'};
+    /* ชุดทั่วไปเรียงตามวิชาเหมือนข้อสอบจริง ชุดที่เลือกวิชาเองคละกัน */
+    G={status:'ready',cat,n,items:picked.length?shuffle(r.items):r.items,rep:r.rep,subs:picked.map(id=>SUBJ.find(x=>x.id===id).name)};
   }catch(e){
     if(!G||G.ctl!==ctl)return;
     if(e&&e.code==='cancelled'){G=null}else G={status:'error',err:e&&e.code==='empty'?'ได้ข้อสอบที่ใช้ไม่ได้ ลองสร้างใหม่อีกครั้ง':errCopy(e&&e.code,'สร้างข้อสอบ')};
@@ -571,12 +595,22 @@ function renderMock(){
   }
   if(G&&G.status==='ready'){
     const n=G.items.length,act=MS.action==='submit'?'ระบบจะส่งข้อสอบอัตโนมัติ':'ระบบจะแจ้งเตือนและบันทึกไว้ในผลสอบ';
-    el.innerHTML=`<div class="state"><p class="mt">ข้อสอบพร้อมแล้ว ${n} ข้อ · ${mockMins()} นาที</p>${n<G.n?`<p class="catnote warn">AI สร้างได้ ${n} จาก ${G.n} ข้อ สอบเท่าที่มีได้ หรือกลับไปสร้างใหม่</p>`:''}
+    el.innerHTML=`<div class="state"><p class="mt">ข้อสอบพร้อมแล้ว ${n} ข้อ · ${mockMins()} นาที</p>${mockRepHTML(G,n)}
       <ul class="rules"><li>เวลานับถอยหลังทันทีที่กดเริ่มสอบ และไม่หยุดแม้ปิดหน้าไป</li><li>ระบบเตือนเมื่อเหลือ 10, 5 และ 1 นาที</li><li>หมดเวลา ระบบส่งข้อสอบให้อัตโนมัติ และแก้คำตอบไม่ได้อีก</li><li>ห้ามเปลี่ยนแท็บ ย่อหน้าต่าง สลับไปโปรแกรมอื่น หรือรีโหลดหน้า ถ้าครบ ${MS.limit} ครั้ง ${act}</li><li>ระหว่างสอบเลื่อนไปข้อไหนก็ได้ และเปลี่ยนคำตอบได้จนกว่าจะส่ง</li></ul>
       <div class="btnrow"><button class="primary" id="mbegin">เริ่มสอบ</button><button class="ghost" id="mback">ยกเลิก</button></div></div>`;
     document.getElementById('mbegin').onclick=beginMock;document.getElementById('mback').onclick=()=>{G=null;renderMock()};return;
   }
   renderSetup(el);
+}
+/* ผลตรวจชุดข้อสอบ: ครบไหม เติมจากไหน และถ้าไม่ครบ วิชาไหนขาดเท่าไรเพราะอะไร */
+function mockRepHTML(G,n){
+  const r=G.rep||{short:[],extra:{}},nm=id=>(SUBJ.find(x=>x.id===id)||{}).name||id;
+  const ex=Object.entries(r.extra||{}).filter(([,k])=>k>0).map(([id,k])=>`${nm(id)} ${k} ข้อ`);
+  const why=s=>s.err?errCopy(s.err.code,'สร้างข้อสอบ'):activeAI()?'สร้างเพิ่มแล้วได้ข้อซ้ำหรือข้อที่ใช้ไม่ได้':'คลังข้อสอบมีไม่พอ ใส่ AI key เพื่อสร้างเพิ่ม';
+  const sh=r.short.map(s=>`<li>${esc(s.name)} ได้ ${s.got} จาก ${s.want} ข้อ · ${esc(why(s))}</li>`).join('');
+  const fix=[r.dup?`ตัดข้อซ้ำออกแล้ว ${r.dup} ข้อ`:'',r.bad?`ตัดข้อที่ไม่สมบูรณ์ออกแล้ว ${r.bad} ข้อ`:'',ex.length?`เติมจาก ${ex.join(', ')}`:'',r.old?`ใช้ข้อที่เคยตอบถูกแล้ว ${r.old} ข้อ`:''].filter(Boolean).join(' · ');
+  if(n<G.n)return `<p class="catnote warn">ตรวจแล้วได้ ${n} จาก ${G.n} ข้อ ขาด ${G.n-n} ข้อ สอบเท่าที่มีได้ หรือกลับไปสร้างใหม่</p>${sh?`<ul class="rules">${sh}</ul>`:''}${fix?`<p class="src">${fix}</p>`:''}`;
+  return `<p class="catnote">✓ ตรวจชุดข้อสอบแล้ว ครบ ${n} ข้อ ไม่มีข้อซ้ำ${fix?` · ${fix}`:''}</p>${sh&&ex.length?`<p class="src">วิชาที่ได้ไม่ครบ: ${r.short.map(s=>`${esc(s.name)} ${s.got}/${s.want}`).join(', ')}</p>`:''}`;
 }
 function mockPickHTML(ai){
   const list=mockSubjs(MS.cat),picked=new Set(mockPicked(MS.cat));

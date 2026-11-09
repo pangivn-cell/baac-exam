@@ -166,7 +166,9 @@ const pscOkH=h=>!!h&&PSC_GOODH.test(h)&&!PSC_BADH.test(h)&&!/^[\d*.\s–-]/.test
 const PSC_FACTH=/อัตรา|ดอกเบี้ย|วงเงิน|ระยะเวลา|ค่าธรรมเนียม|จำนวนเงิน|อายุสลาก|หน่วยละ|เบี้ย|หลักประกัน|วัตถุประสงค์/;
 const PSC_INTRO=/(ดังนี้|ดังต่อไปนี้|ได้แก่|[:：])\s*[-–]?\s*$/;
 /* ตัวเลือกที่ใช้ไม่ได้: ประโยคเกริ่นที่ไม่มีเนื้อหา ชื่อไฟล์/รหัสระบบ */
-const pscBadV=t=>{const x=String(t).replace(/\s*…$/,'').trim();return PSC_INTRO.test(x)||/\.(csv|xlsx?|pdf|docx?)\b|_[A-Z]{2,}[A-Z0-9_]*/i.test(x)||(x.length<3&&!/\d/.test(x))};
+/* ชื่อบุคคลจริง (คำนำหน้า + ชื่อ + นามสกุล) ไม่เอามาออกข้อสอบ */
+const PSC_PERSON=/(?:^|[\s(])(?:นาย|นางสาว|นาง|น\.ส\.|ด\.ช\.|ด\.ญ\.|[จสรพ]\.\s?[สตอท]\.\s?[อทตส]\.|พล\.\s?[ตอท]\.|ร\.ต\.[อทต]\.|ส\.อ\.|จ\.อ\.|พ\.จ\.อ\.)\s*[ก-๙]{2,}\s+[ก-๙]{2,}/;
+const pscBadV=t=>{const x=String(t).replace(/\s*…$/,'').trim();return PSC_INTRO.test(x)||PSC_PERSON.test(x)||/\.(csv|xlsx?|pdf|docx?)\b|_[A-Z]{2,}[A-Z0-9_]*/i.test(x)||(x.length<3&&!/\d/.test(x))};
 const pscSec=(a,h)=>{const s=a.secs.find(x=>x[0]===h);return s?s[1]:''};
 const pscAll=a=>a.secs.map(([h,v])=>`${h}: ${v}`).join('\n');
 const pscCat=c=>String(c||'').replace(/_/g,' · ');
@@ -294,7 +296,7 @@ function pscLocal(level,n){
     const h=rnd(hs),cand=(ty==='t1'||ty==='t2'||ty==='t4'||ty==='t5')?PSC.filter(a=>pscSec(a,h)):PSC;
     const fresh=cand.filter(a=>!usedA.has(a.id)),a=rnd(fresh.length?fresh:cand);if(!a)continue;
     const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):ty==='t8'?pscT8(a):pscT9(a,lv);
-    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
+    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
   }
   return shuffle(out);
 }
@@ -440,7 +442,7 @@ async function renderPscAdmin(body){
 function pscOnAuth(){if(typeof R!=='undefined'&&R&&R.status==='error'&&R.code==='psc_login'&&typeof VIEW!=='undefined'&&VIEW==='practice'){PSC=null;pscP=null;start(true)}}
 /* ข้อที่เคยตอบผิดแล้วระบบเอากลับมาให้ตอบใหม่: ข้อที่สร้างก่อนมีตัวกรองหัวข้อ/ตัวเลือก ถ้าไม่ผ่านเกณฑ์ปัจจุบันก็ไม่เอากลับมา */
 function pscRetryOK(q){
-  if(!Array.isArray(q.choices)||q.choices.some(pscBadV))return false;
+  if(!Array.isArray(q.choices)||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem||''))return false;
   if(q.gen==='ai')return true;
   if(q.ph)return pscOkH(q.ph)&&(q.ptype!=='t3'||PSC_FACTH.test(q.ph));
   return !/^ข้อใดถูกต้องเกี่ยวกับ/.test(q.stem||'');

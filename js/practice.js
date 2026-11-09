@@ -283,9 +283,11 @@ function render(){
    ${questionHTML(q)}
    ${choicesHTML(q,pick,locked)}
    ${locked?explainHTML(q,pick)+askHTML('cur',q,pick):''}
-   <div class="navrow"><span class="src">${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null||wait?'disabled':''}>${wait?'กำลังสร้างข้อถัดไป...':R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
+   <div class="navrow"><span class="src">${R.i>0?'<button class="ghost" id="prev">← ข้อก่อนหน้า</button> ':''}${R.mode==='end'?'เฉลยทั้งหมดจะแสดงตอนท้าย':''}</span><button class="primary" id="next" ${pick==null||wait?'disabled':''}>${wait?'กำลังสร้างข้อถัดไป...':R.i+1<n?'ข้อต่อไป':'ส่งคำตอบ'}</button></div>`);
   el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{R.picks[R.i]=+b.dataset.j;render();if(R.picks.filter(x=>x!=null).length>=Math.ceil(R.items.length/2))prefetchNext();const nb=document.getElementById('next');if(nb&&R.mode==='now')nb.focus({preventScroll:true})});
   if(locked)wireAsk('cur',q,pick);
+  /* ย้อนกลับไปดูข้อที่แล้ว: ข้อที่ตอบแล้วในโหมดเฉลยทันทีล็อกคำตอบไว้ เห็นเฉลยเหมือนเดิม */
+  const pv=document.getElementById('prev');if(pv)pv.onclick=()=>{R.i--;render();el.scrollIntoView({block:'start',behavior:'smooth'})};
   document.getElementById('next').onclick=()=>{if(R.more&&R.i+1>=R.items.length)return;if(R.i+1<R.items.length){R.i++;render();el.scrollIntoView({block:'start',behavior:'smooth'})}else finish()};
 }
 function finish(){

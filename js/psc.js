@@ -301,7 +301,8 @@ function pscT9(a,lv){
   if(!a.memo)return null;const o=pscPool(a,lv,b=>b.memo!==a.memo).slice(0,3);if(o.length<3)return null;
   return pscQ(a,null,`บันทึกที่ ${a.memo} เป็นเรื่องใด`,[a.title,...o.map(b=>b.title)],[[`บันทึกที่ ${a.memo} คือ "${a.title}"`,'Product Catalog BAAC']]);
 }
-const PSC_TYPES=[[.17,'t1'],[.14,'t2'],[.14,'t3'],[.17,'t4'],[.12,'t5'],[.1,'t6'],[.06,'t7'],[.05,'t8'],[.05,'t9']];
+/* เลขที่บันทึกอยู่ในเฉลย (ที่มา) เท่านั้น จึงไม่มีโจทย์ถามเลขบันทึก */
+const PSC_TYPES=[[.2,'t1'],[.14,'t2'],[.14,'t3'],[.19,'t4'],[.12,'t5'],[.1,'t6'],[.06,'t7'],[.05,'t8']];
 function pscLocal(level,n){
   if(!PSC||!PSC.length)return[];
   const lv=level||3,hs=pscHeads(),out=[],seen=new Set(),usedA=new Set();
@@ -309,8 +310,8 @@ function pscLocal(level,n){
     let r=Math.random(),ty='t1';for(const [w,k] of PSC_TYPES){if(r<w){ty=k;break}r-=w}
     const h=rnd(hs),cand=(ty==='t1'||ty==='t2'||ty==='t4'||ty==='t5')?PSC.filter(a=>pscSec(a,h)):PSC;
     const fresh=cand.filter(a=>!usedA.has(a.id)),a=rnd(fresh.length?fresh:cand);if(!a)continue;
-    const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):ty==='t8'?pscT8(a):pscT9(a,lv);
-    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
+    const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):pscT8(a);
+    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem)||pscHasMemo(q)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
   }
   return shuffle(out);
 }
@@ -346,7 +347,7 @@ function pscPick(k){
   return a;
 }
 /* โจทย์จากคลังโจทย์กลาง: ใช้ได้เฉพาะข้อที่เรื่องต้นทางยังไม่เปลี่ยน แล้วเติมที่มาใหม่ */
-const pscFresh=q=>{const a=PSC.find(x=>x.id===q.psc);return a&&a.mod===q.pscMod?{...q,...pscCite(a,q.ptopic)}:null};
+const pscFresh=q=>{const a=PSC.find(x=>x.id===q.psc);return a&&a.mod===q.pscMod&&!pscHasMemo(q)?{...q,...pscCite(a,q.ptopic)}:null};
 async function pscItems(s,level,n,o={}){
   await loadPSC();
   const tag=q=>({...q,sub:s.id,subName:s.name});
@@ -357,7 +358,7 @@ async function pscItems(s,level,n,o={}){
     try{
       const gen=(await genAIChunks((k,b)=>pscPrompt(pscPick(Math.max(2,Math.ceil(k/2))),k,level),kAI-ai.length,{signal:o.signal,onProg:o.onProg}))
         .map(q=>{const r=String(q.ref||'').trim(),a=/^P\d+$/i.test(r)&&PSC[+r.slice(1)];if(!a)return null;const h=a.secs.some(x=>x[0]===q.topic)?q.topic:null;
-          return{...q,topic:a.title,ptopic:h,gen:'ai',steps:[...q.steps,...pscImgNote(a)],...pscCite(a,h)}}).filter(Boolean);
+          return{...q,topic:a.title,ptopic:h,gen:'ai',steps:[...q.steps,...pscImgNote(a)],...pscCite(a,h)}}).filter(q=>q&&!pscHasMemo(q));
       if(typeof poolPut==='function')poolPut(s,level,gen.map(tag));
       ai.push(...gen);
     }catch(e){if(e&&e.code==='cancelled')throw e}
@@ -456,10 +457,12 @@ async function renderPscAdmin(body){
 function pscOnAuth(){if(typeof R!=='undefined'&&R&&R.status==='error'&&R.code==='psc_login'&&typeof VIEW!=='undefined'&&VIEW==='practice'){PSC=null;pscP=null;start(true)}}
 /* ข้อที่เคยตอบผิดแล้วระบบเอากลับมาให้ตอบใหม่: ข้อที่สร้างก่อนมีตัวกรองหัวข้อ/ตัวเลือก ถ้าไม่ผ่านเกณฑ์ปัจจุบันก็ไม่เอากลับมา */
 function pscRetryOK(q){
-  if(!Array.isArray(q.choices)||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem||''))return false;
+  if(!Array.isArray(q.choices)||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem||'')||pscHasMemo(q))return false;
   /* เรื่องที่ปิดรับฝาก/ยกเลิก หรือมีฉบับปรับปรุงใหม่กว่าแล้ว */
   if(PSC&&q.psc&&!PSC.some(a=>a.id===q.psc))return false;
   if(q.gen==='ai')return true;
   if(q.ph)return pscOkH(q.ph)&&(q.ptype!=='t3'||PSC_FACTH.test(q.ph));
   return !/^ข้อใดถูกต้องเกี่ยวกับ/.test(q.stem||'');
 }
+/* มีเลขที่บันทึก (เช่น งฝ/ว 1808) อยู่ในโจทย์หรือตัวเลือก */
+const pscHasMemo=q=>PSC_MEMO.test([q.stem||'',...(q.choices||[])].join(' '));

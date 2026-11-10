@@ -23,29 +23,66 @@ const mergeAIP=a=>({...AIP,...a,gemini:{...AIP.gemini,...(a.gemini||{})},openai:
 try{const a=JSON.parse(localStorage.getItem('exam-drill-ai')||'null');if(a)AIP=mergeAIP(a)}catch(e){}
 /* ตั้งค่า AI (รวม key) ผูกกับบัญชี: เก็บที่ users/{uid}/qlog/aiset (กฎเดียวกับบันทึกโจทย์ อ่าน/เขียนได้เฉพาะเจ้าของ) ล็อกอินเครื่องไหนก็ได้ key ชุดเดียวกัน */
 const AIP_AT='exam-drill-ai-at';
-const saveAI=(push=true)=>{try{localStorage.setItem('exam-drill-ai',JSON.stringify(AIP));if(push)localStorage.setItem(AIP_AT,String(Date.now()))}catch(e){}if(push)pushAIP()};
+/* key รวมกันข้ามเครื่อง (ไม่ใช่เครื่องล่าสุดทับทั้งชุด): KT จำเวลาเพิ่ม/ลบของแต่ละ key
+   key อยู่ต่อเมื่อเวลาเพิ่มล่าสุด >= เวลาลบล่าสุด · ลบในเครื่องไหนก็หายทุกเครื่อง ใส่กลับมาใหม่ก็กลับมาทุกเครื่อง */
+const AIP_KT='exam-drill-ai-kt';
+let KT={add:{},del:{}};try{KT={...KT,...JSON.parse(localStorage.getItem(AIP_KT)||'{}')}}catch(e){}
+const saveKT=()=>{try{localStorage.setItem(AIP_KT,JSON.stringify(KT))}catch(e){}};
+const keysIn=c=>c?[...new Set((Array.isArray(c.keys)?c.keys:[c.key]).map(k=>String(k||'').trim()).filter(Boolean))]:[];
+const keyAlive=(k,kt=KT)=>((kt.add||{})[k]||0)>=((kt.del||{})[k]||0);
+const ktMerge=(a,b)=>{const o={add:{...a.add},del:{...a.del}};for(const t of ['add','del'])for(const [k,v] of Object.entries(b&&b[t]||{}))o[t][k]=Math.max(o[t][k]||0,+v||0);return o};
+const ktSig=kt=>JSON.stringify(['add','del'].map(t=>Object.entries(kt&&kt[t]||{}).sort()));
+/* base = ฝั่งที่ตั้งค่าใหม่กว่า (ผู้ให้บริการ โมเดล ฯลฯ) · key = รวมทั้งสองฝั่ง ตัดตัวที่ถูกลบ */
+function aipMerge(base,other,kt){const out=mergeAIP(base);
+  for(const p of KEY_PROVS){if(!out[p])continue;const ks=[...new Set([...keysIn(base[p]),...keysIn(other&&other[p])])].filter(k=>keyAlive(k,kt));
+    out[p]={...out[p],keys:ks,key:ks.includes(out[p].key)?out[p].key:ks[0]||''}}
+  return out}
+/* เทียบโดยไม่สน key ที่ใช้อยู่ (สลับไปมาทุกคำขอ) */
+const aipSig=a=>JSON.stringify(a,(k,v)=>k==='key'?undefined:v);
+const saveAI=(push=true)=>{
+  if(push){let old={};try{old=JSON.parse(localStorage.getItem('exam-drill-ai')||'{}')}catch(e){}const now=Date.now();
+    for(const p of KEY_PROVS){const a=keysIn(old[p]),b=keysIn(AIP[p]);for(const k of b)if(!a.includes(k)||!keyAlive(k))KT.add[k]=now;for(const k of a)if(!b.includes(k))KT.del[k]=now}saveKT()}
+  try{localStorage.setItem('exam-drill-ai',JSON.stringify(AIP));if(push)localStorage.setItem(AIP_AT,String(Date.now()))}catch(e){}if(push)pushAIP()};
 /* สถานะการซิงก์ แสดงในหน้าตั้งค่า AI */
 const AISYNC={msg:'',bad:false};
 const aiSyncMsg=(m,bad)=>{AISYNC.msg=m;AISYNC.bad=!!bad;const e=document.getElementById('aisync');if(e){e.textContent=m;e.className='hint '+(bad?'err':'ok')}};
 const syncErr=e=>{const c=String(e&&e.code||e&&e.message||e);return c==='permission-denied'?'ฐานข้อมูลไม่อนุญาต (ลองออกจากระบบแล้วเข้าใหม่)':c==='unavailable'?'เชื่อมต่อฐานข้อมูลไม่ได้ ตรวจอินเทอร์เน็ต':c.slice(0,80)};
 async function pushAIP(){
   if(typeof ME==='undefined'||!ME){aiSyncMsg('ยังไม่ได้เข้าสู่ระบบ ตั้งค่า AI เก็บไว้แค่ในเครื่องนี้');return false}
-  try{const f=await fb(),at=+(localStorage.getItem(AIP_AT)||Date.now());await f.fs.setDoc(fsDoc('users',ME.uid,'qlog','aiset'),{aip:JSON.stringify(AIP),at});
-    aiSyncMsg(`☁ บันทึกตั้งค่า AI ไว้กับบัญชี ${ME.email||ME.name} แล้ว (${fmtDate(Date.now())}) เครื่องอื่นที่ล็อกอินบัญชีนี้จะได้ key ชุดนี้`);return true}
+  try{const f=await fb(),ref=fsDoc('users',ME.uid,'qlog','aiset'),s=await f.fs.getDoc(ref);let at=+(localStorage.getItem(AIP_AT)||Date.now());
+    /* อ่านของบัญชีก่อน แล้วรวม key ที่เครื่องอื่นเพิ่มไว้ ไม่ให้เครื่องนี้ทับหาย */
+    if(s.exists()){const d=s.data();KT=ktMerge(KT,d.kt);saveKT();aipApply(d.at>at?aipMerge(aipParse(d),AIP,KT):aipMerge(AIP,aipParse(d),KT));at=Math.max(at,+d.at||0)}
+    await f.fs.setDoc(ref,{aip:JSON.stringify(AIP),at,kt:KT});
+    aiSyncMsg(`☁ บันทึกตั้งค่า AI ไว้กับบัญชี ${ME.email||ME.name} แล้ว (${fmtDate(Date.now())}) ${aiKeyCount()} · เครื่องอื่นที่ล็อกอินบัญชีนี้ได้ key ชุดเดียวกันทันที`);return true}
   catch(e){aiSyncMsg('ส่งตั้งค่า AI ขึ้นบัญชีไม่สำเร็จ: '+syncErr(e),true);return false}
 }
+const aipParse=d=>{try{return JSON.parse(d.aip||'{}')}catch(e){return{}}};
+const aiKeyCount=()=>{const n=KEY_PROVS.reduce((a,p)=>a+keysOf(p).length,0);return `(key ทั้งหมด ${n} ตัว)`};
+/* ใช้ผลรวมกับเครื่องนี้ · คืน true ถ้ามีอะไรเปลี่ยน */
+function aipApply(m){if(aipSig(m)===aipSig(AIP))return false;const before=KEY_PROVS.reduce((a,p)=>a+keysOf(p).length,0);
+  /* กำลังพิมพ์ในหน้าตั้งค่า AI: ไม่วาดหน้าใหม่ (ข้อความที่ยังไม่บันทึกจะหาย) แค่อัปเดตป้าย key ที่ได้มารวมตอนกดบันทึก */
+  const typing=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#aibody');
+  AIP=m;saveAI(false);if(typing)renderAISetPill();else renderAISet();aiChanged();const n=KEY_PROVS.reduce((a,p)=>a+keysOf(p).length,0);
+  if(n>before)toast(`ได้ key เพิ่ม ${n-before} ตัวจากเครื่องอื่นในบัญชีนี้`);return true}
+async function aipFromRemote(s,first){
+  const localAt=+(localStorage.getItem(AIP_AT)||0),hasLocal=KEY_PROVS.some(provReady);
+  if(!s.exists()){if(hasLocal)await pushAIP();else aiSyncMsg(`บัญชี ${ME.email||ME.name} ยังไม่มีตั้งค่า AI ที่บันทึกไว้ ใส่ key แล้วกด บันทึก ในเครื่องที่มี key`,true);return}
+  const d=s.data(),r=aipParse(d);KT=ktMerge(KT,d.kt);saveKT();
+  const m=(+d.at>localAt||!hasLocal)?aipMerge(r,AIP,KT):aipMerge(AIP,r,KT);
+  const got=aipApply(m);try{localStorage.setItem(AIP_AT,String(Math.max(localAt,+d.at||0)))}catch(e){}
+  if(got&&first&&activeAI())toast(`ใช้ตั้งค่า AI จากบัญชีของคุณ (${AINAME[activeAI()]})`);
+  /* บัญชียังขาด key ที่เครื่องนี้มี ยังมี key ที่ถูกลบแล้ว หรือยังไม่มีบันทึกเพิ่ม/ลบ → ส่งขึ้นไปรวม */
+  if(aipSig(mergeAIP(m))!==aipSig(mergeAIP(r))||ktSig(KT)!==ktSig(d.kt))await pushAIP();
+  else aiSyncMsg(`☁ ตั้งค่า AI ตรงกับบัญชี ${ME.email||ME.name} แล้ว ${aiKeyCount()}`);
+}
+/* ฟังการเปลี่ยนแปลงสด: เพิ่ม/ลบ key ในเครื่องหนึ่ง เครื่องอื่นที่เปิดเว็บอยู่ได้ทันทีโดยไม่ต้องโหลดหน้าใหม่ */
+let AIP_UNSUB=null;
 async function pullAIP(){
   if(!ME)return;
   try{
-    const f=await fb(),s=await f.fs.getDoc(fsDoc('users',ME.uid,'qlog','aiset')),localAt=+(localStorage.getItem(AIP_AT)||0);
-    const hasLocal=KEY_PROVS.some(provReady);
-    if(s.exists()&&(s.data().at>localAt||!hasLocal)){
-      AIP=mergeAIP(JSON.parse(s.data().aip||'{}'));saveAI(false);try{localStorage.setItem(AIP_AT,String(s.data().at))}catch(e){}
-      renderAISet();aiChanged();if(activeAI())toast(`ใช้ตั้งค่า AI จากบัญชีของคุณ (${AINAME[activeAI()]})`);
-      aiSyncMsg(`☁ ใช้ตั้งค่า AI จากบัญชี ${ME.email||ME.name} (บันทึกเมื่อ ${fmtDate(s.data().at)})`);
-    }else if(hasLocal&&(!s.exists()||s.data().at<localAt))await pushAIP();
-    else if(!s.exists())aiSyncMsg(`บัญชี ${ME.email||ME.name} ยังไม่มีตั้งค่า AI ที่บันทึกไว้ ใส่ key แล้วกด บันทึก ในเครื่องที่มี key`,true);
-    else aiSyncMsg(`☁ ตั้งค่า AI ตรงกับบัญชี ${ME.email||ME.name} แล้ว`);
+    const f=await fb(),ref=fsDoc('users',ME.uid,'qlog','aiset');await aipFromRemote(await f.fs.getDoc(ref),true);
+    if(AIP_UNSUB)AIP_UNSUB();const uid=ME.uid;
+    AIP_UNSUB=f.fs.onSnapshot(ref,s=>{if(s.metadata.hasPendingWrites||!ME||ME.uid!==uid)return;aipFromRemote(s,false).catch(()=>{})},()=>{});
   }catch(e){aiSyncMsg('ดึงตั้งค่า AI จากบัญชีไม่สำเร็จ: '+syncErr(e),true)}
 }
 const AINAME={claude:'Claude',gemini:'Gemini',openai:'OpenAI',anthropic:'Claude API',meta:'Meta',typhoon:'Typhoon',groq:'Groq',openrouter:'OpenRouter',mistral:'Mistral',custom:'ผู้ให้บริการอื่น',local:'AI ในเครื่อง'};
@@ -113,21 +150,37 @@ const GEMINI_FALLBACK=['gemini-flash-latest','gemini-flash-lite-latest','gemini-
 const DEAD_MODELS=new Set();
 let LAST_MODEL='';
 const sleep=(ms,signal)=>new Promise((ok,no)=>{const t=setTimeout(ok,ms);if(signal)signal.addEventListener('abort',()=>{clearTimeout(t);no({code:'cancelled'})},{once:true})});
+/* Gemini/OpenRouter: โควตานับแยกต่อโมเดล → key ที่โควตาโมเดลหลักหมด ยังใช้โมเดลสำรองได้ จึงพักเฉพาะคู่ key+โมเดล (KEY_MDOWN) */
+const KEY_MDOWN={},KEY_RR={};
+const perModel=(prov,code)=>(prov==='gemini'||prov==='openrouter')&&(code==='quota'||code==='rate_limited');
+const keyDown=(prov,k,model,code)=>{const until=Date.now()+(code==='bad_key'?864e5:code==='rate_limited'?60e3:30*60e3);
+  if(perModel(prov,code))KEY_MDOWN[k+'|'+model]=until;else KEY_DOWN[k]=until;KEY_WHY[k]=code};
+const keyModelDown=(k,model)=>KEY_MDOWN[k+'|'+model]>Date.now();
+const modelsOf=(prov,first)=>(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
+/* หลาย key: วนสลับ key ทุกคำขอ (กระจายโควตา) · ลองทุก key กับโมเดลหลักก่อน แล้วค่อยลดไปโมเดลสำรอง */
 async function keyCall(prov,input,json,signal,model0){
   const ks=prov==='local'?[]:keysOf(prov);
   if(ks.length<2)return keyCall1(prov,input,json,signal,model0);
-  const now=Date.now(),live=ks.filter(k=>!(KEY_DOWN[k]>now)),list=live.length?live:ks;let err;
-  for(const k of list){AIP[prov].key=k;
-    try{const t=await keyCall1(prov,input,json,signal,model0);delete KEY_WHY[k];return t}
-    catch(e){if(!e||!KEY_SWITCH.includes(e.code))throw e;err=e;
-      KEY_DOWN[k]=Date.now()+(e.code==='bad_key'?864e5:e.code==='rate_limited'?60e3:30*60e3);KEY_WHY[k]=e.code}
+  const rr=(KEY_RR[prov]=((KEY_RR[prov]||0)+1)%ks.length),ring=[...ks.slice(rr),...ks.slice(0,rr)];
+  let err,modelErr;
+  for(const model of modelsOf(prov,model0||cfgOf(prov).model)){
+    const now=Date.now(),live=ring.filter(k=>!(KEY_DOWN[k]>now)&&!keyModelDown(k,model));
+    for(const k of live){AIP[prov].key=k;
+      try{const t=await keyCall1(prov,input,json,signal,model,true);delete KEY_WHY[k];return t}
+      catch(e){if(!e)throw e;
+        if(e.code==='bad_model'){modelErr=e;if(prov==='gemini'&&model!==(model0||cfgOf(prov).model))DEAD_MODELS.add(prov+':'+model);break}
+        if(e.code==='overloaded'){err=err||e;break}
+        if(!KEY_SWITCH.includes(e.code))throw e;err=e;keyDown(prov,k,model,e.code)}
+    }
   }
-  throw err;
+  /* ทุก key ถูกพักหมด: ลอง key แรกตรงๆ อีกครั้ง (เวลาพักอาจนานกว่าที่ผู้ให้บริการกำหนดจริง) */
+  if(!err&&!modelErr){AIP[prov].key=ring[0];return keyCall1(prov,input,json,signal,model0)}
+  throw err||modelErr;
 }
-async function keyCall1(prov,input,json,signal,model0){
+async function keyCall1(prov,input,json,signal,model0,only){
   const first=model0||cfgOf(prov).model;
   /* OpenRouter: โมเดลฟรีตัวที่ตั้งไว้ถูกจำกัด (คนใช้เยอะ) → ใช้ openrouter/free ที่เลือกโมเดลฟรีที่ว่างให้เอง */
-  const models=(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
+  const models=only?[first]:modelsOf(prov,first);
   let lastErr,keyErr;
   for(const model of models){
     for(let attempt=0;attempt<3;attempt++){
@@ -214,7 +267,14 @@ const canWeb=()=>!inViewer&&WEB_PROVS.includes(activeAI());
 const textOnly=turns=>normTurns(turns).map(t=>({role:t.role,content:typeof t.content==='string'?t.content:t.content.text}));
 function uniqSrc(list){const seen=new Set(),out=[];for(const s of list){if(!s||!s.url||seen.has(s.url))continue;seen.add(s.url);out.push({url:String(s.url),title:String(s.title||s.url).slice(0,120)})}return out.slice(0,6)}
 async function aiWeb(input,{signal}={}){
-  const p=activeAI();if(!WEB_PROVS.includes(p))throw{code:'no_web'};pickKey(p);
+  const p=activeAI();if(!WEB_PROVS.includes(p))throw{code:'no_web'};
+  const now=Date.now(),ks=keysOf(p),live=ks.filter(k=>!(KEY_DOWN[k]>now)&&!keyModelDown(k,AIP[p].model));let err;
+  for(const k of (live.length?live:ks.slice(0,1))){AIP[p].key=k;
+    try{const r=await aiWeb1(p,input,signal);delete KEY_WHY[k];return r}
+    catch(e){if(!e||!KEY_SWITCH.includes(e.code))throw e;err=e;keyDown(p,k,AIP[p].model,e.code)}}
+  throw err||{code:'no_ai'};
+}
+async function aiWeb1(p,input,signal){
   const turns=textOnly(input);
   if(p==='anthropic'){
     const c=await anthClient();let msg;
@@ -288,7 +348,7 @@ function errCopy(code,what){
 const errMsg=m=>{let t=String(m||'');try{const j=JSON.parse(t),e=j.error||j;t=(e.metadata&&e.metadata.raw)||e.message||t}catch(x){}return String(t).replace(/\s+/g,' ').slice(0,160)};
 const KEY_LBL={quota:'โควตาหมด',no_credit:'เครดิตหมด',bad_key:'key ใช้ไม่ได้',rate_limited:'ถูกจำกัดความถี่'};
 function keyRow(p,k,i,ph){
-  const down=k&&KEY_DOWN[k]>Date.now(),why=k&&KEY_WHY[k],cur=k&&AIP[p]&&AIP[p].key===k&&keysOf(p).length>1;
+  const down=k&&(KEY_DOWN[k]>Date.now()||(AIP[p]&&keyModelDown(k,AIP[p].model))),why=k&&KEY_WHY[k],cur=k&&AIP[p]&&AIP[p].key===k&&keysOf(p).length>1;
   return `<div class="keyrow"><span class="keyn">${i+1}</span><input class="tx" type="password" autocomplete="off" value="${esc(k)}" placeholder="${esc(ph||'')}" aria-label="${esc(AINAME[p])} key ${i+1}">
     ${down?`<span class="keyst bad" title="ระบบข้าม key นี้ชั่วคราว">${esc(KEY_LBL[why]||'พักอยู่')}</span>`:cur?'<span class="keyst ok">ใช้อยู่</span>':''}<button type="button" class="ghost keydel" data-delkey aria-label="ลบ key ${i+1}">✕</button></div>`;
 }
@@ -359,13 +419,16 @@ function renderAISet(){
 <li>คัดลอก key มาวางในช่อง Meta API key แล้วกด บันทึก และ ทดสอบ</li>
 </ol><p class="hint">Meta ปิด Llama API เดิมไปแล้ว (ก.ค. 2569) ตอนนี้ใช้ Meta Model API กับโมเดล Muse Spark · โมเดล -contributor ราคาถูกกว่า · อ่านรูปในเอกสารได้ แต่ไม่มีดัชนีค้นหาตามความหมาย</p></details>
 ${Object.values(OAI_PROVS).map(o=>`<details class="howto"><summary>วิธีขอ ${o.name} key (${o.paid?'ต้องเติมเงิน':'ฟรี ไม่ต้องใช้บัตร'})</summary><ol>${o.howto.map(s=>`<li>${s}</li>`).join('')}</ol>${o.tip?`<p class="hint">${o.tip}</p>`:''}</details>`).join('')}
-<p class="hint">key ถูกเก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น อย่าใช้ในเครื่องสาธารณะ และอย่าส่ง key ให้คนอื่น ค่าใช้จ่ายคิดกับบัญชีของ key นั้น</p>`;
+<p class="hint">มีหลาย key ระบบสลับใช้ทีละ key ทุกคำขอ key ไหนโควตาหมดหรือใช้ไม่ได้จะข้ามไปตัวถัดไปเอง · key เก็บในเบราว์เซอร์และในบัญชีที่ล็อกอิน (เห็นได้เฉพาะเจ้าของบัญชี) เพิ่มหรือลบในเครื่องไหน ทุกเครื่องของบัญชีนี้ได้ตามทันที · อย่าใช้ในเครื่องสาธารณะ และอย่าส่ง key ให้คนอื่น ค่าใช้จ่ายคิดกับบัญชีของ key นั้น</p>`;
   const $=id=>document.getElementById(id);
   $('aiprov').value=AIP.provider;$('gmodel').value=g.model;$('omodel').value=o.model;$('amodel').value=AIP.anthropic.model;$('mmodel').value=AIP.meta.model;
   for(const p of Object.keys(OAI_PROVS))$('m-'+p).value=AIP[p].model||OAI_PROVS[p].model;
   $('curl').value=AIP.custom.url;$('cmodel').value=AIP.custom.model;$('cvis').checked=!!AIP.custom.vision;$('pprov').value=AIP.proc.provider||'same';$('pmodel').value=AIP.proc.model||'';
   $('hon').checked=!!LLMHOST.on;$('hurl').value=LLMHOST.url;$('hmodel').value=LLMHOST.model;$('hvis').checked=!!LLMHOST.vision;
-  const kv=p=>{const ks=[...new Set([...document.querySelectorAll(`[data-keys="${p}"] input`)].map(x=>x.value.trim()).filter(Boolean))];return{keys:ks,key:ks[0]||''}};
+  /* key ที่เครื่องอื่นเพิ่มเข้ามาหลังวาดหน้านี้ (ไม่มีในช่อง) ต้องไม่ถูกนับว่าผู้ใช้ลบ */
+  const shown=Object.fromEntries(KEY_PROVS.map(p=>[p,keysOf(p)]));
+  const kv=p=>{const dom=[...document.querySelectorAll(`[data-keys="${p}"] input`)].map(x=>x.value.trim()).filter(Boolean);
+    const ks=[...new Set([...dom,...keysOf(p).filter(k=>!shown[p].includes(k))])];return{keys:ks,key:ks.includes(AIP[p]&&AIP[p].key)?AIP[p].key:ks[0]||''}};
   const read=()=>{AIP.provider=$('aiprov').value;AIP.gemini={...kv('gemini'),model:$('gmodel').value.trim()||'gemini-flash-latest'};AIP.openai={...kv('openai'),model:$('omodel').value.trim()||'gpt-5-mini'};AIP.anthropic={...kv('anthropic'),model:$('amodel').value.trim()||'claude-opus-5-5'};AIP.meta={...kv('meta'),model:$('mmodel').value.trim()||'muse-spark-1.3'};
     for(const [p,o] of Object.entries(OAI_PROVS))AIP[p]={...kv(p),model:$('m-'+p).value.trim()||o.model};
     AIP.custom={url:$('curl').value.trim(),...kv('custom'),model:$('cmodel').value.trim(),vision:$('cvis').checked};AIP.proc={provider:$('pprov').value,model:$('pmodel').value.trim()};

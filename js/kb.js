@@ -434,11 +434,24 @@ async function embedOnce(p,batch,task){
   const d=await req('https://api.openai.com/v1/embeddings',{'Authorization':'Bearer '+AIP.openai.key},{model:'text-embedding-3-small',input:batch.map(t=>t.slice(0,6000))});
   return{m:'o:text-embedding-3-small',v:d.data.map(e=>e.embedding)};
 }
+/* ดัชนีความหมายก็สลับ key เหมือนการสร้างโจทย์ (เดิมใช้ key เดียว โควตาหมดแล้วข้ามดัชนีทั้งที่ key อื่นยังว่าง)
+   โมเดลเดียวกันจาก key ไหนก็ได้เวกเตอร์ชุดเดียวกัน ค้นรวมกันได้ · พักเฉพาะคู่ key+โมเดลดัชนี ไม่กระทบการสร้างโจทย์ */
+async function embedKeys(p,batch,task){
+  const ks=keysOf(p),em='embed',now=Date.now();if(ks.length<2)return embedOnce(p,batch,task);
+  const rr=(KEY_RR[p+':e']=((KEY_RR[p+':e']||0)+1)%ks.length),ring=[...ks.slice(rr),...ks.slice(0,rr)].filter(k=>!(KEY_DOWN[k]>now)&&!keyModelDown(k,em));
+  const keep=AIP[p].key;let err;
+  try{for(const k of (ring.length?ring:ks.slice(0,1))){AIP[p].key=k;
+    try{return await embedOnce(p,batch,task)}
+    catch(e){if(!e||!KEY_SWITCH.includes(e.code))throw e;err=e;
+      if(e.code==='quota'||e.code==='rate_limited')KEY_MDOWN[k+'|'+em]=Date.now()+(e.code==='rate_limited'?60e3:30*60e3);else keyDown(p,k,em,e.code)}}}
+  finally{AIP[p].key=keep}
+  throw err;
+}
 async function embedTexts(texts,task){
   if(!canEmbed())throw{code:'no_embed'};
   const p=activeAI(),out=[];let model=null;
   for(let i=0;i<texts.length;i+=100){
-    let r;for(let att=0;;att++){try{r=await embedOnce(p,texts.slice(i,i+100),task);break}catch(e){if(e.code==='rate_limited'&&att<3){await sleep(4000*(att+1));continue}throw e}}
+    let r;for(let att=0;;att++){try{r=await embedKeys(p,texts.slice(i,i+100),task);break}catch(e){if(e.code==='rate_limited'&&att<3){await sleep(4000*(att+1));continue}throw e}}
     out.push(...r.v);model=r.m;
   }
   return{model,vecs:out.map(unit)};

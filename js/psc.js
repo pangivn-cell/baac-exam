@@ -443,7 +443,7 @@ function pscT10(a,lv){
   /* ตัวลวง: หมวดเดียวกัน และไม่มีความต้องการข้อนี้ (ระดับสูงต้องไม่ตรงคุณสมบัติด้วย ยิ่งต้องอ่านทั้งสองเงื่อนไข) */
   const o=pscPool(a,lv,b=>b.cat[0]===cat&&!pscFullN(b).includes(nn)&&!pscNear(nn,pscItemsOf(pscAll(b)).map(pscN))).slice(0,3);if(o.length<3)return null;
   const c=rnd(PSC_CUST),m=t=>pscMask(String(t).replace(/\s*…$/,''),a);
-  const stem=`${c} มาติดต่อที่สาขา ธ.ก.ส.${who?`\nลักษณะของลูกค้า: ${m(who)}`:''}\nสิ่งที่ลูกค้าต้องการ: ${m(need)}\nในฐานะพนักงาน ธ.ก.ส. ควรแนะนำผลิตภัณฑ์ใดให้${c}`;
+  const stem=`${c} มาติดต่อที่สาขา ธ.ก.ส.${who?`\nลักษณะของลูกค้า: ${m(who)}`:''}\n${/คุ้มครอง/.test(nh)?'ความคุ้มครองที่ลูกค้าต้องการ':/วัตถุประสงค์/.test(nh)?'ลูกค้าต้องการใช้เงิน':'สิ่งที่ลูกค้าต้องการ'}: ${m(need)}\nในฐานะพนักงาน ธ.ก.ส. ควรแนะนำผลิตภัณฑ์ใดให้${c}`;
   return pscQ(a,nh,stem,[pscName(a),...o.map(b=>pscName(b))],
     [[`${a.title} หัวข้อ${nh}: ${pscClip(nv,400)}`,PSC_LABEL],...(who?[[`ลูกค้าเข้าคุณสมบัติของ ${a.title}: ${pscClip(who,160)}`,'']]:[]),
      [`ผลิตภัณฑ์อื่นในหมวด${pscCat(cat)} (${o.map(b=>`"${b.title}"`).join(', ')}) ไม่มี${nh}ข้อนี้`,'']]);

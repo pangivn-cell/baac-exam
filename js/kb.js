@@ -348,14 +348,14 @@ async function auditTick(){
     if((cv.img.length||(d.redoN||0)>=1)&&!d.cloudTried&&activeAI()){
       d.cloudTried=true;d.cloudFill=true;d.missPages=[...cv.img,...cv.miss].slice(0,40);
       const img=new Set(cv.img);d.ocrDone=(d.ocrDone||[]).filter(n=>!img.has(n));d.bad=[...new Set([...(d.bad||[]),...cv.img])];
-      Object.assign(d,{fill:true,audit:false,digDone:0,win:0,stage:cv.img.length?'ocr':'digest',err:'',reprocess:true});
+      Object.assign(d,{fill:true,audit:false,digDone:0,win:0,stage:cv.img.length?'ocr':'digest',err:'',reprocess:true,reqAt:Date.now()});
       await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);
       toast(`"${d.name.slice(0,40)}" ${cv.img.length?`มีหน้าภาพ ${cv.img.length} หน้า`:''}${cv.img.length&&cv.miss.length?' และ':''}${cv.miss.length?`ยังขาด ${cv.miss.length} หน้า`:''} · ส่งต่อให้ AI คลาวด์ (${AINAME[activeAI()]}) ทำ`);
       queueDoc(d.id);break;
     }
     if((d.redoN||0)>=AUDIT_MAX||d.cloudTried){d.missPages=cv.miss.slice(0,40);d.warn=`ตรวจแล้วยังมี ${cv.miss.length} หน้าที่ย่อยไม่ได้ (เช่น หน้า ${cv.miss.slice(0,8).join(', ')}) มักเป็นหน้าที่มีแต่ภาพ ลองกด "ให้ AI อ่านทุกหน้าใหม่"`;await saveDoc(d);continue}
     d.redoN=(d.redoN||0)+1;d.missPages=cv.miss.slice(0,40);
-    Object.assign(d,{audit:true,fill:false,digDone:0,win:0,stage:'digest',err:'',reprocess:true});
+    Object.assign(d,{audit:true,fill:false,digDone:0,win:0,stage:'digest',err:'',reprocess:true,reqAt:Date.now()});
     await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);
     toast(`ตรวจพบ "${d.name.slice(0,40)}" ย่อยไม่ครบ ${cv.miss.length} หน้า · ย่อยใหม่ทั้งชุดด้วย AI ในเครื่อง (รอบที่ ${d.redoN})`);
     queueDoc(d.id);break;
@@ -588,7 +588,10 @@ function estCalls(d){
   return ocr+dig+(d.stage!=='ready'?2:0);
 }
 /* first = ผู้ใช้กดเอง: ทำไฟล์นี้เป็นไฟล์ถัดไป */
-function queueDoc(id,first){if(PROC_ID===id)return;const i=PROCQ.indexOf(id);if(first){if(i>=0)PROCQ.splice(i,1);PROCQ.unshift(id)}else if(i<0)PROCQ.push(id);runQueue()}
+/* เข้าคิว = จองไฟล์ให้เครื่องนี้ (syncOwn) เครื่องอื่นจะไม่ย่อยซ้ำ · first (ผู้ใช้กดเอง) = รับงานมาทำที่เครื่องนี้แม้เครื่องอื่นจองไว้ */
+function queueDoc(id,first){if(PROC_ID===id)return;const i=PROCQ.indexOf(id),d=DOCS.find(x=>x.id===id);
+  if(d&&first)d.takeOver=true;if(d&&typeof syncOwn==='function'&&(first||!docBusyElsewhere(d)))syncOwn(d);
+  if(first){if(i>=0)PROCQ.splice(i,1);PROCQ.unshift(id)}else if(i<0)PROCQ.push(id);runQueue()}
 /* เปิดเว็บหลายแท็บในเบราว์เซอร์เดียว: ให้แท็บเดียวประมวลผล (ล็อกใน localStorage ต่ออายุทุก 15 วินาที หมดอายุใน 45 วินาที) */
 const TAB_ID=Math.random().toString(36).slice(2,10),PLOCK='exam-proc-lock';
 function procLock(){
@@ -683,6 +686,7 @@ async function processDoc(doc){
   if(mode==='wait'){
     if(!hostKnown()){doc.err='ตั้งค่า AI ในแถบซ้ายก่อน แล้วกด ประมวลผลต่อ';await saveDoc(doc);renderKB();return}
     const first=!doc.waitHost;doc.waitHost=true;doc.prog='';await saveDoc(doc);if(first)renderKB();
+    if(typeof syncDisown==='function')await syncDisown(doc);
     /* ส่งเนื้อหาขึ้นบัญชีครั้งแรกที่เข้าคิว ให้เครื่องหลักมีข้อมูลทำต่อ */
     if(first&&typeof syncPushDoc==='function')syncPushDoc(doc,{cards:false,figs:false}).catch(()=>{});
     return;
@@ -693,6 +697,7 @@ async function processDoc(doc){
   let leaseTimer=null;
   if(typeof syncClaim==='function'){
     const cl=await Promise.race([syncClaim(doc),new Promise(r=>setTimeout(()=>r({ok:true}),4000))]);
+    if(!cl.ok&&cl.owned){doc.prog='';await saveDoc(doc);renderKB();return}   /* เครื่องอื่นจองไว้: ข้าม ไม่ถือเป็นข้อผิดพลาด (หน้าคลังแสดงว่าเครื่องไหนทำ) */
     if(!cl.ok){
       doc.err=cl.ready?'ไฟล์นี้ประมวลผลเสร็จบนอีกเครื่องแล้ว · กำลังโหลดผลลัพธ์':'กำลังประมวลผลที่เครื่องอื่น · รอสักครู่แล้วลองใหม่';
       await saveDoc(doc);renderKB();
@@ -1237,7 +1242,8 @@ function renderKB(){
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length?`${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร`:(nc?`${lab} ${nc} ${unit}`:'ยังไม่ได้อ่านเนื้อหา')}${d.stored==='drive'?` · ☁ อยู่บน Google Drive${d.size?` (${(d.size/1048576).toFixed(1)} MB)`:''}`:''}${figN?` · รูปประกอบ ${figN} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.syncAt?' · ☁ ซิงก์แล้ว':''}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap" title="${d.kindAuto?'ระบบตรวจประเภทไฟล์ให้อัตโนมัติ เปลี่ยนได้ที่ ตั้งค่าประเภท/กลุ่ม/การแสดง':''}">${ex?'ข้อสอบ':'เนื้อหา'}${d.kindAuto?' (ตรวจอัตโนมัติ)':''} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${PROC_ID===d.id?'กำลังประมวลผล...':'รอคิวประมวลผล'}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||d.stage||'รอประมวลผล'}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''}${['queued','read','ready'].includes(d.stage)?'':` · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}`}</p>
       ${d.stage==='queued'&&!busy?`<p class="src">${rb?'☁ รอคิวอยู่บนคลาวด์':'อัปโหลดขึ้น Google Drive เรียบร้อยแล้ว ปิดหน้านี้ได้'} · กลับมาเปิดเว็บอีกครั้ง (เครื่องเดิม) ระบบจะย่อยต่อให้เอง${ai?'':' (ต้องตั้งค่า AI ก่อน)'}</p>`:''}
-      ${rb?`<p class="src">☁ กำลังประมวลผลที่เครื่องอื่น${d.leaseAt?` (เริ่ม ${fmtDate(d.leaseAt)})`:''} · เครื่องนั้นปิดไปแล้วรอ 3 นาทีจะรับงานต่อได้</p>`:''}
+      ${rb?(leasedElsewhere(d)?`<p class="src">☁ กำลังประมวลผลที่${esc(devLabel(d.leaseBy))}${d.leaseAt?` (เริ่ม ${fmtDate(d.leaseAt)})`:''} · เครื่องนี้ไม่ทำซ้ำ ถ้าเครื่องนั้นปิดไป ระบบรับงานต่อเองภายในไม่กี่นาที</p>`
+        :`<p class="src">☁ อยู่ในคิวของ${esc(devLabel(d.qBy))} · เครื่องนี้ไม่ทำซ้ำ ถ้าเครื่องนั้นปิดเว็บเกิน 6 นาที ระบบรับงานต่อเองจากจุดที่ค้าง · กด ประมวลผลต่อ ถ้าต้องการทำที่เครื่องนี้แทน</p>`):''}
       ${d.waitHost&&d.stage!=='ready'&&!busy&&!rb?`<p class="src">⏳ ${HOST_WAIT_TXT} · ${hostAlive()?'เครื่องหลักออนไลน์ จะเริ่มทำภายในไม่กี่นาที':'เครื่องหลักปิดอยู่ จะทำต่อเมื่อเปิดเครื่องและเปิดเว็บไว้'}</p>`:''}
       ${d.err&&(d.errCode==='no_credit'||d.errCode==='quota')?`<p class="kwarn">💳 ${esc(d.errCode==='quota'?'โควตาฟรีของ AI หมด':'เครดิต AI หมด')} · รอทำต่อ${d.nextTry&&d.nextTry>Date.now()?` (ลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที)`:''}</p>`:d.err?`<p class="kerr">${esc(d.err)}${d.nextTry&&d.nextTry>Date.now()?` · ระบบจะลองใหม่เองใน ${Math.max(1,Math.round((d.nextTry-Date.now())/60000))} นาที (ครั้งที่ ${(d.tries||0)+1})`:''}</p>`:''}
       ${d.stage==='ready'&&!busy&&!nc&&sameInCentral(d)?'<p class="src"><span class="substat ok">มีชุดชื่อเดียวกันในคลังกลางแล้ว ใช้ทำข้อสอบได้จากคลังกลาง</span></p>':''}
@@ -1253,7 +1259,7 @@ function renderKB(){
       ${figN?det('f'+d.id,`รูปประกอบ (${figN} รูป)`,`<div class="kfigs">${KB_OPEN.has('f'+d.id)?figsHTML(d):''}</div>`):''}
       ${det('p'+d.id,'ดูข้อความที่ระบบอ่านได้',`<pre>${esc(previewText(d))}</pre>`)}
       <div class="btnrow" style="justify-content:flex-start">${d.show&&nc?'<button class="primary" data-go>ทำข้อสอบจากเอกสารนี้</button>':''}${nc?'<button class="ghost" data-link>เชื่อมต่อกับรายวิชา</button>':''}<button class="ghost" data-opt ${busy?'disabled':''}>ตั้งค่าประเภท/กลุ่ม/การแสดง</button>
-        ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai&&!rb?'':'disabled'}>${d.stage==='queued'?'เริ่มย่อยตอนนี้':d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
+        ${!busy&&d.stage!=='ready'?`<button class="ghost" data-run ${ai&&!leasedElsewhere(d)?'':'disabled'}>${d.stage==='queued'?'เริ่มย่อยตอนนี้':d.err||d.digDone||(d.ocrDone||[]).length?'ประมวลผลต่อ':'ประมวลผลด้วย AI'}</button>`:''}
         ${!busy&&d.stage==='ready'&&nc&&!d.central&&docMine(d)?'<button class="ghost" data-fill>เก็บตกหน้าที่ยังไม่มีบัตร</button>':''}
         ${!busy&&d.stage!=='queued'&&d.type==='pdf'&&d.fileMB!==0?'<button class="ghost" data-reocr>ให้ AI อ่านทุกหน้าใหม่</button>':''}
         ${!busy&&d.type==='pdf'&&d.fileMB&&d.stage==='ready'?`<button class="ghost" data-dropfile>ลบไฟล์ต้นฉบับ คืนพื้นที่ ${d.fileMB} MB</button>`:''}
@@ -1294,7 +1300,7 @@ function renderKB(){
     const fa=document.getElementById('kbfillall');if(fa)fa.onclick=async()=>{
       if(!activeAI()&&!localUp()){toast('ตั้งค่า AI หรือเปิด AI ในเครื่องก่อน','bad');return}
       if(await modal(`<p class="mt">เก็บตกทุกไฟล์?</p><p>${fillable.length} ไฟล์</p><p class="src">ระบบไล่ดูทุกหน้า หน้าที่มีเนื้อหาแต่ยังไม่มีบัตรจะส่งให้ AI ทำเพิ่ม ของเดิมยังอยู่ครบ ทำทีละไฟล์ตามคิว ปิดหน้าเว็บระหว่างทำได้ (เปิดใหม่แล้วทำต่อ)</p>`,[{t:'ยกเลิก'},{t:'เริ่มเก็บตก',cls:'primary'}])!==1)return;
-      for(const d of fillable){Object.assign(d,{fill:true,digDone:0,win:0,stage:'digest',err:'',reprocess:true});await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);queueDoc(d.id)}
+      for(const d of fillable){Object.assign(d,{fill:true,digDone:0,win:0,stage:'digest',err:'',reprocess:true,reqAt:Date.now()});await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);queueDoc(d.id)}
       toast(`เริ่มเก็บตก ${fillable.length} ไฟล์ ดูความคืบหน้าที่หน้าคลังความรู้`);KB_TAB='main';renderKB();
     };
   }else{
@@ -1352,7 +1358,7 @@ function renderKB(){
       const o=readDocOpt(),regroup=o.group!==(d.group||'spec')||o.kind!==(d.kind||'kb');
       if(o.kind!==(d.kind||'kb'))d.kindAuto=false;d.show=o.show;d.group=o.group;d.kind=o.kind;const shareNow=d.noShare&&!o.noShare;d.noShare=o.noShare;if(shareNow)setTimeout(()=>autoShare(d),50);
       if(regroup&&(nc||d.digDone)){const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==id);try{await kbDelMany('cards',ids)}catch(e){}
-        Object.assign(d,{digDone:0,summ:[],stage:d.stage==='ocr'?'ocr':'digest',err:'',reprocess:true,cardsResetAt:Date.now(),delCards:[],dupSkipped:0,dupOf:''})}
+        Object.assign(d,{digDone:0,summ:[],stage:d.stage==='ocr'?'ocr':'digest',err:'',reprocess:true,reqAt:Date.now(),cardsResetAt:Date.now(),delCards:[],dupSkipped:0,dupOf:''})}
       await saveDoc(d);syncDocSubjects();if(!d.show&&P.subject==='doc_'+id){P.subject='ineq';save()}
       if(typeof syncPushMeta==='function')syncPushMeta(d);
       if(regroup&&typeof syncPushCards==='function')syncPushCards(d,true);
@@ -1370,7 +1376,7 @@ function renderKB(){
     const fl=box.querySelector('[data-fill]');if(fl)fl.onclick=async()=>{
       if(!activeAI()){toast('ตั้งค่า AI ในแถบซ้ายก่อน');return}
       if(await modal(`<p class="mt">เก็บตกหน้าที่ยังไม่มีบัตร?</p><p>${esc(d.name)}</p><p class="src">ระบบจะไล่ดูทุกหน้า หน้าที่มีเนื้อหาแต่ยังไม่มี${d.kind==='exam'?'ข้อสอบ':'บัตรความรู้'}เลย จะส่งให้ AI ทำเพิ่ม ของเดิมยังอยู่ครบ ไม่ย่อยซ้ำทั้งไฟล์ ใช้ AI เฉพาะช่วงที่ขาด</p>`,[{t:'ยกเลิก'},{t:'เก็บตก',cls:'primary'}])!==1)return;
-      Object.assign(d,{fill:true,digDone:0,win:0,stage:'digest',err:'',reprocess:true});
+      Object.assign(d,{fill:true,digDone:0,win:0,stage:'digest',err:'',reprocess:true,reqAt:Date.now()});
       await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);
       queueDoc(id);renderKB();
     };
@@ -1378,7 +1384,7 @@ function renderKB(){
       if(await modal(`<p class="mt">ให้ AI อ่านทุกหน้าใหม่?</p><p>${esc(d.name)} · ${d.pages.length} หน้า</p><p class="src">ใช้เมื่อข้อความที่อ่านได้ยังผิดเยอะ ระบบจะอ่านใหม่จากภาพทุกหน้าและย่อยความรู้ใหม่ บัตรความรู้เดิมของไฟล์นี้จะถูกแทนที่ ใช้ AI ประมาณ ${Math.ceil(d.pages.length/4)+Math.ceil(d.chars/10000)+2} ครั้ง</p>`,[{t:'ยกเลิก'},{t:'อ่านใหม่',cls:'primary'}])!==1)return;
       const ids=CARDS.filter(c=>c.docId===id).map(c=>c.id);CARDS=CARDS.filter(c=>c.docId!==id);try{await kbDelMany('cards',ids)}catch(e){}
       await dropFigs(docFigs(id).map(f=>f.id));d.pages.forEach(p=>{p.text=p.text.replace(/\n?\[รูป F[a-z0-9]+\][^\n]*/g,'')});
-      Object.assign(d,{bad:d.pages.map(p=>p.n),ocrDone:[],digDone:0,summ:[],stage:'ocr',err:'',warn:'',reprocess:true,figMeta:[],cardsResetAt:Date.now(),delCards:[],dupSkipped:0,dupOf:''});
+      Object.assign(d,{bad:d.pages.map(p=>p.n),ocrDone:[],digDone:0,summ:[],stage:'ocr',err:'',warn:'',reprocess:true,reqAt:Date.now(),figMeta:[],cardsResetAt:Date.now(),delCards:[],dupSkipped:0,dupOf:''});
       await saveDoc(d);
       if(typeof syncPushCards==='function')syncPushCards(d,true);
       if(typeof syncClearFigs==='function')syncClearFigs(d);

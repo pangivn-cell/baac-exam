@@ -74,7 +74,10 @@ function syncDocFromMeta(m){
     figMeta:figs,stored:m.driveId?'drive':'',at:+m.createdMs||Date.now(),syncAt:Date.now(),
     leaseBy:m.leaseBy||'',leaseAt:+m.leaseAt||0,delCards:Array.isArray(m.delCards)?m.delCards:[],cardsResetAt:+m.cardsResetAt||0,pagesRev:+m.pagesRev||0,cardsRev:+m.cardsRev||0,
     label:m.label||'',pagesRemote:(m.pagesParts||0)>0,cardsRemote:(m.cardsParts||0)>0,cardCount:+((m.counts&&m.counts.cards)||0),qCount:+((m.counts&&m.counts.q)||0),
-    txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,subs:Array.isArray(m.subs)?m.subs:[],ownerUid:m.ownerUid||ME.uid,remote:true};
+    txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,subs:Array.isArray(m.subs)?m.subs:[],ownerUid:m.ownerUid||ME.uid,remote:true,
+    /* เดิมไม่ได้รับสถานะ "เก็บตก" มาด้วย เครื่องใหม่จึงย่อยทั้งไฟล์ซ้ำตั้งแต่ต้นจนบัตรซ้ำ */
+    fill:m.stage!=='ready'&&!!m.fill,audit:m.stage!=='ready'&&!!m.audit,reprocess:m.stage!=='ready'&&!!m.fill,reqAt:+m.reqAt||0,doneAt:+m.doneAt||0,
+    win:+m.win||0,qBy:m.qBy||'',qAt:+m.qAt||0};
 }
 function syncRememberFigs(doc,figs){
   for(const f of figs||[])if(f&&f.id)PFIG.set(f.id,{id:f.id,docId:doc.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0});
@@ -111,9 +114,17 @@ async function syncMerge(local,m){
   const rms=m.updatedAt&&m.updatedAt.toMillis?m.updatedAt.toMillis():0;
   if(rms&&rms<=(local.syncAt||0))return;
   let ch=false;
-  const rk=syncRank(m.stage),lk=syncRank(local.stage);
-  /* ไฟล์ที่สั่งเก็บตก/ประมวลผลใหม่ในเครื่องนี้: ไม่เอาสถานะ "พร้อมใช้" เดิมจากคลาวด์มาทับ ไม่งั้นงานไม่ได้เริ่ม */
-  const redo=!!(local.fill||local.reprocess);
+  const rk=syncRank(m.stage),lk=syncRank(local.stage),rq=+m.reqAt||0,dn=+m.doneAt||0;
+  /* อีกเครื่องสั่งงานรอบใหม่ (เก็บตก/ตรวจซ้ำ/ย่อยใหม่) ที่ยังไม่เสร็จ: รับสถานะงานเดียวกันมา
+     ให้ระบบจองคิวตัดสินว่าเครื่องไหนทำ (เดิมเครื่องนี้ไม่รู้ ส่วนเครื่องใหม่ย่อยทั้งไฟล์ซ้ำ) */
+  if(rq>(+local.reqAt||0)&&m.stage!=='ready'&&!(dn>rq)){
+    Object.assign(local,{reqAt:rq,reprocess:true,fill:!!m.fill,audit:!!m.audit,stage:m.stage||'digest',digDone:+m.digDone||0,win:+m.win||0,
+      ocrDone:Array.isArray(m.ocrDone)?m.ocrDone:(local.ocrDone||[]),err:'',errCode:'',tries:0,nextTry:0});ch=true}
+  /* ไฟล์ที่สั่งเก็บตก/ประมวลผลใหม่ในเครื่องนี้: ไม่เอาสถานะ "พร้อมใช้" เดิมจากคลาวด์มาทับ ไม่งั้นงานไม่ได้เริ่ม
+     ยกเว้นคลาวด์เสร็จหลังเวลาที่สั่งงานนี้ (อีกเครื่องทำงานเดียวกันจนจบแล้ว) */
+  const redo=!!(local.fill||local.reprocess)&&!(m.stage==='ready'&&dn>(+local.reqAt||0));
+  if(m.stage==='ready'&&local.stage!=='ready'&&!redo&&(local.fill||local.reprocess||local.audit)){Object.assign(local,{fill:false,reprocess:false,audit:false});ch=true}
+  if(dn>(+local.doneAt||0)){local.doneAt=dn;ch=true}
   if(!redo&&(rk>lk||(+m.digDone||0)>(local.digDone||0))){
     local.digDone=Math.max(local.digDone||0,+m.digDone||0);if(+m.win)local.win=+m.win;
     if(rk>lk)local.stage=m.stage;
@@ -144,6 +155,7 @@ async function syncMerge(local,m){
     syncRememberFigs(local,m.figs);
   }
   if(local.leaseBy!==(m.leaseBy||'')||local.leaseAt!==(+m.leaseAt||0)){local.leaseBy=m.leaseBy||'';local.leaseAt=+m.leaseAt||0}
+  if(m.qBy!=null&&(local.qBy!==(m.qBy||'')||local.qAt!==(+m.qAt||0))){local.qBy=m.qBy||'';local.qAt=+m.qAt||0;ch=true}
   if(ch){await saveDoc(local);syncDocSubjects()}
   const have=CARDS.filter(c=>c.docId===local.id).length;
   if(needCards||((m.counts&&+m.counts.cards||0)>have))syncHydrateQueue(local,{cards:true,pages:false});
@@ -270,6 +282,8 @@ function syncMetaOf(doc){
     figs:(doc.figMeta||[]).map(f=>({id:f.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0})),
     delCards:(doc.delCards||[]).slice(-1000),cardsResetAt:+doc.cardsResetAt||0,
     txtSha:doc.txtSha||'',dupOf:doc.dupOf||'',dupSkipped:+doc.dupSkipped||0,subs:(doc.subs||[]).slice(0,20),
+    /* งานรอบปัจจุบัน (สั่งเมื่อ reqAt เสร็จเมื่อ doneAt) + เครื่องที่จองไว้ ให้ทุกเครื่องเห็นงานชุดเดียวกัน */
+    audit:!!doc.audit,reqAt:+doc.reqAt||0,doneAt:+doc.doneAt||0,qBy:doc.stage==='ready'?'':(doc.qBy||''),qAt:doc.stage==='ready'?0:(+doc.qAt||0),
     counts,createdMs:+doc.at||Date.now(),deleted:false
   };
 }
@@ -392,8 +406,41 @@ async function syncPushLocal(metas){
 }
 
 /* ---------- lease: กันสองเครื่องย่อยไฟล์เดียวกัน ---------- */
-function docBusyElsewhere(d){
-  return!!(d&&d.stage!=='ready'&&d.leaseBy&&d.leaseBy!==syncDevice()&&(Date.now()-(+d.leaseAt||0)<SYNC_LEASE_MS));
+/* เจ้าของคิว: lease กันได้แค่ไฟล์ที่กำลังทำอยู่ ไฟล์ที่รอคิวในเครื่องหนึ่ง (เช่น เก็บตก 10 ไฟล์) เครื่องอื่นเคยหยิบไปย่อยซ้ำ
+   ตอนนี้ไฟล์ที่เข้าคิวจดเครื่องเจ้าของไว้ (qBy) เครื่องที่มีงานส่งสัญญาณมีชีวิตทุกนาทีที่ users/{uid}/qlog/devs
+   เครื่องอื่นไม่แตะจนกว่าเจ้าของเงียบเกิน 6 นาที (ปิดเว็บ/ปิดเครื่อง) แล้วจึงรับช่วงต่อจากความคืบหน้าบนคลาวด์ */
+const DEV_FRESH=6*60000;
+var DEVBEAT={},DEVBEAT_OK=false,DEVBEAT_W=0;
+/* ยังไม่ได้อ่านรายชื่อเครื่อง (เพิ่งเปิดเว็บ): ถือว่าเจ้าของยังอยู่ไว้ก่อน ไม่แย่งงาน */
+const devAlive=dev=>!!dev&&(dev===syncDevice()||!DEVBEAT_OK||Date.now()-(+((DEVBEAT[dev]||{}).at)||0)<DEV_FRESH);
+const devLabel=dev=>(DEVBEAT[dev]||{}).name||'เครื่องอื่น';
+function devName(){const u=navigator.userAgent;return `${/Android/.test(u)?'Android':/iPhone|iPad/.test(u)?'iPhone/iPad':/Windows/.test(u)?'Windows':/Mac/.test(u)?'Mac':'เครื่อง'} · ${/Edg\//.test(u)?'Edge':/Chrome\//.test(u)?'Chrome':/Firefox/.test(u)?'Firefox':/Safari/.test(u)?'Safari':'เบราว์เซอร์'}`}
+const ownedElsewhere=d=>!!(d&&d.stage!=='ready'&&d.qBy&&d.qBy!==syncDevice()&&devAlive(d.qBy));
+const leasedElsewhere=d=>!!(d&&d.stage!=='ready'&&d.leaseBy&&d.leaseBy!==syncDevice()&&(Date.now()-(+d.leaseAt||0)<SYNC_LEASE_MS));
+function docBusyElsewhere(d){return leasedElsewhere(d)||ownedElsewhere(d)}
+const devHasWork=()=>!!PROC_ID||PROCQ.length>0||DOCS.some(d=>!d.central&&d.stage!=='ready'&&d.qBy===syncDevice());
+async function devBeat(force){
+  if(!syncOk())return;
+  try{const f=await fb(),ref=fsDoc('users',ME.uid,'qlog','devs');
+    if(devHasWork()&&(force||Date.now()-DEVBEAT_W>50000)){DEVBEAT_W=Date.now();await f.fs.setDoc(ref,{[syncDevice()]:{at:Date.now(),name:devName()}},{merge:true})}
+    const s=await f.fs.getDoc(ref);DEVBEAT=s.exists()?s.data():{};DEVBEAT_OK=true;
+  }catch(e){}
+}
+/* เข้าคิวในเครื่องนี้ = จองไฟล์ไว้ให้เครื่องนี้ (บอกเครื่องอื่นทันที ไม่ต้องรอรอบซิงก์) */
+async function syncOwn(doc){
+  if(!doc||doc.central||doc.stage==='ready'||!syncMine(doc))return;
+  if(doc.qBy===syncDevice()&&Date.now()-(+doc.qAt||0)<DEV_FRESH)return;
+  doc.qBy=syncDevice();doc.qAt=Date.now();try{await saveDoc(doc)}catch(e){}
+  if(!syncOk())return;
+  devBeat(true);
+  try{const f=await fb();await f.fs.updateDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),{qBy:doc.qBy,qAt:doc.qAt,updatedAt:f.fs.serverTimestamp()});doc.syncAt=Date.now()}
+  catch(e){if(!/not-found/i.test(String(e&&(e.code||e.message))))syErr(e)}
+}
+/* ส่งงานให้เครื่องหลัก (รอ AI ในเครื่อง): ปล่อยการจอง ให้เครื่องหลักรับไปทำ */
+async function syncDisown(doc){
+  if(!doc||doc.qBy!==syncDevice())return;
+  doc.qBy='';doc.qAt=0;try{await saveDoc(doc)}catch(e){}
+  if(syncOk())try{const f=await fb();await f.fs.updateDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),{qBy:'',qAt:0,updatedAt:f.fs.serverTimestamp()})}catch(e){}
 }
 async function syncClaim(doc){
   if(!syncOk()||!doc||doc.central||!syncMine(doc))return{ok:true};
@@ -403,18 +450,23 @@ async function syncClaim(doc){
       const ref=f.fs.doc(f.db,'users',ME.uid,'docs',key),s=await tx.get(ref),d=s.exists()?s.data():{};
       if(!s.exists()){tx.set(ref,{...syncMetaOf(doc),updatedAt:f.fs.serverTimestamp()},{merge:true});return{ok:true,created:true}}
       if(d.deleted)return{ok:true};
-      if(d.stage==='ready'&&!doc.reprocess)return{ok:false,ready:true};
+      /* เสร็จบนคลาวด์หลังจากสั่งงานนี้แล้ว (อีกเครื่องรับช่วงทำจนจบ) = ไม่ต้องทำซ้ำ */
+      if(d.stage==='ready'&&(!doc.reprocess||(+d.doneAt||0)>(+doc.reqAt||0)))return{ok:false,ready:true};
       if(d.leaseBy&&d.leaseBy!==syncDevice()&&(Date.now()-(+d.leaseAt||0)<SYNC_LEASE_MS))return{ok:false,lease:true};
-      tx.set(ref,{status:'processing',leaseBy:syncDevice(),leaseAt:Date.now(),localId:doc.id,updatedAt:f.fs.serverTimestamp()},{merge:true});
+      /* เครื่องอื่นจองไว้ในคิวและยังเปิดอยู่: ไม่แย่ง (ยกเว้นผู้ใช้กดสั่งทำที่เครื่องนี้เอง) */
+      if(!doc.takeOver&&d.stage!=='ready'&&d.qBy&&d.qBy!==syncDevice()&&devAlive(d.qBy))return{ok:false,owned:true,by:d.qBy};
+      tx.set(ref,{status:'processing',leaseBy:syncDevice(),leaseAt:Date.now(),qBy:syncDevice(),qAt:Date.now(),localId:doc.id,updatedAt:f.fs.serverTimestamp()},{merge:true});
       return{ok:true,meta:d};
     });
-    if(res&&res.ok){doc.leaseBy=syncDevice();doc.leaseAt=Date.now();if(res.meta)takeProgress(doc,res.meta)}
+    if(res&&res.ok){doc.leaseBy=syncDevice();doc.leaseAt=Date.now();doc.qBy=syncDevice();doc.qAt=Date.now();doc.takeOver=false;if(res.meta)takeProgress(doc,res.meta)}
+    else if(res&&res.owned){doc.qBy=res.by;doc.qAt=Date.now()}
     return res||{ok:true};
   }catch(e){syErr(e);return{ok:true}}
 }
 /* ก่อนเริ่มประมวลผล: ถ้าบนคลาวด์ไปได้ไกลกว่าในเครื่อง (ทำต่อจากอีกเครื่อง หรือเครื่องนี้บันทึกไม่ทัน) ใช้ความคืบหน้าที่ไกลกว่า ไม่เริ่มใหม่ */
 function takeProgress(doc,m){
-  if(!m||doc.reprocess&&!doc.fill)return;
+  /* สั่งย่อยใหม่ทั้งชุด: ความคืบหน้าบนคลาวด์ใช้ได้เฉพาะเมื่อเป็นงานเดียวกัน (เครื่องเจ้าของเดิมทำค้างไว้) */
+  if(!m||doc.reprocess&&!doc.fill&&!((+m.reqAt||0)&&+m.reqAt===+doc.reqAt))return;
   const rk=syncRank(m.stage),lk=syncRank(doc.stage),cd=+m.digDone||0,cw=+m.win||0;
   /* นับช่วงคนละขนาดกันไม่ได้: ใช้ของคลาวด์เมื่อขนาดช่วงตรงกัน (หรือในเครื่องยังไม่เริ่มย่อย) */
   if(cd>(doc.digDone||0)&&(!doc.digDone||!cw||!doc.win||cw===doc.win)){doc.digDone=cd;if(cw)doc.win=cw}
@@ -426,14 +478,16 @@ function takeProgress(doc,m){
 }
 async function syncLease(doc){
   if(!syncOk()||!doc||doc.central)return;
-  try{const f=await fb();await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),
-    {status:'processing',leaseBy:syncDevice(),leaseAt:Date.now(),updatedAt:f.fs.serverTimestamp()},{merge:true})}catch(e){}
+  /* updateDoc ไม่ใช่ setDoc: ไฟล์ที่ถูกลบไปแล้วจะไม่เกิดบันทึกว่างค้างบนคลาวด์ */
+  try{const f=await fb();await f.fs.updateDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),
+    {status:'processing',leaseBy:syncDevice(),leaseAt:Date.now(),qBy:syncDevice(),qAt:Date.now(),updatedAt:f.fs.serverTimestamp()})}catch(e){}
+  devBeat();
 }
 async function syncRelease(doc){
   if(!doc||doc.central)return;
-  doc.leaseBy='';doc.leaseAt=0;
-  if(syncOk())try{const f=await fb();await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),
-    {status:syncStatus(doc),leaseBy:'',leaseAt:0,updatedAt:f.fs.serverTimestamp()},{merge:true})}catch(e){}
+  doc.leaseBy='';doc.leaseAt=0;if(doc.stage==='ready'){doc.qBy='';doc.qAt=0}
+  if(syncOk())try{const f=await fb();await f.fs.updateDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),
+    {status:syncStatus(doc),leaseBy:'',leaseAt:0,...(doc.stage==='ready'?{qBy:'',qAt:0}:{}),updatedAt:f.fs.serverTimestamp()})}catch(e){}
   try{await saveDoc(doc)}catch(e){}
 }
 
@@ -447,6 +501,7 @@ async function hostTick(){
   const was=localUp();await pingLocal();
   if(was!==localUp()){const e=document.getElementById('hstat');if(e){e.textContent=hostStatusText();e.className='hint '+(localUp()?'ok':LLMHOST.on?'err':'')}}
   if(!syncOk())return;
+  await devBeat();
   try{const f=await fb(),ref=fsDoc('users',ME.uid,'qlog','llmhost');
     if(localUp()){HOSTBEAT={at:Date.now(),dev:syncDevice(),model:LLMHOST.model};await f.fs.setDoc(ref,HOSTBEAT);
       /* เครื่องหลักดึงรายการไฟล์ใหม่จากเครื่องอื่นทุกนาที แม้แท็บอยู่เบื้องหลัง */

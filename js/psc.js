@@ -430,9 +430,27 @@ function pscT9(a,lv){
   if(!a.memo)return null;const o=pscPool(a,lv,b=>b.memo!==a.memo).slice(0,3);if(o.length<3)return null;
   return pscQ(a,null,`บันทึกที่ ${a.memo} เป็นเรื่องใด`,[a.title,...o.map(b=>b.title)],[[`บันทึกที่ ${a.memo} คือ "${a.title}"`,PSC_LABEL]]);
 }
+/* 10. สถานการณ์แนะนำผลิตภัณฑ์: ลูกค้าลักษณะนี้ + ต้องการสิ่งนี้ ควรแนะนำผลิตภัณฑ์ใด (ตัวเลือก = ผลิตภัณฑ์หมวดเดียวกัน)
+   ตัวลวงต้องไม่มีความต้องการนั้นอยู่ในเนื้อหาเลย จึงไม่มีตัวเลือกที่ "ก็ถูกเหมือนกัน" */
+const PSC_NEED=/ความคุ้มครอง|วัตถุประสงค์|สิทธิประโยชน์|ลักษณะ/;
+const PSC_CUST=['นาย ก','นาง ข','นางสาว ค','นาย ง','นาง จ'];
+function pscT10(a,lv){
+  const cat=a.cat[0];if(!cat)return null;
+  const needs=a.secs.filter(([h])=>PSC_NEED.test(h)&&pscOkH(h)),whos=a.secs.filter(([h])=>PSC_WHO.test(h)&&pscOkH(h));if(!needs.length)return null;
+  const [nh,nv]=rnd(needs),need=shuffle(pscItemsOf(nv)).find(l=>pscN(l).length>=15&&l.length<=160);if(!need)return null;
+  const who=whos.length?shuffle(pscItemsOf(rnd(whos)[1])).find(l=>pscN(l).length>=10&&l.length<=120):'';
+  const nn=pscN(need),wn=who?pscN(who):'';
+  /* ตัวลวง: หมวดเดียวกัน และไม่มีความต้องการข้อนี้ (ระดับสูงต้องไม่ตรงคุณสมบัติด้วย ยิ่งต้องอ่านทั้งสองเงื่อนไข) */
+  const o=pscPool(a,lv,b=>b.cat[0]===cat&&!pscFullN(b).includes(nn)&&!pscNear(nn,pscItemsOf(pscAll(b)).map(pscN))).slice(0,3);if(o.length<3)return null;
+  const c=rnd(PSC_CUST),m=t=>pscMask(String(t).replace(/\s*…$/,''),a);
+  const stem=`${c} มาติดต่อที่สาขา ธ.ก.ส.${who?`\nลักษณะของลูกค้า: ${m(who)}`:''}\nสิ่งที่ลูกค้าต้องการ: ${m(need)}\nในฐานะพนักงาน ธ.ก.ส. ควรแนะนำผลิตภัณฑ์ใดให้${c}`;
+  return pscQ(a,nh,stem,[pscName(a),...o.map(b=>pscName(b))],
+    [[`${a.title} หัวข้อ${nh}: ${pscClip(nv,400)}`,PSC_LABEL],...(who?[[`ลูกค้าเข้าคุณสมบัติของ ${a.title}: ${pscClip(who,160)}`,'']]:[]),
+     [`ผลิตภัณฑ์อื่นในหมวด${pscCat(cat)} (${o.map(b=>`"${b.title}"`).join(', ')}) ไม่มี${nh}ข้อนี้`,'']]);
+}
 /* เลขที่บันทึกอยู่ในเฉลย (ที่มา) เท่านั้น จึงไม่มีโจทย์ถามเลขบันทึก
    เว็บไซต์ ธ.ก.ส.: ไม่ถามหมวด (t8) เพราะชื่อผลิตภัณฑ์บอกหมวดอยู่แล้ว เช่น "ประกันภัย…" "บัตรเดบิต…" · ตัวลวงเอาจากหมวดเดียวกันก่อนทุกระดับ */
-const PSC_TYPES=[[.2,'t1'],[.14,'t2'],[.14,'t3'],[.19,'t4'],[.12,'t5'],[.1,'t6'],[.06,'t7'],[.05,'t8']];
+const PSC_TYPES=[[.17,'t1'],[.12,'t2'],[.12,'t3'],[.16,'t4'],[.1,'t5'],[.08,'t6'],[.05,'t7'],[.05,'t8'],[.15,'t10']];
 function pscLocal(level,n){
   if(!PSC||!PSC.length)return[];
   const lv=level||3,hs=pscHeads(),out=[],seen=new Set(),usedA=new Set();
@@ -440,7 +458,7 @@ function pscLocal(level,n){
     let r=Math.random(),ty='t1';for(const [w,k] of PSC_WEB?PSC_TYPES.filter(t=>t[1]!=='t8'):PSC_TYPES){if(r<w){ty=k;break}r-=w}
     const h=rnd(hs),cand=(ty==='t1'||ty==='t2'||ty==='t4'||ty==='t5')?PSC.filter(a=>pscSec(a,h)):PSC;
     const fresh=cand.filter(a=>!usedA.has(a.id)),a=rnd(fresh.length?fresh:cand);if(!a)continue;
-    const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):pscT8(a);
+    const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):ty==='t10'?pscT10(a,lv):pscT8(a);
     if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem)||pscHasMemo(q)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
   }
   return shuffle(out);
@@ -469,6 +487,43 @@ ${CHOICE_RULE}
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"ref":"P0","topic":"หัวข้อที่ใช้ตอบ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
+/* โจทย์สถานการณ์ "ควรแนะนำผลิตภัณฑ์ใด": ส่งผลิตภัณฑ์หมวดเดียวกัน 6 ตัว (ย่อเฉพาะหัวข้อที่ใช้แยกผลิตภัณฑ์) ให้ AI แต่งลูกค้า
+   ตัวเลือกให้ AI ตอบเป็นรหัส P.. แล้วระบบแปลงเป็นชื่อผลิตภัณฑ์เอง ชื่อในตัวเลือกจึงตรงของจริงเสมอ */
+const PSC_RECH=/คุณสมบัติ|กลุ่มเป้าหมาย|ผู้มีสิทธิ|วัตถุประสงค์|คุ้มครอง|ระยะเวลา|วงเงิน|อัตรา|ดอกเบี้ย|เบี้ย|จำนวนเงิน|หลักประกัน|สิทธิประโยชน์|ลักษณะ|เงื่อนไข|ภาพรวม/;
+const pscBrief=a=>a.secs.filter(([h])=>PSC_RECH.test(h)&&!/^ตาราง|คำถามที่พบบ่อย/.test(h)).map(([h,v])=>`${h}: ${pscClip(v,450)}`).join('\n').slice(0,2600);
+function pscRecGroup(){
+  const by={};for(const a of PSC)if(a.cat[0]&&pscLen(a)>=150)(by[a.cat[0]]=by[a.cat[0]]||[]).push(a);
+  const cats=Object.keys(by).filter(c=>by[c].length>=4);if(!cats.length)return null;
+  return shuffle(by[rnd(cats)]).slice(0,6);
+}
+function pscRecPrompt(arts,k,level){
+  return `สร้างข้อสอบปรนัยใหม่ ${k} ข้อ แบบโจทย์สถานการณ์ "ควรแนะนำผลิตภัณฑ์ใดให้ลูกค้า" สำหรับพนักงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) จากข้อมูลผลิตภัณฑ์ข้างล่างเท่านั้น
+${level?`ระดับความยาก ${level}: ${levelTxt(level)}`:'ระดับข้อสอบจริง'}
+เลขสุ่ม ${Math.random().toString(36).slice(2,8)} ใช้แค่ทำให้โจทย์ชุดนี้ต่างจากชุดก่อน ห้ามใส่เลขนี้ลงในโจทย์
+ผลิตภัณฑ์ (หมวดเดียวกัน แต่ละตัวมีรหัสในวงเล็บเหลี่ยม):
+${arts.map(a=>`[P${a.k}] ${pscName(a)}\n${pscBrief(a)}`).join('\n\n')}
+
+กติกา:
+- โจทย์เล่าลูกค้าสมมติ ใช้ชื่อ นาย ก / นาง ข / นางสาว ค (ห้ามใช้ชื่อคนจริง) บอกลักษณะของลูกค้า (เช่น อายุ อาชีพ สิ่งที่มีอยู่) และความต้องการ (เช่น ต้องการความคุ้มครองแบบไหน กี่ปี วงเงินเท่าไร ใช้เงินทำอะไร) แล้วจบด้วย "ในฐานะพนักงาน ธ.ก.ส. ควรแนะนำผลิตภัณฑ์ใดให้…"
+- ห้ามบอกชื่อผลิตภัณฑ์หรือคำเฉพาะในชื่อผลิตภัณฑ์ในโจทย์ ให้ผู้สอบต้องรู้ว่าผลิตภัณฑ์ไหนตรงกับความต้องการ
+- เงื่อนไขในโจทย์ต้องมาจากข้อมูลข้างบน เมื่อเทียบกับข้อมูลแล้วต้องมีผลิตภัณฑ์ที่ตรงครบทุกเงื่อนไขเพียงตัวเดียวในตัวเลือก ตัวลวงแต่ละตัวต้องผิดอย่างน้อยหนึ่งเงื่อนไขอย่างชัดเจนตามข้อมูล (เช่น อายุไม่เข้าเกณฑ์ ไม่คุ้มครองเรื่องนั้น ระยะเวลาไม่ตรง)
+- ${!level||level>=3?'ใส่ 2–3 เงื่อนไข ให้ตัวลวงบางตัวตรงบางเงื่อนไขแต่ไม่ครบ':'ใส่ 1–2 เงื่อนไขที่แยกผลิตภัณฑ์ได้ชัด'}
+- choices ต้องเป็นรหัสผลิตภัณฑ์จากรายการข้างบน 4 รหัสไม่ซ้ำกัน เช่น ["P3","P1","P7","P5"] ห้ามเขียนชื่อ ระบบจะแปลงเป็นชื่อเอง · answer = ลำดับของรหัสที่ถูกใน choices · ref = รหัสที่ถูก
+- topic = ชื่อหัวข้อในข้อมูลที่ใช้ตัดสินเป็นหลัก (เช่น "ความคุ้มครอง")
+- เฉลย 2–4 ขั้น: ขั้นแรกบอกว่าผลิตภัณฑ์ที่ถูกตรงเงื่อนไขของลูกค้าอย่างไร ยกข้อความจากข้อมูล แล้วบอกว่าตัวลวงแต่ละตัวไม่ตรงเงื่อนไขข้อไหน · from เป็นชื่อผลิตภัณฑ์และหัวข้อ · ในเฉลยเรียกผลิตภัณฑ์ด้วยชื่อ ห้ามใช้รหัส P..
+- ใช้ภาษาไทย ห้ามใช้ markdown
+ตอบเป็น JSON เท่านั้น รูปแบบ:
+{"questions":[{"ref":"P3","topic":"หัวข้อ","stem":"โจทย์","choices":["P3","P1","P7","P5"],"answer":0,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
+}
+/* แปลงคำตอบ AI: ตัวเลือกต้องเป็นรหัสในกลุ่มที่ส่งไป 4 ตัวไม่ซ้ำ และคำตอบตรงกับ ref */
+function pscRecMap(q,arts){
+  const ok=new Set(arts.map(a=>'P'+a.k)),ch=q.choices.map(c=>String(c).trim().toUpperCase());
+  if(ch.length!==4||new Set(ch).size!==4||!ch.every(c=>ok.has(c)))return null;
+  const a=PSC[+ch[q.answer].slice(1)];if(!a||String(q.ref||'').trim().toUpperCase()!==ch[q.answer])return null;
+  const names=ch.map(c=>pscName(PSC[+c.slice(1)]));if(new Set(names).size!==4||names.some(n=>q.stem.includes(n)))return null;
+  const h=a.secs.some(x=>x[0]===q.topic)?q.topic:null,unP=t=>String(t).replace(/\[?P(\d+)\]?/g,(m,i)=>PSC[+i]?`"${pscName(PSC[+i])}"`:m);
+  return{...q,choices:names,topic:a.title,ptopic:h,ptype:'rec',gen:'ai',steps:[...q.steps.map(([t,f])=>[unP(t),unP(f)]),...pscImgNote(a)],...pscCite(a,h)};
+}
 /* ใช้แต่ละเรื่องทั่วๆ กันก่อนวนซ้ำ (จำในเครื่อง) */
 const PSC_USE_KEY='exam-psc-use';
 function pscPick(k){
@@ -489,9 +544,15 @@ async function pscItems(s,level,n,o={}){
   /* fast = ข้อแรกๆ ของชุด: ไม่รอ AI (ใช้คลังกลาง + โจทย์จากระบบ) ให้เริ่มทำได้ทันที ที่เหลือ AI สร้างต่อเบื้องหลัง */
   if(ai.length<kAI&&!o.fast){
     try{
-      const gen=(await genAIChunks((k,b)=>pscPrompt(pscPick(Math.max(2,Math.ceil(k/2))),k,level),kAI-ai.length,{signal:o.signal,onProg:o.onProg}))
+      /* ราว 1 ใน 3 เป็นโจทย์สถานการณ์แนะนำผลิตภัณฑ์ (ทำพร้อมกับชุดปกติ ไม่ให้รอนานขึ้น) */
+      const need=kAI-ai.length,recG=[],nRec=need>=3&&pscRecGroup()?Math.round(need/3):0,prog=[0,0],op=i=>x=>{prog[i]=x;if(o.onProg)o.onProg(prog[0]+prog[1])};
+      /* แต่ละรอบสุ่มหมวดใหม่ · เก็บทุกกลุ่มที่ส่งไว้ตรวจรหัสตัวเลือก */
+      const recP=nRec?genAIChunks(k=>{const g=pscRecGroup();recG.push(...g);return pscRecPrompt(g,k,level)},nRec,{signal:o.signal,onProg:op(1)})
+        .then(l=>l.map(q=>pscRecMap(q,recG)).filter(Boolean)).catch(e=>{if(e&&e.code==='cancelled')throw e;return[]}):Promise.resolve([]);
+      const [norm,rec]=await Promise.all([genAIChunks((k,b)=>pscPrompt(pscPick(Math.max(2,Math.ceil(k/2))),k,level),need-nRec,{signal:o.signal,onProg:op(0)}),recP]);
+      const gen=[...norm
         .map(q=>{const r=String(q.ref||'').trim(),a=/^P\d+$/i.test(r)&&PSC[+r.slice(1)];if(!a)return null;const h=a.secs.some(x=>x[0]===q.topic)?q.topic:null;
-          return{...q,topic:a.title,ptopic:h,gen:'ai',steps:[...q.steps,...pscImgNote(a)],...pscCite(a,h)}}).filter(q=>q&&!pscHasMemo(q));
+          return{...q,topic:a.title,ptopic:h,gen:'ai',steps:[...q.steps,...pscImgNote(a)],...pscCite(a,h)}}),...rec].filter(q=>q&&!pscHasMemo(q));
       if(typeof poolPut==='function')poolPut(s,level,gen.map(tag));
       ai.push(...gen);
     }catch(e){if(e&&e.code==='cancelled')throw e}

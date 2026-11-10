@@ -359,7 +359,8 @@ async function makeItems0(s,level,n,o={}){
 async function makeNew(s,level,n,o,pool){
   let fromPool=[];try{fromPool=typeof poolTake==='function'?await poolTake(s,level,n):[]}catch(e){}
   if(fromPool.length>=n||(o.fast&&fromPool.length))return fromPool.slice(0,n);
-  const gen=await makeNew0(s,level,n-fromPool.length,o,pool);
+  /* AI ล้ม (โควตาหมด ตอบไม่ครบ) แต่มีโจทย์จากคลังแล้ว: ใช้เท่าที่มี เดิมโยน error ทิ้งโจทย์คลังไปทั้งก้อน */
+  let gen=[];try{gen=await makeNew0(s,level,n-fromPool.length,o,pool)}catch(e){if(!fromPool.length||(e&&e.code==='cancelled'))throw e}
   if(typeof poolPut==='function')poolPut(s,level,gen);
   return shuffle([...fromPool,...gen]);
 }

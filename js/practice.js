@@ -363,12 +363,14 @@ function renderDone(el){
 
 /* ---------- chunked AI generation (max 20 per request so 50–100 ข้อ ไม่ขาดกลางทาง) ---------- */
 async function genAIChunks(promptFn,n,{signal,onProg}={}){
-  const out=[],seen=new Set();let fails=0,cap=20;
+  /* Typhoon/Groq/OpenRouter ส่งคำตอบได้ไม่เกิน 8192 โทเคน (ai.js) ≈ 9 ข้อ: ขอชุดละ 6 ข้อ ไม่ต้องรอให้ถูกตัดก่อน */
+  const rt=(signal&&signal.route)||aiRoute();
+  const out=[],seen=new Set();let fails=0,cap=rt&&OAI_PROVS[rt.p]?6:20;
   while(out.length<n&&fails<3){
     const k=Math.min(cap,n-out.length),base=out.length;let items;
     try{const pr=await promptFn(k,base);items=cleanAI(typeof pr!=='string'?await aiVisionJSON(pr.text,pr.images,{signal}):await aiJSON(pr,{signal,onText:({text})=>{const m=(text.match(/"stem"/g)||[]).length;if(onProg)onProg(base+Math.min(m,k))}}))}
     /* คำตอบยาวเกินที่ AI ส่งได้: รอบถัดไปขอครึ่งเดียว (เดิมขอเท่าเดิมซ้ำ 3 รอบ เสียเวลาเปล่า) */
-    catch(e){if(e&&(e.code==='invalid_json'||e.code==='truncated')){fails++;if(e.code==='truncated')cap=Math.max(1,Math.ceil(k/2));continue}throw e}
+    catch(e){if(e&&(e.code==='invalid_json'||e.code==='truncated')){if(e.code==='truncated'&&k>1){cap=Math.ceil(k/2);continue}fails++;continue}throw e}
     let add=0;for(const q of shuffle(items))if(out.length<n&&!seen.has(q.stem)){seen.add(q.stem);out.push(q);add++}
     if(!add)fails++;if(onProg)onProg(out.length);
   }
@@ -516,7 +518,8 @@ async function fillSet(plan,level,n,ctl,prog,tag,anyMath){
   /* รอบแรก + ขอเพิ่มอีก 2 รอบเฉพาะวิชาที่ยังได้ไม่ครบ */
   for(let r=0;r<3&&total()<n;r++){
     for(const p of plan){const l=got.get(p.id),need=p.k-l.length;if(need<=0||p.dry)continue;
-      const b=l.length;add(p,await ask(p,need),p.k);if(r&&l.length===b)p.dry=true;prog(total());
+      /* รอบขอเพิ่ม: ขอเผื่อ เพราะบางข้อซ้ำกับที่มีแล้วจะถูกตัด (เดิมขอพอดี 100 ได้ 98) */
+      const b=l.length;add(p,await ask(p,r?need+Math.max(3,Math.ceil(need*.3)):need),p.k);if(r&&l.length===b)p.dry=true;prog(total());
       await new Promise(x=>setTimeout(x,0));if(!live())return null}
     /* ข้อซ้ำที่แจ้งผู้ใช้นับแค่รอบแรก รอบขอเพิ่มจากคลังเล็กได้ข้อเดิมกลับมาเป็นปกติ */
     if(!r)rep.dup0=rep.dup;
@@ -531,7 +534,7 @@ async function fillSet(plan,level,n,ctl,prog,tag,anyMath){
     if(!live())return null}
   /* ยังขาด: ข้อในคลังที่เคยตอบถูกแล้ว ดีกว่าได้ชุดไม่ครบ */
   if(total()<n){QLOG_OFF=true;try{for(const p of plan){const l=got.get(p.id),need=p.k-l.length;if(need<=0||total()>=n)continue;
-      const b=total();add(p,await ask(p,need),p.k);rep.old+=total()-b;if(!live())return null}}finally{QLOG_OFF=false}}
+      const b=total();add(p,await ask(p,need+3),p.k);rep.old+=total()-b;if(!live())return null}}finally{QLOG_OFF=false}}
   for(const p of plan){const l=got.get(p.id).length;if(l<p.k&&!(rep.extra[p.id]))rep.short.push({name:(SUBJ.find(x=>x.id===p.id)||{}).name||p.id,got:l,want:p.k,err:p.err})}
   if(!total()&&plan[0]&&plan[0].err)throw plan[0].err;
   return{items:plan.flatMap(p=>got.get(p.id)),rep};

@@ -466,12 +466,12 @@ function pscLocal(level,n){
 LOCAL.psc=(level,n)=>pscLocal(level,n);
 
 /* ---------- AI: ส่งเนื้อหาเรื่องที่สุ่มให้ AI สร้างโจทย์ · ref = รหัสเรื่อง [Pxx] · topic = หัวข้อที่ใช้ตอบ ---------- */
-function pscPrompt(arts,k,level){
+function pscPrompt(arts,k,level,lim=9000){
   return `สร้างข้อสอบปรนัยใหม่ ${k} ข้อ เรื่องผลิตภัณฑ์และโครงการของธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) จากเอกสาร${PSC_WEB?'หน้าผลิตภัณฑ์ในเว็บไซต์ ธ.ก.ส.':' Product Catalog'} ข้างล่างเท่านั้น
 ${level?`ระดับความยาก ${level}: ${levelTxt(level)}`:'ระดับข้อสอบจริง'}
 เลขสุ่ม ${Math.random().toString(36).slice(2,8)} ใช้แค่ทำให้โจทย์ชุดนี้ต่างจากชุดก่อน ห้ามใส่เลขนี้ลงในโจทย์
 เอกสาร (แต่ละเรื่องมีรหัสในวงเล็บเหลี่ยม):
-${arts.map(a=>`[P${a.k}] ${a.title}\n${pscFull(a,1).slice(0,9000)}`).join('\n\n')}
+${arts.map(a=>`[P${a.k}] ${a.title}\n${pscFull(a,1).slice(0,lim)}`).join('\n\n')}
 
 กติกา:
 - ทุกข้อต้องตอบได้จากเอกสารข้างบนเท่านั้น ห้ามใช้ความรู้นอกเอกสาร ห้ามแต่งตัวเลข อัตราดอกเบี้ย วันที่ หรือเงื่อนไขที่ไม่มีในเอกสาร
@@ -490,18 +490,18 @@ ${CHOICE_RULE}
 /* โจทย์สถานการณ์ "ควรแนะนำผลิตภัณฑ์ใด": ส่งผลิตภัณฑ์หมวดเดียวกัน 6 ตัว (ย่อเฉพาะหัวข้อที่ใช้แยกผลิตภัณฑ์) ให้ AI แต่งลูกค้า
    ตัวเลือกให้ AI ตอบเป็นรหัส P.. แล้วระบบแปลงเป็นชื่อผลิตภัณฑ์เอง ชื่อในตัวเลือกจึงตรงของจริงเสมอ */
 const PSC_RECH=/คุณสมบัติ|กลุ่มเป้าหมาย|ผู้มีสิทธิ|วัตถุประสงค์|คุ้มครอง|ระยะเวลา|วงเงิน|อัตรา|ดอกเบี้ย|เบี้ย|จำนวนเงิน|หลักประกัน|สิทธิประโยชน์|ลักษณะ|เงื่อนไข|ภาพรวม/;
-const pscBrief=a=>a.secs.filter(([h])=>PSC_RECH.test(h)&&!/^ตาราง|คำถามที่พบบ่อย/.test(h)).map(([h,v])=>`${h}: ${pscClip(v,450)}`).join('\n').slice(0,2600);
+const pscBrief=(a,lim=2600)=>a.secs.filter(([h])=>PSC_RECH.test(h)&&!/^ตาราง|คำถามที่พบบ่อย/.test(h)).map(([h,v])=>`${h}: ${pscClip(v,450)}`).join('\n').slice(0,lim);
 function pscRecGroup(){
   const by={};for(const a of PSC)if(a.cat[0]&&pscLen(a)>=150)(by[a.cat[0]]=by[a.cat[0]]||[]).push(a);
   const cats=Object.keys(by).filter(c=>by[c].length>=4);if(!cats.length)return null;
   return shuffle(by[rnd(cats)]).slice(0,6);
 }
-function pscRecPrompt(arts,k,level){
+function pscRecPrompt(arts,k,level,lim){
   return `สร้างข้อสอบปรนัยใหม่ ${k} ข้อ แบบโจทย์สถานการณ์ "ควรแนะนำผลิตภัณฑ์ใดให้ลูกค้า" สำหรับพนักงานธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) จากข้อมูลผลิตภัณฑ์ข้างล่างเท่านั้น
 ${level?`ระดับความยาก ${level}: ${levelTxt(level)}`:'ระดับข้อสอบจริง'}
 เลขสุ่ม ${Math.random().toString(36).slice(2,8)} ใช้แค่ทำให้โจทย์ชุดนี้ต่างจากชุดก่อน ห้ามใส่เลขนี้ลงในโจทย์
 ผลิตภัณฑ์ (หมวดเดียวกัน แต่ละตัวมีรหัสในวงเล็บเหลี่ยม):
-${arts.map(a=>`[P${a.k}] ${pscName(a)}\n${pscBrief(a)}`).join('\n\n')}
+${arts.map(a=>`[P${a.k}] ${pscName(a)}\n${pscBrief(a,lim)}`).join('\n\n')}
 
 กติกา:
 - โจทย์เล่าลูกค้าสมมติ ใช้ชื่อ นาย ก / นาง ข / นางสาว ค (ห้ามใช้ชื่อคนจริง) บอกลักษณะของลูกค้า (เช่น อายุ อาชีพ สิ่งที่มีอยู่) และความต้องการ (เช่น ต้องการความคุ้มครองแบบไหน กี่ปี วงเงินเท่าไร ใช้เงินทำอะไร) แล้วจบด้วย "ในฐานะพนักงาน ธ.ก.ส. ควรแนะนำผลิตภัณฑ์ใดให้…"
@@ -543,21 +543,26 @@ async function pscItems(s,level,n,o={}){
   try{ai=(await poolTake(s,level,kAI)).map(pscFresh).filter(Boolean)}catch(e){}
   /* fast = ข้อแรกๆ ของชุด: ไม่รอ AI (ใช้คลังกลาง + โจทย์จากระบบ) ให้เริ่มทำได้ทันที ที่เหลือ AI สร้างต่อเบื้องหลัง */
   if(ai.length<kAI&&!o.fast){
-    try{
-      /* ราว 1 ใน 3 เป็นโจทย์สถานการณ์แนะนำผลิตภัณฑ์ (ทำพร้อมกับชุดปกติ ไม่ให้รอนานขึ้น) */
-      const need=kAI-ai.length,recG=[],nRec=need>=3&&pscRecGroup()?Math.round(need/3):0,prog=[0,0],op=i=>x=>{prog[i]=x;if(o.onProg)o.onProg(prog[0]+prog[1])};
-      /* แต่ละรอบสุ่มหมวดใหม่ · เก็บทุกกลุ่มที่ส่งไว้ตรวจรหัสตัวเลือก */
-      const recP=nRec?genAIChunks(k=>{const g=pscRecGroup();recG.push(...g);return pscRecPrompt(g,k,level)},nRec,{signal:o.signal,onProg:op(1)})
-        .then(l=>l.map(q=>pscRecMap(q,recG)).filter(Boolean)).catch(e=>{if(e&&e.code==='cancelled')throw e;return[]}):Promise.resolve([]);
-      const [norm,rec]=await Promise.all([genAIChunks((k,b)=>pscPrompt(pscPick(Math.max(2,Math.ceil(k/2))),k,level),need-nRec,{signal:o.signal,onProg:op(0)}),recP]);
-      const gen=[...norm
-        .map(q=>{const r=String(q.ref||'').trim(),a=/^P\d+$/i.test(r)&&PSC[+r.slice(1)];if(!a)return null;const h=a.secs.some(x=>x[0]===q.topic)?q.topic:null;
-          return{...q,topic:a.title,ptopic:h,gen:'ai',steps:[...q.steps,...pscImgNote(a)],...pscCite(a,h)}}),...rec].filter(q=>q&&!pscHasMemo(q));
-      if(typeof poolPut==='function')poolPut(s,level,gen.map(tag));
-      ai.push(...gen);
-    }catch(e){if(e&&e.code==='cancelled')throw e}
+    try{const gen=await pscGenAI(s,level,kAI-ai.length,o);if(typeof poolPut==='function')poolPut(s,level,gen);ai.push(...gen)}
+    catch(e){if(e&&e.code==='cancelled')throw e}
   }
   return shuffle([...ai,...pscLocal(level,n-ai.length)]).map(tag);
+}
+/* ให้ AI สร้างโจทย์ใหม่ need ข้อ (ไม่หยิบคลังกลาง ไม่ส่งเข้าคลัง ผู้เรียกจัดการเอง) · ใช้ทั้งตอนทำข้อสอบ และเมนูสร้างโจทย์ (signal.route = AI ที่เมนูเลือก) */
+async function pscGenAI(s,level,need,o={}){
+  await loadPSC();
+  const tag=q=>({...q,sub:s.id,subName:s.name});
+  /* AI ในเครื่อง (gemma3:12b ตั้งไว้ 16k โทเคน): ส่งเนื้อหาน้อยลง ไม่งั้นพรอมป์ยาวเกิน โมเดลเห็นไม่ครบ */
+  const sm=!!(o.signal&&o.signal.route&&o.signal.route.p==='local'),nArt=k=>sm?2:Math.max(2,Math.ceil(k/2));
+  /* ราว 1 ใน 3 เป็นโจทย์สถานการณ์แนะนำผลิตภัณฑ์ (ทำพร้อมกับชุดปกติ ไม่ให้รอนานขึ้น) */
+  const recG=[],nRec=need>=3&&pscRecGroup()?Math.round(need/3):0,prog=[0,0],op=i=>x=>{prog[i]=x;if(o.onProg)o.onProg(prog[0]+prog[1])};
+  /* แต่ละรอบสุ่มหมวดใหม่ · เก็บทุกกลุ่มที่ส่งไว้ตรวจรหัสตัวเลือก */
+  const recP=nRec?genAIChunks(k=>{const g=pscRecGroup().slice(0,sm?4:6);recG.push(...g);return pscRecPrompt(g,sm?Math.min(k,4):k,level,sm?1200:2600)},nRec,{signal:o.signal,onProg:op(1)})
+    .then(l=>l.map(q=>pscRecMap(q,recG)).filter(Boolean)).catch(e=>{if(e&&e.code==='cancelled')throw e;return[]}):Promise.resolve([]);
+  const [norm,rec]=await Promise.all([genAIChunks((k,b)=>pscPrompt(pscPick(nArt(k)),sm?Math.min(k,5):k,level,sm?4500:9000),need-nRec,{signal:o.signal,onProg:op(0)}),recP]);
+  return [...norm
+    .map(q=>{const r=String(q.ref||'').trim(),a=/^P\d+$/i.test(r)&&PSC[+r.slice(1)];if(!a)return null;const h=a.secs.some(x=>x[0]===q.topic)?q.topic:null;
+      return{...q,topic:a.title,ptopic:h,gen:'ai',steps:[...q.steps,...pscImgNote(a)],...pscCite(a,h)}}),...rec].filter(q=>q&&!pscHasMemo(q)).map(tag);
 }
 
 /* ---------- ลิงก์ "เปิดหน้าผลิตภัณฑ์" ในเฉลย ----------

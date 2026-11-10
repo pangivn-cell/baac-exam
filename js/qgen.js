@@ -10,7 +10,9 @@ try{Object.assign(QGEN,JSON.parse(localStorage.getItem(QGEN_KEY)||'{}'));QGEN.bu
 const saveQGen=()=>{try{const {auto,min,local,log}=QGEN;localStorage.setItem(QGEN_KEY,JSON.stringify({auto,min,local,log:log.slice(0,30)}))}catch(e){}};
 const QGEN_BATCH=10,QGEN_LEVELS=[3,2,4,1,5];
 /* วิชาที่ต้องเติม: ใช้ AI สร้างโจทย์ และแบ่งเข้าคลังกลางได้ */
-const qgenSubj=s=>s&&s.ai&&!s.doc&&s.id!=='specall';
+/* วิชาผลิตภัณฑ์ ธ.ก.ส. (s.psc): ไม่มี AI ก็สร้างจากเนื้อหาเว็บได้ แต่มี AI แล้วให้ AI คิดทั้งหมด จึงเติมเข้าคลังกลางด้วย (เดิมขึ้น ไม่ใช้เครดิต และไม่เคยถูกเติม) */
+const qgenAI=s=>!!(s&&(s.ai||s.psc));
+const qgenSubj=s=>qgenAI(s)&&!s.doc&&s.id!=='specall';
 async function qgenCounts(force){
   if(!force&&QGEN.counts&&Date.now()-QGEN.countAt<10*60e3)return QGEN.counts;
   const pool={};
@@ -48,7 +50,7 @@ async function qgenRun(s,k,manual){
   QGEN.busy=s.id;QGEN.ctl=ctl;QGEN.cur={sub:s.name,level,by:route.p,at:Date.now(),k};if(VIEW==='qgen')renderQGen();
   const run=async rt=>{ctl.signal.route=rt;
     const prev=GEN_AVOID;GEN_AVOID=[...avoidFor(s),...qgenAvoid(s)].slice(0,40);
-    try{return await makeNew0(s,level,k,{signal:ctl.signal},atLevel(bankFor(s,true),level))}finally{GEN_AVOID=prev}};
+    try{return s.psc?await pscGenAI(s,level,k,{signal:ctl.signal}):await makeNew0(s,level,k,{signal:ctl.signal},atLevel(bankFor(s,true),level))}finally{GEN_AVOID=prev}};
   let items=[],by=route.p;
   try{
     try{items=await run(route)}catch(e){if(route.p!=='local'||(e&&e.code==='cancelled'))throw e;items=[]}
@@ -145,11 +147,11 @@ function renderQGen(){
   const host=localUp(),cloud=activeAI();
   const row=s=>{if(s.doc)return docRow(s);const c=cnt[s.id]||{real:0,pool:0,total:0},ok=c.total>=QGEN.min,pct=Math.min(100,c.total/QGEN.min*100);
     const rt=qgenSubj(s)?qgenRoute(s,true):null,lf=QGEN.local[s.id];
-    const note=!s.ai?'โปรแกรมในเว็บสร้างโจทย์และคำนวณเฉลยเองทันที ไม่ใช้ AI ไม่เสียเครดิต':s.doc?'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่ตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)'
+    const note=!qgenAI(s)?'โปรแกรมในเว็บสร้างโจทย์และคำนวณเฉลยเองทันที ไม่ใช้ AI ไม่เสียเครดิต':s.doc?'วิชาจากไฟล์: ใช้ข้อสอบในไฟล์ และสร้างใหม่ตอนทำข้อสอบ (ไม่เก็บเข้าคลังกลาง)'
       :QGEN.busy===s.id?'⏳ กำลังสร้าง...':ok?'✓ ครบแล้ว':`ขาด ${QGEN.min-c.total} ข้อ`+(rt?` · จะใช้ ${AINAME[rt.p]||rt.p}`:' · ยังไม่มี AI ให้ใช้')+(s.figOnly?' (ต้องดูรูป ใช้ AI คลาวด์)':lf&&lf.fail>=2?' (AI ในเครื่องสร้างไม่ได้ สลับใช้ AI คลาวด์)':'');
     return `<div class="qgrow${ok?' ok':''}"><div class="qgn"><b>${esc(s.name)}</b><span class="src">${note}</span></div>
-      <div class="qgc">${!s.ai?`${c.real?`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>`:''}<b>⚙️ ไม่ใช้เครดิต</b>`:`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>${s.doc?'':`<span title="โจทย์ที่ AI สร้างในคลังกลาง">✨ ${c.pool}</span>`}<b>${s.doc?c.real:c.total}${s.doc?' ข้อ':'/'+QGEN.min}</b>`}</div>
-      <div class="qgbar"><i style="width:${s.ai&&!s.doc?pct:100}%" class="${ok||!s.ai||s.doc?'ok':''}"></i></div>
+      <div class="qgc">${!qgenAI(s)?`${c.real?`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>`:''}<b>⚙️ ไม่ใช้เครดิต</b>`:`<span title="ข้อสอบจริงจากไฟล์">📄 ${c.real}</span>${s.doc?'':`<span title="โจทย์ที่ AI สร้างในคลังกลาง">✨ ${c.pool}</span>`}<b>${s.doc?c.real:c.total}${s.doc?' ข้อ':'/'+QGEN.min}</b>`}</div>
+      <div class="qgbar"><i style="width:${qgenAI(s)&&!s.doc?pct:100}%" class="${ok||!qgenAI(s)||s.doc?'ok':''}"></i></div>
       ${qgenSubj(s)?`<button class="ghost" data-qg="${esc(s.id)}" ${QGEN.busy||QGEN.run||!rt?'disabled':''}>สร้างเพิ่ม ${QGEN_BATCH} ข้อ</button>`:'<span></span>'}</div>`};
   /* วิชาจากไฟล์: ข้อมูลที่ใช้สร้างโจทย์ = ข้อสอบในไฟล์ + บัตรความรู้ + เนื้อหาหน้าเอกสาร · ไม่มีเลย = ขึ้นปุ่มลบ */
   const docRow=s=>{const d=qgenDocData(s),none=!d.ok;

@@ -77,7 +77,7 @@ function syncDocFromMeta(m){
     txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,subs:Array.isArray(m.subs)?m.subs:[],ownerUid:m.ownerUid||ME.uid,remote:true,
     /* เดิมไม่ได้รับสถานะ "เก็บตก" มาด้วย เครื่องใหม่จึงย่อยทั้งไฟล์ซ้ำตั้งแต่ต้นจนบัตรซ้ำ */
     fill:m.stage!=='ready'&&!!m.fill,audit:m.stage!=='ready'&&!!m.audit,reprocess:m.stage!=='ready'&&!!m.fill,reqAt:+m.reqAt||0,doneAt:+m.doneAt||0,
-    win:+m.win||0,qBy:m.qBy||'',qAt:+m.qAt||0};
+    win:+m.win||0,qBy:m.qBy||'',qAt:+m.qAt||0,cardsPS:Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[]};
 }
 function syncRememberFigs(doc,figs){
   for(const f of figs||[])if(f&&f.id)PFIG.set(f.id,{id:f.id,docId:doc.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0});
@@ -136,6 +136,8 @@ async function syncMerge(local,m){
   for(const k of ['group','show','kind','topic','noShare'])if(m[k]!=null){const v=k==='topic'?topicName(m[k]):m[k];if(local[k]!==v){local[k]=v;ch=true}}
   if(m.pagesParts!=null&&local.pagesParts!==m.pagesParts){local.pagesParts=m.pagesParts;ch=true}
   if(m.cardsParts!=null&&local.cardsParts!==m.cardsParts){local.cardsParts=m.cardsParts;ch=true}
+  /* ลายนิ้วมือก้อนบัตรบนคลาวด์: ใช้ดึงเฉพาะก้อนที่เปลี่ยน และใช้เทียบตอนเครื่องนี้ส่งขึ้น (ไม่มี = ผู้เขียนรุ่นเก่า ต้องโหลด/ส่งทั้งชุด) */
+  {const ps=Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[];if(ps.join()!==(local.cardsPS||[]).join()){local.cardsPS=ps;ch=true}}
   if(m.counts){local.cardCount=+m.counts.cards||0;local.qCount=+m.counts.q||0}
   if(m.label!=null&&local.label!==m.label){local.label=m.label;ch=true}
   if(Array.isArray(m.subs)&&(m.subs||[]).join('|')!==(local.subs||[]).join('|')){local.subs=m.subs.slice();ch=true}
@@ -146,7 +148,7 @@ async function syncMerge(local,m){
   if(Array.isArray(m.delCards)&&(m.delCards.length||(local.delCards||[]).length)){local.delCards=[...new Set([...(local.delCards||[]),...m.delCards])].slice(-1000);ch=true;needCards=true}
   if((+m.cardsResetAt||0)>(+local.cardsResetAt||0)){local.cardsResetAt=+m.cardsResetAt;ch=true;needCards=true}
   if((+m.cardsRev||0)>(+local.cardsRev||0)){local.cardsRev=+m.cardsRev;needCards=true;ch=true}
-  if((+m.pagesRev||0)>(+local.pagesRev||0)){local.pagesRev=+m.pagesRev;local.pages=[];local.pagesRemote=(m.pagesParts||0)>0;ch=true;needPages=true}
+  if((+m.pagesRev||0)>(+local.pagesRev||0)){local.pagesRev=+m.pagesRev;local.pages=[];local.pagesPS=[];local.pagesRemote=(m.pagesParts||0)>0;ch=true;needPages=true}
   if(Array.isArray(m.figs)){
     const keep=new Set(m.figs.map(f=>f.id));
     const drop=[...PFIG].filter(([id,f])=>f.docId===local.id&&!keep.has(id)).map(([id])=>id);
@@ -212,14 +214,22 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
         for(const p of list){const old=by.get(+p.n);by.set(+p.n,(old&&old.text&&!p.text)?old:p)}
         doc.pages=[...by.values()].sort((a,b)=>a.n-b.n);
         doc.chars=doc.pages.reduce((a,p)=>a+(p.text||'').length,0);
+        doc.pagesPS=[];   /* ข้อความหน้ามาจากคลาวด์: ครั้งหน้าที่ส่งขึ้นต้องส่งทุกก้อน */
         await saveDoc(doc);
       }
       if(doc.pagesRemote){doc.pagesRemote=false;await saveDoc(doc)}
     }
     if(cards&&!SYNC.pushing.has(doc.id)&&PROC_ID!==doc.id&&((doc.cardsParts||0)>0||(doc.delCards||[]).length||(doc.cardsResetAt||0))){
-      const snap=await f.fs.getDocs(f.fs.collection(f.db,...base,'cards'));
+      /* ดึงเฉพาะก้อนที่ลายนิ้วมือต่างจากที่เครื่องนี้มีแล้ว · โหลดทั้งชุดเมื่อ: ครั้งแรก ไม่มีลายนิ้วมือ (ผู้เขียนรุ่นเก่า) หรือมีการล้างบัตรทั้งชุดใหม่ */
+      const ps=doc.cardsPS||[],got=doc.cardsPSGot||[],reset=+doc.cardsResetAt||0;
+      const part=ps.length>0&&ps.length===(doc.cardsParts||0)&&got.length>0&&!(reset>(+doc.cardsResetSeen||0));
+      let shots;
+      if(part){const idx=ps.map((h,i)=>h!==got[i]?i:-1).filter(i=>i>=0);
+        shots=(await Promise.all(idx.map(i=>f.fs.getDoc(f.fs.doc(f.db,...base,'cards',String(i)))))).filter(s=>s.exists())}
+      else shots=(await f.fs.getDocs(f.fs.collection(f.db,...base,'cards'))).docs.slice().sort((a,b)=>+a.id-+b.id);
       const remote=new Map();
-      for(const s of snap.docs.slice().sort((a,b)=>+a.id-+b.id))for(const c of s.data().cards||[])if(c&&c.id)remote.set(c.id,vizIn(c));
+      for(const s of shots)for(const c of s.data().cards||[])if(c&&c.id)remote.set(c.id,vizIn(c));
+      SYNC.cardParts=(SYNC.cardParts||0)+shots.length;
       const have=new Map(CARDS.filter(c=>c.docId===doc.id).map(c=>[c.id,c])),add=[];
       for(const [id,rc] of remote){
         const old=have.get(id);
@@ -230,9 +240,11 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
       if(add.length)await saveCards(add);
       if(doc.cardsRemote){doc.cardsRemote=false;doc.cardCount=CARDS.filter(c=>c.docId===doc.id).length;doc.qCount=CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length;await saveDoc(doc)}
       /* บัตรที่ถูกลบ (หรือล้างทั้งชุดตอนอ่านใหม่) จากอีกเครื่อง ต้องหายจากเครื่องนี้ด้วย */
-      const del=new Set(doc.delCards||[]),reset=+doc.cardsResetAt||0;
-      const gone=CARDS.filter(c=>c.docId===doc.id&&(del.has(c.id)||(reset&&!remote.has(c.id))));
+      const del=new Set(doc.delCards||[]);
+      const gone=CARDS.filter(c=>c.docId===doc.id&&(del.has(c.id)||(!part&&reset&&!remote.has(c.id))));
       if(gone.length){CARDS=CARDS.filter(c=>!gone.includes(c));try{await kbDelMany('cards',gone.map(c=>c.id))}catch(e){}}
+      /* จำว่าก้อนไหนมีแล้ว (ไม่มีลายนิ้วมือบนคลาวด์ = ครั้งหน้าโหลดทั้งชุดเหมือนเดิม) */
+      if(ps.length===(doc.cardsParts||0)){doc.cardsPSGot=ps.slice();doc.cardsResetSeen=reset;await saveDoc(doc)}
       if(add.length||gone.length){syncDocSubjects();renderSide();if(VIEW==='kb')renderKB();}
       /* ทำดัชนีความหมายให้บัตรที่ดึงมาจากเครื่องอื่น (ถ้ามี AI key) เพื่อให้ค้นหา/ถาม AI ได้เหมือนเดิม */
       if(typeof canEmbed==='function'&&canEmbed()){const miss=CARDS.filter(c=>c.docId===doc.id&&!c.emb).slice(0,100);if(miss.length)embedCards(miss).catch(()=>{})}
@@ -280,7 +292,7 @@ function syncMetaOf(doc){
     leaseBy:doc.stage==='ready'?'':(doc.leaseBy||''),leaseAt:doc.stage==='ready'?0:(+doc.leaseAt||0),digDone:+doc.digDone||0,win:+doc.win||0,fill:!!doc.fill,ocrDone:doc.ocrDone||[],
     summ:doc.summ||[],bad:doc.bad||[],figPages:doc.figPages||[],pagesParts:+doc.pagesParts||0,cardsParts:+doc.cardsParts||0,pagesRev:+doc.pagesRev||0,cardsRev:+doc.cardsRev||0,
     figs:(doc.figMeta||[]).map(f=>({id:f.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0})),
-    delCards:(doc.delCards||[]).slice(-1000),cardsResetAt:+doc.cardsResetAt||0,
+    delCards:(doc.delCards||[]).slice(-1000),cardsResetAt:+doc.cardsResetAt||0,cardsPS:Array.isArray(doc.cardsPS)?doc.cardsPS.slice(0,200):[],
     txtSha:doc.txtSha||'',dupOf:doc.dupOf||'',dupSkipped:+doc.dupSkipped||0,subs:(doc.subs||[]).slice(0,20),
     /* งานรอบปัจจุบัน (สั่งเมื่อ reqAt เสร็จเมื่อ doneAt) + เครื่องที่จองไว้ ให้ทุกเครื่องเห็นงานชุดเดียวกัน */
     audit:!!doc.audit,reqAt:+doc.reqAt||0,doneAt:+doc.doneAt||0,qBy:doc.stage==='ready'?'':(doc.qBy||''),qAt:doc.stage==='ready'?0:(+doc.qAt||0),
@@ -310,11 +322,13 @@ async function syncPushPages(doc,force){
   const sig=doc.pages.length+'|'+doc.chars+'|'+hashStr(doc.pages.map(p=>p.text||'').join('\n'));
   if(!force&&doc.pagesSig===sig&&doc.pagesParts>0)return;
   const f=await fb(),key=syncKey(doc),parts=jchunks(doc.pages,600000);
+  /* ส่งเฉพาะก้อนหน้าที่เปลี่ยน (ระหว่างอ่านภาพ ส่งทุก 8 หน้า เดิมส่งข้อความทั้งไฟล์ซ้ำทุกรอบ) */
+  const ps=parts.map(p=>hashStr(JSON.stringify(p))),was=Array.isArray(doc.pagesPS)?doc.pagesPS:[],had=doc.pagesParts||0;
   try{
-    for(let i=0;i<parts.length;i++)
-      await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key,'pages',String(i)),{pages:parts[i],updatedAt:f.fs.serverTimestamp()});
+    for(let i=0;i<parts.length;i++){if(!force&&i<had&&was[i]===ps[i])continue;
+      await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key,'pages',String(i)),{pages:parts[i],updatedAt:f.fs.serverTimestamp()})}
     if((doc.pagesParts||0)>parts.length)await syncDeleteParts(doc,'pages',doc.pagesParts,parts.length);
-    doc.pagesParts=parts.length;doc.pagesSig=sig;doc.pagesRev=(doc.pagesRev||0)+1;doc.pagesRemote=false;await saveDoc(doc);await syncPushMeta(doc);
+    doc.pagesParts=parts.length;doc.pagesPS=ps;doc.pagesSig=sig;doc.pagesRev=(doc.pagesRev||0)+1;doc.pagesRemote=false;await saveDoc(doc);await syncPushMeta(doc);
   }catch(e){syErr(e)}
 }
 const syncCardOut=c=>{const {emb,em,st,srcText,...rest}=c;return fsClean(vizOut(rest))};
@@ -325,12 +339,16 @@ async function syncPushCards(doc,force){
   const sig=list.length+'|'+hashStr(JSON.stringify(list));
   if(!force&&doc.cardsSig===sig&&doc.cardsParts>0)return;
   const f=await fb(),key=syncKey(doc),parts=jchunks(list,600000);
+  /* ส่งเฉพาะก้อนที่เปลี่ยน: บัตรเรียงตามเวลาสร้าง บัตรใหม่ต่อท้าย ก้อนต้นๆ จึงเหมือนเดิม (เดิมส่งทั้งไฟล์ซ้ำทุกช่วงที่ย่อยเสร็จ
+     ไฟล์ 1,211 บัตร × 201 ช่วง = ส่งก้อนเดิมหลายร้อยรอบ) · cardsPS = ลายนิ้วมือของแต่ละก้อนที่อยู่บนคลาวด์
+     force (ผู้ใช้แก้/ลบบัตร) ส่งทุกก้อน เผื่ออีกเครื่องเพิ่งเขียนทับก้อนเดียวกัน */
+  const ps=parts.map(p=>hashStr(JSON.stringify(p))),was=Array.isArray(doc.cardsPS)?doc.cardsPS:[],had=doc.cardsParts||0;
   try{
-    for(let i=0;i<parts.length;i++)
-      await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key,'cards',String(i)),{cards:parts[i],updatedAt:f.fs.serverTimestamp()});
+    for(let i=0;i<parts.length;i++){if(!force&&i<had&&was[i]===ps[i])continue;
+      await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key,'cards',String(i)),{cards:parts[i],ps:ps[i],updatedAt:f.fs.serverTimestamp()})}
     const old=doc.cardsParts||0;
     if(old>parts.length)await syncDeleteParts(doc,'cards',old,parts.length);
-    doc.cardsParts=parts.length;doc.cardsSig=sig;doc.cardsRev=(doc.cardsRev||0)+1;doc.cardsRemote=false;
+    doc.cardsParts=parts.length;doc.cardsPS=ps;doc.cardsPSGot=ps;doc.cardsSig=sig;doc.cardsRev=(doc.cardsRev||0)+1;doc.cardsRemote=false;
     doc.cardCount=list.length;doc.qCount=list.filter(c=>c.type==='q').length;await saveDoc(doc);await syncPushMeta(doc);
   }catch(e){syErr(e)}
 }
@@ -474,7 +492,7 @@ function takeProgress(doc,m){
   doc.ocrDone=[...new Set([...(doc.ocrDone||[]),...(m.ocrDone||[])])].sort((a,b)=>a-b);
   if(Array.isArray(m.summ)&&m.summ.length>(doc.summ||[]).length)doc.summ=m.summ;
   /* ข้อความหน้าที่ AI อ่านจากภาพแล้วอยู่บนคลาวด์ใหม่กว่า: โหลดใหม่ก่อนทำต่อ */
-  if((+m.pagesRev||0)>(+doc.pagesRev||0)&&(m.pagesParts||0)>0){doc.pagesRev=+m.pagesRev;doc.pagesParts=+m.pagesParts;doc.pages=[];doc.pagesRemote=true}
+  if((+m.pagesRev||0)>(+doc.pagesRev||0)&&(m.pagesParts||0)>0){doc.pagesRev=+m.pagesRev;doc.pagesParts=+m.pagesParts;doc.pages=[];doc.pagesPS=[];doc.pagesRemote=true}
 }
 async function syncLease(doc){
   if(!syncOk()||!doc||doc.central)return;

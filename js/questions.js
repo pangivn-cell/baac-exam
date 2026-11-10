@@ -348,6 +348,8 @@ async function makeItems0(s,level,n,o={}){
   if(!activeAI())return offlineItems(s,level,n);
   const orig=pickBank(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));
   if(orig.length>=n)return shuffle(orig);
+  /* fast = ข้อแรกของชุด (practice.js start): มีข้อสอบจริงแล้วเริ่มทำได้เลย ไม่รอ AI · ที่เหลือ loadMore สร้างต่อเบื้องหลัง */
+  if(o.fast&&orig.length)return shuffle(orig);
   let gen=[];
   try{gen=await makeNew(s,level,n-orig.length,{...o,onProg:d=>o.onProg&&o.onProg(orig.length+d)},pool)}
   catch(e){if(!orig.length||(e&&e.code==='cancelled'))throw e}
@@ -356,7 +358,7 @@ async function makeItems0(s,level,n,o={}){
 /* โจทย์ที่ต้องให้ AI สร้าง: หยิบจากคลังโจทย์กลางก่อน ให้ AI สร้างเฉพาะส่วนที่ขาด แล้วส่งโจทย์ใหม่เข้าคลังให้คนอื่นใช้ */
 async function makeNew(s,level,n,o,pool){
   let fromPool=[];try{fromPool=typeof poolTake==='function'?await poolTake(s,level,n):[]}catch(e){}
-  if(fromPool.length>=n)return fromPool.slice(0,n);
+  if(fromPool.length>=n||(o.fast&&fromPool.length))return fromPool.slice(0,n);
   const gen=await makeNew0(s,level,n-fromPool.length,o,pool);
   if(typeof poolPut==='function')poolPut(s,level,gen);
   return shuffle([...fromPool,...gen]);

@@ -236,10 +236,11 @@ async function keyCallOnce(prov,model,input,json,signal){
         body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>i.url?{file_data:{mime_type:i.mime,file_uri:i.url}}:{inline_data:{mime_type:i.mime,data:i.data}})]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})})});
     }else{
       const meta=prov==='meta',oai=OAI_PROVS[prov],cus=prov==='custom'||prov==='local'||!!oai,cf=oai?{...cfgOf(prov),url:oai.url}:cfgOf(prov);
-      /* custom: ไม่ส่ง response_format เพราะหลายเจ้า/โมเดลในเครื่องไม่รองรับ (looseJSON แกะ JSON จากข้อความให้) */
+      /* custom: ไม่ส่ง response_format เพราะหลายเจ้า/โมเดลในเครื่องไม่รองรับ (looseJSON แกะ JSON จากข้อความให้)
+         Typhoon/Groq/OpenRouter: ไม่บอก max_tokens = ใช้ค่าตั้งต้นของเซิร์ฟเวอร์ที่สั้น โจทย์ 3 ข้อก็ถูกตัด (truncated) */
       res=await fetch(cus?chatURL(cf.url):meta?'https://api.meta.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions',{method:'POST',signal,
         headers:{'Content-Type':'application/json',...(cf.key?{'Authorization':'Bearer '+cf.key}:{})},
-        body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:i.url||`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{})})});
+        body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:i.url||`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{}),...(json&&oai?{max_tokens:8192}:{})})});
     }
   }catch(e){if(e&&e.name==='AbortError')throw{code:'cancelled'};throw{code:'network',message:String(e)}}
   if(!res.ok)await httpFail(res);

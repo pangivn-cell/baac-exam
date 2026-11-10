@@ -13,17 +13,19 @@ async function poolDocs(s){
     const docs=snap.docs.map(d=>({id:d.id,...d.data()}));POOL.cache.set(s.id,{at:Date.now(),docs});return docs;
   }catch(e){console.warn('qpool',e&&e.code||e);return c?c.docs:[]}
 }
-/* โจทย์ที่ใช้ในชุดนี้ได้: ระดับห่างไม่เกิน 1 ไม่ใช่ข้อที่ตอบถูกแล้ว ไม่ใช่ข้อที่ใช้ไปแล้วในรอบนี้ */
+/* โจทย์ที่ใช้ในชุดนี้ได้: ไม่ใช่ข้อที่ตอบถูกแล้ว ไม่ใช่ข้อที่ใช้ไปแล้วในรอบนี้
+   หยิบระดับห่างไม่เกิน 1 ก่อน ไม่พอค่อยเติมจากระดับอื่น (ใกล้ก่อน) · เดิมตัดระดับอื่นทิ้ง ผู้ที่อยู่ระดับ 6 ใช้คลังแทบไม่ได้ ต้องรอ AI ทุกชุด */
 async function poolTake(s,level,k){
   if(k<=0||s.doc)return[];
-  const docs=(await poolDocs(s)).filter(d=>!level||!d.level||Math.abs(d.level-level)<=1),out=[],seen=new Set();
+  const dist=d=>!level||!d.level?0:Math.abs(d.level-level),near=d=>dist(d)<=1;
+  const docs=(await poolDocs(s)),out=[],seen=new Set();
   for(const d of shuffle(docs.slice()))for(const raw of d.items||[]){
     let q;try{q=JSON.parse(raw)}catch(e){continue}
     const key=qKey(q),done=(d.used&&d.used[key])||[];
     if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
-    out.push(withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null));
+    out.push({q:withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null),d:near(d)?0:dist(d)});
   }
-  const pick=shuffle(out).slice(0,k);for(const q of pick)POOL.used.add(qKey(q));
+  const pick=shuffle(out).sort((a,b)=>a.d-b.d).slice(0,k).map(x=>x.q);for(const q of pick)POOL.used.add(qKey(q));
   return pick;
 }
 /* โจทย์ที่แบ่งได้: AI สร้าง และไม่ได้มาจากเอกสารส่วนตัว */

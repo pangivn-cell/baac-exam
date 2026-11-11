@@ -182,10 +182,57 @@ function exprFacts(q){
     const want=+m[2].replace(/,/g,'');v=Math.round(v*1e6)/1e6;out.push({i,v,want,ok:Math.abs(v-want)<1e-9})});
   return out.length>=2?out:null;
 }
+/* โจทย์บวกเลขหลายตัว (ตัวเลือกเป็น 1+2+7+... = 62): ระบบเขียนวิธีคิดเองทั้งหมด ไม่ใช้ AI (ถูกแน่นอน ไม่เสียโควตา)
+   สูตรลัด: หาช่วงเลขเรียงกัน → (ต้น + ปลาย) × จำนวนตัว ÷ 2 · ที่เหลือจับคู่ให้ได้ 10 · เลขซ้ำใช้คูณ */
+function sumParts(nums){
+  /* ช่วงเลขเรียงติดกันยาวสุด (เพิ่มหรือลดทีละ 1) อย่างน้อย 4 ตัว */
+  let best=null;
+  for(let i=0;i<nums.length;i++)for(const d of [1,-1]){let j=i;while(j+1<nums.length&&nums[j+1]-nums[j]===d)j++;
+    if(j-i+1>=4&&(!best||j-i>best.j-best.i))best={i,j}}
+  const run=best?nums.slice(best.i,best.j+1):[],rest=best?[...nums.slice(0,best.i),...nums.slice(best.j+1)]:nums.slice();
+  /* จับคู่ให้ได้ 10 */
+  const left=rest.slice(),pairs=[];
+  for(let a=1;a<=5;a++){const b=10-a;
+    for(;;){const ia=left.indexOf(a);if(ia<0)break;left.splice(ia,1);const ib=left.indexOf(b);if(ib<0){left.splice(ia,0,a);break}left.splice(ib,1);pairs.push([a,b])}}
+  /* ตัวที่เหลือ: เลขซ้ำรวมเป็นคูณ */
+  const cnt=new Map();for(const n of left)cnt.set(n,(cnt.get(n)||0)+1);
+  const groups=[...cnt.entries()].sort((x,y)=>y[0]-x[0]);
+  return{run,pairs,groups};
+}
+function sumLines(nums){
+  const {run,pairs,groups}=sumParts(nums),lines=[],tot=[];
+  if(run.length){const a=Math.min(...run),b=Math.max(...run),n=run.length,v=(a+b)*n/2;
+    lines.push(`เลขเรียง ${run.join(' + ')} (${a} ถึง ${b} มี ${b} − ${a} + 1 = ${n} ตัว) = {(${a} + ${b}) × ${n}}/{2} = {${a+b} × ${n}}/{2} = ${v}`);tot.push(v)}
+  if(pairs.length){lines.push(`จับคู่ให้ได้ 10: ${pairs.map(p=>`(${p[0]} + ${p[1]})`).join(' ')} = 10 × ${pairs.length} = ${10*pairs.length}`);tot.push(10*pairs.length)}
+  if(groups.length){const parts=groups.map(([n,c])=>c>1?`${n} × ${c}`:`${n}`),vals=groups.map(([n,c])=>n*c);
+    const rs=vals.reduce((x,y)=>x+y,0),rep=groups.some(g=>g[1]>1);lines.push(`ตัวที่เหลือ: ${parts.join(' + ')}${rep?` = ${vals.join(' + ')}`:''}${vals.length>1||rep?` = ${rs}`:''}`);tot.push(vals.reduce((x,y)=>x+y,0))}
+  const sum=nums.reduce((x,y)=>x+y,0);
+  lines.push(`รวม: ${tot.join(' + ')} = **${sum}**`);
+  return{lines,sum,run};
+}
+function sumLocalDetail(q,facts){
+  const nums=c=>String(c).split('=')[0].split('+').map(x=>+x.trim());
+  if(!facts||facts.length!==q.choices.length||!q.choices.every(c=>/^[\d\s+]+=\s*\d+\s*$/.test(String(c))))return null;
+  const neg=/ไม่ถูกต้อง|ไม่ใช่|ผิด|ยกเว้น/.test(q.stem),a=q.answer,fa=facts.find(f=>f.i===a);if(!fa)return null;
+  const L=sumLines(nums(q.choices[a])),wrote=fa.want;
+  const short={name:L.run.length?'สูตรลัดผลบวกเลขเรียง + จับคู่ให้ได้ 10':'จับคู่ให้ได้ 10',
+    formula:L.run.length?'ผลบวกเลขเรียง = {(ต้น + ปลาย) × จำนวนตัว}/{2}':'หาคู่ที่บวกกันได้ 10 ก่อน (1+9, 2+8, 3+7, 4+6, 5+5) เลขซ้ำใช้คูณ แล้วค่อยบวกตัวที่เหลือ',
+    given:[`ข้อ ${TH[a]}. ${q.choices[a]}`],calc:[...L.lines,neg?(fa.ok?`ได้ ${L.sum} ตรงกับที่เขียน`:`ได้ ${L.sum} แต่เขียนไว้ ${wrote} → **ข้อ ${TH[a]}. ไม่ถูกต้อง**`):`ได้ ${L.sum} ตรงกับที่เขียน → **ข้อ ${TH[a]}. ถูกต้อง**`],
+    when:L.run.length?'มีเลขเรียงกันหลายตัว เช่น 9+8+7+6+5+4 ใช้สูตรได้ทันทีโดยไม่ต้องบวกทีละตัว':'บวกเลขหลักเดียวหลายตัวในเวลาจำกัด'};
+  /* วิธีคิดเพิ่มเติม: ข้ออื่นทีละข้อ ด้วยเทคนิคเดียวกัน */
+  const steps=q.choices.map((c,i)=>{if(i===a)return null;const f=facts.find(x=>x.i===i),M=sumLines(nums(c));
+    return{head:`ข้อ ${TH[i]}. ${c}`,points:M.lines.slice(0,-1),math:`รวม = ${M.sum} ${f.ok?'ตรงกับที่เขียน ✓':`แต่เขียนไว้ ${f.want} ✗`}`,note:''}}).filter(Boolean);
+  const check=facts.map(f=>`${TH[f.i]}. ${f.v}${f.ok?' ✓':` (เขียน ${f.want}) ✗`}`).join(' · ');
+  return{short,vis:{title:'ตรวจข้ออื่นด้วยวิธีเดียวกัน',intro:'ใช้เลขเรียงกับจับคู่ 10 เหมือนกันทุกข้อ',steps},check:`ค่าจริงทุกข้อ: ${check}`,
+    tip:'ดูหลักหน่วยก่อนก็ช่วยตัดตัวเลือกได้เร็ว · คู่ที่ได้ 10 คือ 1+9, 2+8, 3+7, 4+6, 5+5',at:Date.now(),local:1};
+}
 async function calcdLoad(k){
   const q=CALCD_Q[k];if(!q||CALCD[k]||CALCD_BUSY[k]===1)return;CALCD_BUSY[k]=1;
   const old=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).filter(Boolean),facts=exprFacts(q);
   /* ตัวเลขที่เฉลยที่ดีต้องมี: ค่าจริงของข้อที่เป็นคำตอบ (โจทย์สมการ) หรือตัวเลขในตัวเลือกที่ถูก */
+  /* โจทย์บวกเลขล้วน: ระบบเขียนเฉลยเองทั้งหมด ไม่ใช้ AI */
+  {const loc=sumLocalDetail(q,facts);if(loc){CALCD[k]=loc;try{localStorage.setItem(CALCD_KEY,JSON.stringify(CALCD))}catch(e){}CALCD_BUSY[k]=0;
+    document.querySelectorAll('[data-calcd]').forEach(el=>{if(el.dataset.calcd===k)el.outerHTML=calcdHTML(q)});return}}
   const fa=facts&&facts.find(f=>f.i===q.answer),need=fa?[String(fa.v)]:(String(q.choices[q.answer]).match(/\d+(?:\.\d+)?/g)||[]).slice(0,2);
   const prompt=`เขียนเฉลยข้อสอบคำนวณข้อนี้ สำหรับคนที่ไม่เก่งคณิตศาสตร์เลย และต้องการทำให้ทันเวลาสอบ
 โจทย์: ${q.stem}

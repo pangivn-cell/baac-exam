@@ -698,6 +698,8 @@ async function processDoc(doc){
   PROC_CLOUD=!!doc.cloudFill;
   if(await dropIfEmpty(doc)){renderKB();toast(`ลบ "${doc.name}" ออกจากรายการแล้ว (ไฟล์ว่าง ไม่มีข้อมูลให้ประมวลผล)`);return}
   doc.err='';
+  /* ซิงก์ข้ามเครื่องเต็มโควตาวันนี้: เครื่องอื่นไม่รู้ว่าเครื่องนี้ทำไฟล์ไหน และไม่ได้ผลที่ย่อยแล้ว → ไม่ย่อยอัตโนมัติ (ผู้ใช้กดสั่งเองยังทำได้) */
+  if(typeof syncQuotaOut==='function'&&syncQuotaOut()&&ME&&!doc.takeOver){setProg(doc,`พักไว้ก่อน: ซิงก์ข้ามเครื่องเต็มโควตาวันนี้ จะย่อยต่อเองหลัง ${new Date(SYNC.quotaUntil).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})} น. (กันเครื่องอื่นย่อยซ้ำ)`);await saveDoc(doc);return}
   const mode=procMode(doc);doc.forceHere=false;
   if(mode==='wait'){
     if(!hostKnown()){doc.err='ตั้งค่า AI ในแถบซ้ายก่อน แล้วกด ประมวลผลต่อ';await saveDoc(doc);renderKB();return}
@@ -1530,7 +1532,11 @@ async function autoRetry(){
     if(dropped){renderSide();toast(`ลบไฟล์ว่าง ${dropped} ไฟล์ออกจากรายการ (ไม่มีข้อมูลให้ประมวลผล)`)}
     setTimeout(auditTick,3000);   /* คิวว่าง + AI ในเครื่องพร้อม: ตรวจความครบไฟล์ถัดไป */
     const mine=DOCS.filter(d=>!d.central&&docMine(d));
-    for(const d of mine){
+    const qOut=typeof syncQuotaOut==='function'&&syncQuotaOut()&&!!ME;
+    /* ไฟล์ที่ย่อยเสร็จในเครื่องนี้แต่บัตรยังไม่ขึ้นคลาวด์ (ส่งไม่สำเร็จตอนโควตาเต็ม หรือปิดเว็บก่อนส่งเสร็จ) → ส่งใหม่ รอบละ 5 ไฟล์ */
+    if(!qOut&&ME&&typeof syncQueue==='function'){let k=0;for(const d of mine){if(k>=5)break;
+      if(d.stage!=='ready'||busy(d)||d.cardsRemote||(+d.cardsParts||0)>0||!CARDS.some(c=>c.docId===d.id))continue;syncQueue(d,{cards:true,pages:false,figs:false});k++}}
+    if(!qOut)for(const d of mine){
       if(busy(d)||d.stage==='ready'||(!activeAI()&&!localUp()&&!hostKnown()))continue;
       if(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d))continue;
       if((!d.pages||!d.pages.length)&&(d.driveId||d.srcFile)&&!ME)continue;   /* ต้องล็อกอินก่อนดึงไฟล์จาก Drive มาอ่าน */
@@ -1543,7 +1549,7 @@ async function autoRetry(){
       if(now>=d.nextTry){d.nextTry=0;await saveDoc(d);queueDoc(d.id)}
     }
     /* กู้ไฟล์ที่ "พร้อมใช้" แต่บัตร 0 ใบ ทั้งที่มีข้อความ (ย่อยตอน AI ตอบถูกตัด ระบบเดิมนับว่าเสร็จ) → ย่อยใหม่ครั้งเดียว */
-    if(activeAI()||localUp())for(const d of mine){
+    if(!qOut&&(activeAI()||localUp()))for(const d of mine){
       if(d.stage!=='ready'||busy(d)||d.zeroRetry||d.dupOf||(+d.chars||0)<300||(+d.cardCount||0)>0||(+d.cardsParts||0)>0||d.cardsRemote)continue;
       if(CARDS.some(c=>c.docId===d.id)||sameInCentral(d)||(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d)))continue;
       /* ถามคลาวด์ก่อน: อีกเครื่องอาจกู้ไฟล์นี้เสร็จแล้ว → ใช้บัตรจากคลาวด์ ไม่ย่อยซ้ำ */

@@ -10,6 +10,7 @@
 const SYNC_LEASE_MS=3*60000;
 var SYNC={on:false,dev:'',timer:null,pullBusy:false,last:0,err:'',warned:false,meta:new Map(),
   pushing:new Set(),dirty:new Set(),hydrating:new Set(),firstPush:false,pushN:0};
+try{SYNC.quotaUntil=+localStorage.getItem('exam-fs-quota')||0}catch(e){}
 const PFIG_WAIT={};
 
 function syncDevice(){
@@ -24,8 +25,15 @@ const syncMine=d=>docMine(d);
 const syncKey=d=>d&&(d.sha?'s'+d.sha:'l'+d.id);
 const syncRank=s=>({queued:0,read:1,ocr:2,digest:3,embed:4,conflict:5,ready:6})[s]??-1;
 const syncStatus=d=>d.stage==='ready'?'ready':d.err?'error':(d.leaseBy?'processing':'queued');
-const syErr=e=>{const c=String(e&&(e.code||e.message)||e);SYNC.err=/permission-denied/i.test(c)
-  ?'ยังไม่ได้เผยแพร่กฎ Firestore สำหรับซิงก์คิว (วางกฎจาก firestore.rules แล้วกดเผยแพร่)':c;
+/* โควตาเขียนฟรีรายวันของ Firestore เต็ม (resource-exhausted): เขียนอะไรขึ้นคลาวด์ไม่ได้จนเที่ยงคืนเวลาแปซิฟิก (15:00 น. เวลาไทยช่วงหน้าหนาว)
+   ระหว่างนี้เครื่องต่างๆ จองงาน/ส่งผลย่อยให้กันไม่ได้ → หยุดย่อยไฟล์อัตโนมัติ กันหลายเครื่องย่อยไฟล์เดียวกันซ้ำ */
+function ptMidnight(){const now=new Date(),pt=new Date(now.toLocaleString('en-US',{timeZone:'America/Los_Angeles'})),m=new Date(pt);m.setHours(24,0,0,0);return m.getTime()+(now-pt)}
+const syncQuotaOut=()=>(+SYNC.quotaUntil||0)>Date.now();
+const syErr=e=>{const c=String(e&&(e.code||e.message)||e);
+  if(/resource-exhausted|quota/i.test(c)&&!syncQuotaOut()){SYNC.quotaUntil=ptMidnight()+5*60000;try{localStorage.setItem('exam-fs-quota',String(SYNC.quotaUntil))}catch(x){}
+    if(typeof toast==='function')toast(`พื้นที่ซิงก์ข้ามเครื่องเต็มโควตาวันนี้ หยุดย่อยไฟล์อัตโนมัติไว้ก่อน (กันหลายเครื่องย่อยซ้ำ) กลับมาเองเวลา ${new Date(SYNC.quotaUntil).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})} น.`,'bad')}
+  SYNC.err=/permission-denied/i.test(c)
+  ?'ยังไม่ได้เผยแพร่กฎ Firestore สำหรับซิงก์คิว (วางกฎจาก firestore.rules แล้วกดเผยแพร่)':syncQuotaOut()?`โควตาเขียนข้อมูลรายวันเต็ม ซิงก์ข้ามเครื่องหยุดชั่วคราวถึง ${new Date(SYNC.quotaUntil).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})} น.`:c;
   if(!SYNC.warned){SYNC.warned=true;console.warn('sync',e)}}
 const jbytes=x=>{try{return new TextEncoder().encode(JSON.stringify(x)).length}catch(e){return JSON.stringify(x).length*3}};
 /* แบ่งรายการเป็นก้อนตามขนาดไบต์จริง (อักษรไทย 3 ไบต์) ไม่ให้เกินขีดจำกัด 1 MB ของ Firestore */

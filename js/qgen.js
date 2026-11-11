@@ -14,7 +14,8 @@ const QGEN_BATCH=10,QGEN_LEVELS=[3,2,4,1,5];
 const qgenAI=s=>!!(s&&(s.ai||s.psc));
 const qgenSubj=s=>qgenAI(s)&&!s.doc&&s.id!=='specall';
 async function qgenCounts(force){
-  if(!force&&QGEN.counts&&Date.now()-QGEN.countAt<10*60e3)return QGEN.counts;
+  /* อ่านคลังกลางทั้งชุด (หลายร้อยรายการ) → เก็บไว้ 1 ชั่วโมง (เดิม 10 นาที กินโควตาอ่านฟรีรายวัน) */
+  if(!force&&QGEN.counts&&Date.now()-QGEN.countAt<60*60e3)return QGEN.counts;
   const pool={};
   try{const f=await fb(),snap=await f.fs.getDocs(f.fs.collection(f.db,'qpool'));
     for(const d of snap.docs){const x=d.data();pool[x.sub]=(pool[x.sub]||0)+((x.items||[]).length)}}catch(e){console.warn('qgen count',e&&e.code||e)}

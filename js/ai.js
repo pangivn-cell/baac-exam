@@ -588,8 +588,12 @@ ${CALC_RULE}
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;
 }
+/* ข้อเสียจากการย่อยไฟล์: AI ลอกตัวอย่างรูปแบบ JSON ในคำสั่ง (ตัวเลือกเป็น "ตัวเลือก1..4")
+   หรือดึงบรรทัดเฉลย/แนวคิดมาเป็นโจทย์ (เช่น "37.ค") → ตอบไม่ได้ ห้ามเข้าคลังและห้ามออกข้อสอบ */
+const PH_CHOICE=/^\s*(ตัวเลือก|choice|option)\s*\d+\s*$/i,KEY_STEM=/^\s*\d{1,3}\s*[.)]?\s*(ตอบ\s*)?[กขคง]\s*\.?\s*$/;
+const placeholderQ=q=>!!q&&((Array.isArray(q.choices)&&q.choices.filter(c=>PH_CHOICE.test(String(c))).length>=2)||KEY_STEM.test(String(q.stem||'')));
 function cleanAI(data){
   const arr=Array.isArray(data)?data:(data&&Array.isArray(data.questions)?data.questions:[]);
-  return arr.filter(q=>q&&typeof q.stem==='string'&&Array.isArray(q.choices)&&q.choices.length>=2&&Number.isInteger(q.answer)&&q.answer>=0&&q.answer<q.choices.length)
+  return arr.filter(q=>q&&!placeholderQ(q)&&typeof q.stem==='string'&&Array.isArray(q.choices)&&q.choices.length>=2&&Number.isInteger(q.answer)&&q.answer>=0&&q.answer<q.choices.length)
    .map(q=>({kind:'mc',topic:String(q.topic||''),ref:String(q.ref||''),card:String(q.card||''),fig:String(q.fig||''),viz:cleanViz(q.viz),stem:q.stem,choices:q.choices.slice(0,5).map(String),answer:q.answer,steps:(Array.isArray(q.steps)?q.steps:[]).map(s=>typeof s==='string'?[s,'']:[String(s.text||''),String(s.from||'')]).filter(s=>s[0])}));
 }

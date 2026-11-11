@@ -956,7 +956,7 @@ async function extractDoc(doc){
   /* AI ในเครื่องดึงโจทย์ได้ แต่แก้โจทย์เองยังผิดบ่อย: ใช้เฉลยเฉพาะที่เอกสารให้มา ข้อที่ไม่มีเฉลยให้ AI คลาวด์ทำ (solveNoKey) */
   const local=aiRoute('proc').p==='local';
   const toQs=(r,win,sent)=>{const pages=win.map(p=>p.n);
-    return (r&&Array.isArray(r.questions)?r.questions:[]).filter(q=>q&&typeof q.stem==='string'&&q.stem.trim()&&Array.isArray(q.choices)&&q.choices.length>=2).map(q=>{
+    return (r&&Array.isArray(r.questions)?r.questions:[]).filter(q=>q&&!placeholderQ(q)&&typeof q.stem==='string'&&q.stem.trim()&&Array.isArray(q.choices)&&q.choices.length>=2).map(q=>{
       const figs=(Array.isArray(q.figs)?q.figs:[]).map(String).filter(id=>sent.includes(id)),choices=q.choices.slice(0,6).map(String);
       const fromDoc=String(q.answerSource||'').includes('เอกสาร');
       const ans=(!local||fromDoc)&&Number.isInteger(+q.answer)&&+q.answer>=0&&+q.answer<choices.length?+q.answer:-1;

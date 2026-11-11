@@ -68,6 +68,7 @@ async function poolTake(s,level,k){
   const docs=(await poolDocs(s)),out=[],seen=new Set();
   for(const d of shuffle(docs.slice()))for(const raw of d.items||[]){
     let q;try{q=JSON.parse(raw)}catch(e){continue}
+    if(typeof placeholderQ==='function'&&placeholderQ(q))continue;   /* โจทย์ที่ AI ลอกตัวอย่างรูปแบบมา (ตัวเลือก1..4) */
     const key=qKey(q),done=(d.used&&d.used[key])||[];
     if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
     out.push({q:withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null),d:near(d)?0:dist(d)});

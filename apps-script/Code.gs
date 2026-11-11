@@ -105,6 +105,35 @@ function putJson_(uid, folder, b) {
   return { ok: true, id: file.getId(), name: name, size: content.length };
 }
 
+/* คลังเฉลยละเอียดโจทย์คำนวณ (สูตรลัด + วิธีคิด): ทุกคนที่ล็อกอินเพิ่มได้ ข้อละครั้งเดียว ทุกเครื่องใช้ร่วมกัน
+   แบ่งเป็นไฟล์ calcd_<shard>.json ใน baac-data (เว็บอ่านตรงจาก Drive ด้วย API key) · ข้อที่มีแล้วไม่เขียนทับ · ล็อกกันเขียนชนกัน */
+function calcPut_(uid, folder, b) {
+  const shard = String(b.shard || '').replace(/[^0-9a-z]/g, '').slice(0, 4), key = String(b.key || '').slice(0, 300);
+  if (!shard || !key) return { ok: false, error: 'ข้อมูลไม่ครบ' };
+  const val = String(b.val || '');
+  if (val.length > 16000) return { ok: false, error: 'เฉลยยาวเกิน' };
+  let obj; try { obj = JSON.parse(val); } catch (x) { return { ok: false, error: 'JSON ไม่ถูกต้อง' }; }
+  if (!obj || typeof obj !== 'object') return { ok: false, error: 'JSON ไม่ถูกต้อง' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { ok: false, error: 'ระบบไม่ว่าง ลองใหม่' };
+  try {
+    const dir = dataDir_(folder), name = 'calcd_' + shard + '.json', it = dir.getFilesByName(name);
+    let file = it.hasNext() ? it.next() : null, data = null;
+    if (file) { try { data = JSON.parse(file.getBlob().getDataAsString('utf-8') || '{}'); } catch (x) { data = null; } }
+    if (!data || typeof data.items !== 'object') data = { v: 1, items: {} };
+    if (data.items[key]) return { ok: true, id: file.getId(), exists: true };
+    obj.by = uid; obj.at = Date.now(); data.items[key] = obj; data.at = obj.at;
+    const content = JSON.stringify(data);
+    if (!file) file = dir.createFile(name, '{}', 'application/json');
+    const r = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files/' + file.getId() + '?uploadType=media&supportsAllDrives=true', {
+      method: 'patch', contentType: 'application/json; charset=utf-8', payload: Utilities.newBlob(content, 'application/json').getBytes(),
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (r.getResponseCode() >= 300) return { ok: false, error: 'เขียนไฟล์ไม่สำเร็จ (' + r.getResponseCode() + ')' };
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (x) {}
+    return { ok: true, id: file.getId(), n: Object.keys(data.items).length };
+  } finally { lock.releaseLock(); }
+}
+
 /* ผู้ส่งต้องล็อกอินเว็บ Baac_Exam (Firebase) — ตรวจ ID token กับ Google */
 function verify_(idToken) {
   if (!idToken) throw new Error('ต้องเข้าสู่ระบบก่อน');
@@ -131,6 +160,7 @@ function doPost(e) {
     const uid = verify_(b.idToken);
     const folderId = props_().getProperty('FOLDER_ID'), folder = DriveApp.getFolderById(folderId);
     if (b.a === 'putjson') return out_(putJson_(uid, folder, b));
+    if (b.a === 'calcput') return out_(calcPut_(uid, folder, b));
     if (b.a === 'start') {
       const name = String(b.name || 'file.pdf').slice(0, 200), size = +b.size || 0, sha = String(b.sha || '');
       /* ชื่อซ้ำ: ใช้ไฟล์เดิมเฉพาะเมื่อเป็นไฟล์เดียวกันจริง (sha ตรง) หรือผู้เรียกเวอร์ชันเก่าไม่ส่ง sha มา

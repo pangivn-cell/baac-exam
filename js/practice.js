@@ -122,48 +122,83 @@ function choicesHTML(q,pick,locked){
     return `<button class="${cls}" data-j="${j}" ${locked?'disabled':''} aria-pressed="${j===pick}">${pics?`<b>${TH[j]}</b><span class="chsvg">${q.chSvg[j]}</span>`:mc?`<b>${TH[j]}</b><span>${figText(t,'qfig chfig')}</span>`:esc(t)}</button>`}).join('')}</div>`;
 }
 /* ---------- วิธีคิดแบบละเอียด (โจทย์คำนวณ) ----------
-   เฉลยเดิมของโจทย์คำนวณมักสั้น 2–4 ขั้น คนพื้นฐานคณิตอ่อนตามไม่ทัน → ให้ AI เขียนวิธีทำทีละขั้นแบบไม่ข้ามขั้น (ยึดคำตอบเดิม ห้ามเปลี่ยน)
+   เฉลยเดิมของโจทย์คำนวณมักสั้น 2–4 ขั้น คนพื้นฐานคณิตอ่อนตามไม่ทัน → ให้ AI เขียนเฉลย 2 แบบ (ยึดคำตอบเดิม ห้ามเปลี่ยน)
+   1) สูตรลัด/วิธีลัด สำหรับทำให้ทันเวลาสอบ: สูตร → แทนค่า → คิดเลข
+   2) วิธีคิดแบบเห็นภาพ ไม่ต้องใช้ตัวแปร x: มองเป็นช่อง/ส่วน ทีละขั้น มีข้อสังเกตกำกับ
    ทำครั้งเดียวต่อข้อ เก็บไว้ในเครื่อง (สูงสุด 400 ข้อ) เปิดเฉลยข้อเดิมอีกครั้งไม่ต้องรอ AI */
-const CALCD_KEY='exam-calc-detail',CALCD_BUSY={},CALCD_Q={};
-let CALCD={};try{CALCD=JSON.parse(localStorage.getItem(CALCD_KEY)||'{}')||{}}catch(e){CALCD={}}
+const CALCD_KEY='exam-calc-detail2',CALCD_BUSY={},CALCD_Q={};
+let CALCD={};try{CALCD=JSON.parse(localStorage.getItem(CALCD_KEY)||'{}')||{};localStorage.removeItem('exam-calc-detail')}catch(e){CALCD={}}
 function isCalcQ(q){
   if(!q||!Array.isArray(q.choices)||q.choices.length<2||q.kind==='ineq'||qPic(q))return false;
   const dig=q.choices.filter(c=>/\d/.test(String(c))).length,nums=(String(q.stem||'').match(/\d+(?:[.,]\d+)*/g)||[]).length;
   return dig>=Math.ceil(q.choices.length*.75)&&nums>=2;
 }
+/* ข้อความคณิต: {ตัวเศษ}/{ตัวส่วน} และ 12/3 แสดงเป็นเศษส่วนซ้อนบนล่าง · **คำ** เป็นตัวหนา */
+function mathHTML(t){
+  const fr=(a,b)=>`<span class="fr"><span>${a.trim()}</span><span>${b.trim()}</span></span>`;
+  return esc(String(t||'')).replace(/\{([^{}]+)\}\s*\/\s*\{([^{}]+)\}/g,(_,a,b)=>fr(a,b)).replace(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/g,(_,a,b)=>fr(a,b));
+}
+const richHTML=t=>mathHTML(t).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+const strArr=a=>(Array.isArray(a)?a:[]).map(x=>String(x&&typeof x==='object'?x.text||x.say||'':x||'').trim()).filter(Boolean);
+function calcdBody(d){
+  let h='';const sc=d.short;
+  if(sc&&sc.formula){
+    h+=`<p class="ch4">⚡ ${esc(sc.name||'สูตรลัด')}</p><div class="fmla">${richHTML(sc.formula)}</div>`;
+    if(sc.given.length)h+=`<p class="lbl" style="margin:0">วิธีแทนค่าจากโจทย์</p><ul class="cpts">${sc.given.map(x=>`<li>${richHTML(x)}</li>`).join('')}</ul>`;
+    if(sc.calc.length)h+=`<div class="fmla">${sc.calc.map(x=>`<div>${richHTML(x)}</div>`).join('')}</div>`;
+    if(sc.when)h+=`<p class="cnote">ใช้ได้เมื่อ: ${richHTML(sc.when)}</p>`;
+    h+='<hr class="csep">';
+  }
+  const v=d.vis;
+  if(v&&v.steps.length){
+    h+=`<p class="ch4">🧩 ${esc(v.title||'วิธีคิดแบบเห็นภาพ')}</p>${v.intro?`<p style="margin:0">${richHTML(v.intro)}</p>`:''}
+      <ol class="csteps">${v.steps.map(s=>`<li><b>${richHTML(s.head)}</b>${s.points.length?`<ul class="cpts">${s.points.map(x=>`<li>${richHTML(x)}</li>`).join('')}</ul>`:''}${s.math?`<div class="cmath">${richHTML(s.math)}</div>`:''}${s.note?`<p class="cnote">${richHTML(s.note)}</p>`:''}</li>`).join('')}</ol>`;
+  }
+  if(d.check)h+=`<p style="margin:0">✅ <b>ตรวจคำตอบ:</b> ${richHTML(d.check)}</p>`;
+  if(d.tip)h+=`<p class="src" style="margin:0">💡 ${richHTML(d.tip)}</p>`;
+  return h;
+}
 function calcdHTML(q){
   if(!isCalcQ(q))return '';
   const k=qKey(q),d=CALCD[k];CALCD_Q[k]=q;
-  if(d)return `<div class="calcd"><p class="lbl">🧮 วิธีคิดแบบละเอียด ทีละขั้น</p><ol class="steps">${d.s.map(t=>typeof t==='string'?`<li>${esc(t)}</li>`:`<li>${esc(t.t||'')}${t.m?`<div class="cmath">${esc(t.m)}</div>`:''}</li>`).join('')}</ol>${d.tip?`<p class="src">💡 ${esc(d.tip)}</p>`:''}</div>`;
+  if(d)return `<div class="calcd">${calcdBody(d)}</div>`;
   if(!activeAI())return '';
   if(CALCD_BUSY[k]==='err')return `<div class="calcd" data-calcd="${esc(k)}"><p class="src">เตรียมวิธีคิดแบบละเอียดไม่สำเร็จ <button type="button" class="ghost" data-calcretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;
   setTimeout(()=>calcdLoad(k),0);
-  return `<div class="calcd" data-calcd="${esc(k)}"><p class="src"><span class="spin sm" aria-hidden="true"></span> AI กำลังเขียนวิธีคิดแบบละเอียดทีละขั้น…</p></div>`;
+  return `<div class="calcd" data-calcd="${esc(k)}"><p class="src"><span class="spin sm" aria-hidden="true"></span> AI กำลังเขียนสูตรลัดและวิธีคิดแบบละเอียด…</p></div>`;
 }
 async function calcdLoad(k){
   const q=CALCD_Q[k];if(!q||CALCD[k]||CALCD_BUSY[k]===1)return;CALCD_BUSY[k]=1;
   const old=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).filter(Boolean);
-  const prompt=`อธิบายวิธีคิดข้อสอบคำนวณข้อนี้ ให้คนที่ไม่เก่งคณิตศาสตร์เลยอ่านแล้วทำตามได้
+  const prompt=`เขียนเฉลยข้อสอบคำนวณข้อนี้ สำหรับคนที่ไม่เก่งคณิตศาสตร์เลย และต้องการทำให้ทันเวลาสอบ
 โจทย์: ${q.stem}
 ตัวเลือก: ${q.choices.map((c,i)=>`${TH[i]}. ${c}`).join('  ')}
 คำตอบที่ถูก: ${TH[q.answer]}. ${q.choices[q.answer]} (คำตอบนี้ถูกต้องแล้ว ห้ามเปลี่ยน)
 ${old.length?`เฉลยเดิมแบบย่อ: ${old.join(' / ')}\n`:''}
-เขียนเป็นขั้นตอน แต่ละขั้นมี say = คำอธิบายภาษาง่าย 1–2 ประโยค และ math = บรรทัดคำนวณแบบคณิตศาสตร์ของขั้นนั้น (ขั้นที่ไม่มีการคำนวณให้ math เป็นค่าว่าง) เรียงตามนี้:
-1. โจทย์ให้อะไรมาบ้าง และถามหาอะไร (เล่าด้วยภาษาง่ายๆ)
-2. ใช้สูตรหรือหลักอะไร และทำไมถึงใช้ (ถ้ามีศัพท์ เช่น ร้อยละ ดอกเบี้ย อัตราส่วน ให้อธิบายความหมายสั้นๆ)
-3. แทนตัวเลขลงในสูตร
-4. คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณ หาร เศษส่วน ทศนิยม ร้อยละ ให้แตกการคิดให้เห็น เช่น math: 25 × 12 = (25 × 10) + (25 × 2) = 250 + 50 = 300 หรือ math: 1/20 + 1/30 = 3/60 + 2/60 = 5/60 = 1/12
-5. ได้คำตอบเท่าไร ตรงกับตัวเลือกข้อไหน
-6. วิธีตรวจคำตอบแบบง่าย
-กติกา: math เขียนแบบสมการคณิตศาสตร์ ใช้ × ÷ + − = เศษส่วนเขียน a/b ร้อยละเขียน % ห้ามเขียนตัวเลขเป็นคำพูด (เช่น "1 ส่วน 20" ให้เขียน 1/20) ไม่ใช้ * ไม่ใช้ markdown ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
-tip คือเคล็ดลับจำหรือทางลัดสำหรับโจทย์แนวนี้ 1 ประโยค
-ตอบเป็น JSON เท่านั้น: {"steps":[{"say":"คำอธิบาย","math":"บรรทัดคำนวณ"}],"tip":"เคล็ดลับ"}`;
+เขียน 2 ส่วน:
+ส่วนที่ 1 short = สูตรลัดหรือวิธีลัดที่ใช้กับโจทย์แนวนี้ได้ทุกข้อ เพื่อทำให้เร็วในห้องสอบ
+- name ชื่อสูตร เช่น "สูตรลัดอายุลูก (ปัจจุบัน)"
+- formula สูตรเขียนเป็นคำ เช่น อายุลูกปัจจุบัน = {จำนวนปีที่ย้อนไป × (เท่าในอดีต − 1)}/{เท่าในอดีต − เท่าในปัจจุบัน}
+- given รายการค่าที่ดึงจากโจทย์ เช่น "จำนวนปีที่ย้อนไป = 12"
+- calc บรรทัดแทนค่าและคิดเลขทีละบรรทัดจนได้คำตอบ เช่น "อายุลูก = {12 × (6 − 1)}/{6 − 3}" "= {12 × 5}/{3}" "= 60/3 = **20 ปี**"
+- when ใช้สูตรนี้ได้เมื่อไร 1 ประโยค
+- ต้องแทนค่าแล้วได้คำตอบตรงกับคำตอบที่ถูกจริง ตรวจซ้ำก่อนส่ง ถ้าโจทย์แนวนี้ไม่มีสูตรลัดที่ถูกต้อง ให้ short เป็น null
+ส่วนที่ 2 vis = วิธีคิดแบบเห็นภาพ ไม่ต้องใช้ตัวแปร x (เช่น มองเป็น "ช่อง" หรือ "ส่วน" วาดในใจ เทียบสัดส่วน นับทีละขั้น)
+- title เช่น "วิธีคิดแบบเห็นภาพ (ไม่ต้องใช้สูตร ไม่ต้องใช้ตัวแปร x)"
+- intro 1 ประโยค บอกว่าจะมองโจทย์เป็นอะไร
+- steps 3–6 ขั้น แต่ละขั้นมี head = หัวข้อขั้น (เช่น "มองภาพปัจจุบัน: พ่ออายุเป็น 3 เท่าของลูก"), points = รายการย่อย 1–3 ข้อ, math = บรรทัดคำนวณของขั้นนั้น (ไม่มีให้ว่าง), note = ข้อสังเกตที่ทำให้เข้าใจว่าทำไม (ไม่มีให้ว่าง)
+- คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณหารเลขหลายหลักให้แตกให้เห็น
+check = วิธีตรวจคำตอบ 1–2 ประโยค · tip = เคล็ดลับจำสำหรับโจทย์แนวนี้ 1 ประโยค
+รูปแบบเลข: ใช้ × ÷ + − = เศษส่วนเขียน {ตัวเศษ}/{ตัวส่วน} หรือ 60/3 ร้อยละเขียน % คำสำคัญหรือคำตอบสุดท้ายครอบด้วย **คำ** ได้ ห้ามเขียนตัวเลขเป็นคำพูด (เช่น "1 ส่วน 20") ไม่ใช้ * เป็นเครื่องหมายคูณ ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
+ตอบเป็น JSON เท่านั้น: {"short":{"name":"","formula":"","given":[""],"calc":[""],"when":""},"vis":{"title":"","intro":"","steps":[{"head":"","points":[""],"math":"","note":""}]},"check":"","tip":""}`;
   try{
-    const r=await aiJSON(prompt);
+    const r=await aiJSON(prompt)||{};
     const clean=v=>String(v||'').replace(/^\s*(ขั้นที่\s*)?\d+[.)]\s*/,'').trim();
-    const s=(Array.isArray(r&&r.steps)?r.steps:[]).map(x=>x&&typeof x==='object'?{t:clean(x.say||x.text),m:String(x.math||'').replace(/\*/g,'×').trim()}:{t:clean(x),m:''}).filter(x=>x.t||x.m).slice(0,16);
-    if(s.length<2)throw{code:'ai_bad_out'};
-    CALCD[k]={s,tip:String(r.tip||'').trim().slice(0,240),at:Date.now()};
+    const s0=r.short&&typeof r.short==='object'?r.short:null,v0=r.vis&&typeof r.vis==='object'?r.vis:{};
+    const short=s0&&String(s0.formula||'').trim()?{name:String(s0.name||'').trim(),formula:String(s0.formula).trim(),given:strArr(s0.given),calc:strArr(s0.calc),when:String(s0.when||'').trim()}:null;
+    const steps=(Array.isArray(v0.steps)?v0.steps:[]).map(x=>x&&typeof x==='object'?{head:clean(x.head||x.say||x.text),points:strArr(x.points),math:String(x.math||'').trim(),note:String(x.note||'').trim()}:{head:clean(x),points:[],math:'',note:''}).filter(x=>x.head||x.math).slice(0,10);
+    if(!steps.length&&!short)throw{code:'ai_bad_out'};
+    CALCD[k]={short,vis:{title:String(v0.title||'').trim(),intro:String(v0.intro||'').trim(),steps},check:String(r.check||'').trim(),tip:String(r.tip||'').trim().slice(0,240),at:Date.now()};
     const ks=Object.keys(CALCD);if(ks.length>400)ks.sort((a,b)=>CALCD[a].at-CALCD[b].at).slice(0,ks.length-400).forEach(x=>delete CALCD[x]);
     try{localStorage.setItem(CALCD_KEY,JSON.stringify(CALCD))}catch(e){}
     CALCD_BUSY[k]=0;

@@ -460,6 +460,24 @@ async function syncDisown(doc){
   doc.qBy='';doc.qAt=0;try{await saveDoc(doc)}catch(e){}
   if(syncOk())try{const f=await fb();await f.fs.updateDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)),{qBy:'',qAt:0,updatedAt:f.fs.serverTimestamp()})}catch(e){}
 }
+/* ไฟล์ที่เครื่องนี้เห็นว่า "พร้อมใช้แต่บัตร 0 ใบ": อีกเครื่องอาจย่อยใหม่เสร็จไปแล้ว (บัตรอยู่บนคลาวด์ แต่เครื่องนี้ยังไม่ได้โหลด)
+   ถ้าคลาวด์มีบัตร: รับผลจากคลาวด์ โหลดบัตรมา แล้วคืน true (ไม่ต้องย่อยซ้ำ) */
+const cloudHasCards=m=>(+m.cardsParts||0)>0||!!(m.counts&&+m.counts.cards>0);
+async function syncAdoptCloudCards(doc,m){
+  if(!syncOk()||!doc||doc.central)return false;
+  try{
+    if(!m){const f=await fb(),s=await f.fs.getDoc(f.fs.doc(f.db,'users',ME.uid,'docs',syncKey(doc)));m=s.exists()?s.data():null}
+    if(!m||m.deleted||!cloudHasCards(m))return false;
+    if(m.leaseBy&&m.leaseBy!==syncDevice()&&(Date.now()-(+m.leaseAt||0)<SYNC_LEASE_MS))return false;   /* อีกเครื่องกำลังย่อยอยู่ บัตรยังไม่ครบ */
+    Object.assign(doc,{stage:'ready',reprocess:false,fill:false,audit:false,err:'',warn:'',prog:'',doneAt:+m.doneAt||Date.now(),cardsParts:+m.cardsParts||0,cardsRemote:true,cardCount:+((m.counts&&m.counts.cards)||0),
+      cardsPS:Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[],cardsPSGot:[]});
+    await saveDoc(doc);
+    try{await syncHydrate(doc,{cards:true})}catch(e){}
+    /* บนคลาวด์ถูกเขียนเป็นกำลังย่อยค้างไว้: แก้กลับเป็นพร้อมใช้ เครื่องอื่นจะได้ไม่หยิบไปย่อยซ้ำ */
+    if(m.stage!=='ready'&&CARDS.some(c=>c.docId===doc.id))try{await syncPushMeta(doc)}catch(e){}
+    return true;
+  }catch(e){return false}
+}
 async function syncClaim(doc){
   if(!syncOk()||!doc||doc.central||!syncMine(doc))return{ok:true};
   const f=await fb(),key=syncKey(doc);if(!key)return{ok:true};
@@ -471,6 +489,8 @@ async function syncClaim(doc){
       /* เสร็จบนคลาวด์หลังจากสั่งงานนี้แล้ว (อีกเครื่องรับช่วงทำจนจบ) = ไม่ต้องทำซ้ำ */
       if(d.stage==='ready'&&(!doc.reprocess||(+d.doneAt||0)>(+doc.reqAt||0)))return{ok:false,ready:true};
       if(d.leaseBy&&d.leaseBy!==syncDevice()&&(Date.now()-(+d.leaseAt||0)<SYNC_LEASE_MS))return{ok:false,lease:true};
+      /* งานกู้ไฟล์บัตร 0 ใบ แต่บนคลาวด์มีบัตรแล้ว (อีกเครื่องกู้เสร็จก่อน · อีกเครื่องอาจเขียน stage ทับเป็น digest ไปแล้ว จึงดูที่บัตร) */
+      if(doc.zeroRetry&&cloudHasCards(d))return{ok:false,adopt:true,meta:d};
       /* เครื่องอื่นจองไว้ในคิวและยังเปิดอยู่: ไม่แย่ง (ยกเว้นผู้ใช้กดสั่งทำที่เครื่องนี้เอง) */
       if(!doc.takeOver&&d.stage!=='ready'&&d.qBy&&d.qBy!==syncDevice()&&devAlive(d.qBy))return{ok:false,owned:true,by:d.qBy};
       tx.set(ref,{status:'processing',leaseBy:syncDevice(),leaseAt:Date.now(),qBy:syncDevice(),qAt:Date.now(),localId:doc.id,updatedAt:f.fs.serverTimestamp()},{merge:true});

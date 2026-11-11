@@ -713,6 +713,7 @@ async function processDoc(doc){
   let leaseTimer=null;
   if(typeof syncClaim==='function'){
     const cl=await Promise.race([syncClaim(doc),new Promise(r=>setTimeout(()=>r({ok:true}),4000))]);
+    if(!cl.ok&&cl.adopt){await syncAdoptCloudCards(doc,cl.meta);renderKB();return}
     if(!cl.ok&&cl.owned){doc.prog='';await saveDoc(doc);renderKB();return}   /* เครื่องอื่นจองไว้: ข้าม ไม่ถือเป็นข้อผิดพลาด (หน้าคลังแสดงว่าเครื่องไหนทำ) */
     if(!cl.ok){
       doc.err=cl.ready?'ไฟล์นี้ประมวลผลเสร็จบนอีกเครื่องแล้ว · กำลังโหลดผลลัพธ์':'กำลังประมวลผลที่เครื่องอื่น · รอสักครู่แล้วลองใหม่';
@@ -1545,6 +1546,8 @@ async function autoRetry(){
     if(activeAI()||localUp())for(const d of mine){
       if(d.stage!=='ready'||busy(d)||d.zeroRetry||d.dupOf||(+d.chars||0)<300||(+d.cardCount||0)>0||(+d.cardsParts||0)>0||d.cardsRemote)continue;
       if(CARDS.some(c=>c.docId===d.id)||sameInCentral(d)||(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d)))continue;
+      /* ถามคลาวด์ก่อน: อีกเครื่องอาจกู้ไฟล์นี้เสร็จแล้ว → ใช้บัตรจากคลาวด์ ไม่ย่อยซ้ำ */
+      if(typeof syncAdoptCloudCards==='function'&&await syncAdoptCloudCards(d))continue;
       Object.assign(d,{zeroRetry:now,stage:'digest',digDone:0,fill:false,audit:false,reprocess:true,reqAt:now,err:'',warn:''});
       await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);queueDoc(d.id);
     }

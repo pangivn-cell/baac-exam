@@ -126,7 +126,7 @@ function choicesHTML(q,pick,locked){
    1) สูตรลัด/วิธีลัด สำหรับทำให้ทันเวลาสอบ: สูตร → แทนค่า → คิดเลข
    2) วิธีคิดแบบเห็นภาพ ไม่ต้องใช้ตัวแปร x: มองเป็นช่อง/ส่วน ทีละขั้น มีข้อสังเกตกำกับ
    ทำครั้งเดียวต่อข้อ เก็บไว้ในเครื่อง (สูงสุด 400 ข้อ) เปิดเฉลยข้อเดิมอีกครั้งไม่ต้องรอ AI */
-const CALCD_KEY='exam-calc-detail2',CALCD_BUSY={},CALCD_Q={};
+const CALCD_KEY='exam-calc-detail2',CALCD_BUSY={},CALCD_Q={},CALCD_OPEN=new Set();
 let CALCD={};try{CALCD=JSON.parse(localStorage.getItem(CALCD_KEY)||'{}')||{};localStorage.removeItem('exam-calc-detail')}catch(e){CALCD={}}
 function isCalcQ(q){
   if(!q||!Array.isArray(q.choices)||q.choices.length<2||q.kind==='ineq'||qPic(q))return false;
@@ -140,28 +140,31 @@ function mathHTML(t){
 }
 const richHTML=t=>mathHTML(t).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
 const strArr=a=>(Array.isArray(a)?a:[]).map(x=>String(x&&typeof x==='object'?x.text||x.say||'':x||'').trim()).filter(Boolean);
-function calcdBody(d){
+function calcdBody(d,k){
   let h='';const sc=d.short;
   if(sc&&sc.formula){
     h+=`<p class="ch4">⚡ ${esc(sc.name||'สูตรลัด')}</p><div class="fmla"><div>${richHTML(sc.formula)}</div></div>`;
     if(sc.given.length)h+=`<p class="lbl" style="margin:0">วิธีแทนค่าจากโจทย์</p><ul class="cpts">${sc.given.map(x=>`<li>${richHTML(x)}</li>`).join('')}</ul>`;
     if(sc.calc.length)h+=`<div class="fmla">${sc.calc.map(x=>`<div>${richHTML(x)}</div>`).join('')}</div>`;
     if(sc.when)h+=`<p class="cnote">ใช้ได้เมื่อ: ${richHTML(sc.when)}</p>`;
-    h+='<hr class="csep">';
   }
-  const v=d.vis;
+  /* แสดงสูตรลัดก่อน วิธีคิดแบบอื่นซ่อนไว้ กดปุ่ม "อธิบายเพิ่มเติม" จึงแสดง (ไม่มีสูตรลัด = แสดงวิธีคิดเลย) */
+  const more=!!(sc&&sc.formula),open=!more||CALCD_OPEN.has(k);
+  let m='';const v=d.vis;
   if(v&&v.steps.length){
-    h+=`<p class="ch4">🧩 ${esc(v.title||'วิธีคิดแบบเห็นภาพ')}</p>${v.intro?`<p style="margin:0">${richHTML(v.intro)}</p>`:''}
+    m+=`<p class="ch4">🧩 ${esc(v.title||'วิธีคิดแบบเห็นภาพ')}</p>${v.intro?`<p style="margin:0">${richHTML(v.intro)}</p>`:''}
       <ol class="csteps">${v.steps.map(s=>`<li><b>${richHTML(s.head)}</b>${s.points.length?`<ul class="cpts">${s.points.map(x=>`<li>${richHTML(x)}</li>`).join('')}</ul>`:''}${s.math?`<div class="cmath">${richHTML(s.math)}</div>`:''}${s.note?`<p class="cnote">${richHTML(s.note)}</p>`:''}</li>`).join('')}</ol>`;
   }
-  if(d.check)h+=`<p style="margin:0">✅ <b>ตรวจคำตอบ:</b> ${richHTML(d.check)}</p>`;
+  if(m)h+=`<div class="calcmore" data-cmore="${esc(k)}"${open?'':' hidden'}>${more?'<hr class="csep">':''}${m}</div>`;
+  /* ตรวจคำตอบ: เข้าใจง่ายที่สุด แสดงตั้งแต่แรกเสมอ (ไม่ซ่อนไว้ใต้ อธิบายเพิ่มเติม) */
+  if(d.check)h+=`<p class="ccheck">✅ <b>ตรวจคำตอบ:</b> ${richHTML(d.check)}</p>`;
   if(d.tip)h+=`<p class="src" style="margin:0">💡 ${richHTML(d.tip)}</p>`;
   return h;
 }
 function calcdHTML(q){
   if(!isCalcQ(q))return '';
   const k=qKey(q),d=CALCD[k];CALCD_Q[k]=q;
-  if(d)return `<div class="calcd">${calcdBody(d)}</div>`;
+  if(d)return `<div class="calcd">${calcdBody(d,k)}</div>`;
   if(!activeAI())return '';
   if(CALCD_BUSY[k]==='err')return `<div class="calcd" data-calcd="${esc(k)}"><p class="src">เตรียมวิธีคิดแบบละเอียดไม่สำเร็จ <button type="button" class="ghost" data-calcretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;
   setTimeout(()=>calcdLoad(k),0);
@@ -191,11 +194,12 @@ ${old.length?`เฉลยเดิมแบบย่อ: ${old.join(' / ')}\n`:
   ตัวอย่างแนวคิด (โจทย์พ่ออายุ 3 เท่าลูก เมื่อ 12 ปีก่อน 6 เท่า): ผลต่างตอนนี้ 2 ส่วน ตอนก่อน 5 ส่วนเล็ก ผลต่างต้องเท่ากัน จึงแบ่งให้ละเอียดเท่ากันที่ 10 ช่อง → ลูกตอนนี้ 5 ช่อง ตอนก่อน 2 ช่อง ต่างกัน 3 ช่อง = 12 ปี → 1 ช่อง = 4 ปี → ลูกอายุ 5 × 4 = 20 ปี
 - steps 4–6 ขั้น ขั้นสุดท้ายเป็นการสรุปคำตอบ แต่ละขั้นมี head = หัวข้อขั้น (เช่น "มองภาพปัจจุบัน: พ่ออายุเป็น 3 เท่าของลูก"), points = รายการย่อย 1–3 ข้อ, math = บรรทัดคำนวณของขั้นนั้น (ไม่มีให้ว่าง), note = ข้อสังเกตที่ทำให้เข้าใจว่าทำไม (ไม่มีให้ว่าง)
 - คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณหารเลขหลายหลักให้แตกให้เห็น
-check = วิธีตรวจคำตอบ 1–2 ประโยค · tip = เคล็ดลับจำสำหรับโจทย์แนวนี้ 1 ประโยค
+check = วิธีตรวจคำตอบ 1–2 ประโยค ใช้วิธีนำคำตอบไปแทนกลับในเงื่อนไขของโจทย์ทีละเงื่อนไขให้เห็นว่าเป็นจริง เขียนตัวเลขให้เห็นชัด · tip = เคล็ดลับจำสำหรับโจทย์แนวนี้ 1 ประโยค
 รูปแบบเลข: ใช้ × ÷ + − = เศษส่วนเขียน {ตัวเศษ}/{ตัวส่วน} หรือ 60/3 ร้อยละเขียน % คำสำคัญหรือคำตอบสุดท้ายครอบด้วย **คำ** ได้ ห้ามเขียนตัวเลขเป็นคำพูด (เช่น "1 ส่วน 20") ไม่ใช้ * เป็นเครื่องหมายคูณ ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
 ตอบเป็น JSON เท่านั้น: {"short":{"name":"","formula":"","given":[""],"calc":[""],"when":""},"vis":{"title":"","intro":"","steps":[{"head":"","points":[""],"math":"","note":""}]},"check":"","tip":""}`;
   try{
-    const r=await aiJSON(prompt)||{};
+    let hit=null;try{hit=await calcCentralGet(k)}catch(e){}   /* มีคนให้ AI เขียนข้อนี้ไว้แล้ว: ใช้จากคลังกลาง ไม่เสียโควตา AI */
+    const r=hit||await aiJSON(prompt)||{};
     const clean=v=>String(v||'').replace(/^\s*(ขั้นที่\s*)?\d+[.)]\s*/,'').trim();
     const s0=r.short&&typeof r.short==='object'?r.short:null,v0=r.vis&&typeof r.vis==='object'?r.vis:{};
     const short=s0&&String(s0.formula||'').trim()?{name:String(s0.name||'').trim(),formula:String(s0.formula).trim(),given:strArr(s0.given),calc:strArr(s0.calc),when:String(s0.when||'').trim()}:null;
@@ -204,9 +208,36 @@ check = วิธีตรวจคำตอบ 1–2 ประโยค · tip 
     CALCD[k]={short,vis:{title:String(v0.title||'').trim(),intro:String(v0.intro||'').trim(),steps},check:String(r.check||'').trim(),tip:String(r.tip||'').trim().slice(0,240),at:Date.now()};
     const ks=Object.keys(CALCD);if(ks.length>400)ks.sort((a,b)=>CALCD[a].at-CALCD[b].at).slice(0,ks.length-400).forEach(x=>delete CALCD[x]);
     try{localStorage.setItem(CALCD_KEY,JSON.stringify(CALCD))}catch(e){}
+    if(!hit)calcCentralPut(k,CALCD[k]);
     CALCD_BUSY[k]=0;
   }catch(e){CALCD_BUSY[k]='err'}
   document.querySelectorAll('[data-calcd]').forEach(el=>{if(el.dataset.calcd===k)el.outerHTML=calcdHTML(q)});
+}
+/* คลังกลางเฉลยละเอียด (Google Drive): ไฟล์ calcd_<shard>.json ในโฟลเดอร์ baac-data
+   อ่าน: ค้นรายชื่อไฟล์ด้วย API key (จำไว้ 15 นาที) แล้วดึงไฟล์ shard ที่ข้อนี้อยู่ · เขียน: ส่งผ่านตัวรับไฟล์ (Apps Script calcput) ข้อละครั้งเดียว */
+const CALCC={dir:'',idx:null,idxAt:0,sh:new Map()};
+const calcShard=k=>(parseInt(djb(k),36)%64).toString(36).padStart(2,'0');
+async function calcIdx(){
+  if(CALCC.idx&&Date.now()-CALCC.idxAt<15*60e3)return CALCC.idx;
+  if(typeof ME==='undefined'||!ME)return null;
+  try{if(typeof ensureSrcDirs==='function')await ensureSrcDirs()}catch(e){}
+  const d=typeof driveUp==='function'&&driveUp();if(!d||!d.id)return null;
+  const list=async q=>{const r=await fetch(`${DRIVE_API}?q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)&pageSize=200&key=${FB_CFG.apiKey}`);if(!r.ok)throw{code:'drive_list'};return (await r.json()).files||[]};
+  if(!CALCC.dir){const f=await list(`'${d.id}' in parents and name='baac-data' and trashed=false`);CALCC.dir=f[0]&&f[0].id||'';if(!CALCC.dir)return null}
+  const m={};for(const f of await list(`'${CALCC.dir}' in parents and name contains 'calcd_' and trashed=false`))m[f.name]={id:f.id,t:f.modifiedTime||''};
+  CALCC.idx=m;CALCC.idxAt=Date.now();return m;
+}
+async function calcCentralGet(k){
+  const idx=await calcIdx(),f=idx&&idx['calcd_'+calcShard(k)+'.json'];if(!f)return null;
+  const ck=f.id+'|'+f.t;let data=CALCC.sh.get(ck);
+  if(!data){const r=await fetch(`${DRIVE_API}/${f.id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}&v=${encodeURIComponent(f.t)}`);if(!r.ok)return null;
+    data=await r.json();CALCC.sh.set(ck,data);if(CALCC.sh.size>12)CALCC.sh.delete(CALCC.sh.keys().next().value)}
+  const it=data&&data.items&&data.items[k];return it&&typeof it==='object'?it:null;
+}
+async function calcCentralPut(k,d){
+  const up=typeof driveUp==='function'&&driveUp();if(!up||!up.up||typeof ME==='undefined'||!ME)return;
+  const {at,...val}=d;
+  try{const j=await upCall(up.up,{a:'calcput',idToken:await idTok(),shard:calcShard(k),key:k,val:JSON.stringify(val)});if(j&&j.ok)CALCC.idxAt=0}catch(e){}
 }
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-calcretry]');if(!b)return;const k=b.dataset.calcretry;CALCD_BUSY[k]=0;const el=b.closest('[data-calcd]');if(el&&CALCD_Q[k])el.outerHTML=calcdHTML(CALCD_Q[k])});
 function explainHTML(q,pick){
@@ -230,7 +261,7 @@ function askHTML(id,q,pick){
   const ok=pick===q.answer;
   return `<div class="askbox" id="ab-${id}" ${activeAI()?'':'hidden'}>
    <p class="lbl">สงสัยตรงไหน ถามแย้งได้เลย</p>
-   <div class="quick">${!ok&&pick!=null?`<button type="button" class="qk" data-q="ทำไมไม่ตอบว่า ${esc(q.choices[pick])}">ทำไมไม่ตอบว่า ${esc(q.choices[pick])}</button>`:''}<button type="button" class="qk" data-q="อธิบายข้อนี้ให้ง่ายกว่านี้อีก">อธิบายให้ง่ายกว่านี้</button><button type="button" class="qk" data-verify>⚖ ตรวจว่าเฉลยถูกไหม</button></div>
+   <div class="quick">${!ok&&pick!=null?`<button type="button" class="qk" data-q="ทำไมไม่ตอบว่า ${esc(q.choices[pick])}">ทำไมไม่ตอบว่า ${esc(q.choices[pick])}</button>`:''}<button type="button" class="qk" data-more>อธิบายเพิ่มเติม</button><button type="button" class="qk" data-verify>⚖ ตรวจว่าเฉลยถูกไหม</button></div>
    <div class="thread"></div>
    <form class="askform"><label for="ai-${id}" class="lbl">พิมพ์คำถามของคุณ</label><textarea id="ai-${id}" rows="2" placeholder="เช่น ถ้าคิดอีกแบบ ข้อนี้น่าจะตอบอีกข้อไม่ใช่เหรอ (Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่)"></textarea><div class="askrow"><label class="webt"${canWeb()?'':' hidden'}><input type="checkbox" class="webchk"> ค้นเว็บประกอบ</label><span class="asknote"></span><button type="button" class="stop" hidden>หยุด</button><button type="submit" class="send">ถาม</button></div></form>
   </div>`;
@@ -351,6 +382,14 @@ function wireAsk(id,q,pick){
   inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit()}};
   stop.onclick=()=>st.ctl&&st.ctl.abort();
   box.querySelectorAll('.qk[data-q]').forEach(k=>k.onclick=()=>ask(k.dataset.q));
+  /* อธิบายเพิ่มเติม: โจทย์คำนวณ = เปิดวิธีคิดแบบอื่นที่เตรียมไว้แล้ว (ไม่ต้องถาม AI ซ้ำ) · ข้ออื่น = ให้ AI อธิบายเพิ่มให้ง่ายขึ้น */
+  const mb=box.querySelector('[data-more]');
+  if(mb)mb.onclick=()=>{
+    if(isCalcQ(q)){const k=qKey(q),els=[...document.querySelectorAll('[data-cmore]')].filter(e=>e.dataset.cmore===k);
+      if(els.length){const show=els[0].hidden;els.forEach(e=>e.hidden=!show);if(show){CALCD_OPEN.add(k);els[0].scrollIntoView({block:'nearest',behavior:'smooth'})}else CALCD_OPEN.delete(k);return}
+      if(!CALCD[k]&&CALCD_BUSY[k]===1){CALCD_OPEN.add(k);toast('กำลังเตรียมวิธีคิด จะแสดงให้เมื่อเสร็จ');return}}
+    ask('อธิบายข้อนี้เพิ่มเติมให้ละเอียดและเข้าใจง่ายขึ้น ยกตัวอย่างประกอบ');
+  };
   const vb=box.querySelector('[data-verify]');if(vb){if(!isMC(q))vb.hidden=true;vb.onclick=()=>ask(`ตรวจว่าเฉลยข้อนี้ถูกไหม${pick!=null&&pick!==q.answer?` (คำตอบที่เลือก: ${q.choices[pick]})`:''}`,true)}
   paint();
 }

@@ -17,8 +17,10 @@ async function qgenCounts(force){
   /* อ่านคลังกลางทั้งชุด (หลายร้อยรายการ) → เก็บไว้ 1 ชั่วโมง (เดิม 10 นาที กินโควตาอ่านฟรีรายวัน) */
   if(!force&&QGEN.counts&&Date.now()-QGEN.countAt<60*60e3)return QGEN.counts;
   const pool={};
-  try{const f=await fb(),snap=await f.fs.getDocs(f.fs.collection(f.db,'qpool'));
-    for(const d of snap.docs){const x=d.data();pool[x.sub]=(pool[x.sub]||0)+((x.items||[]).length)}}catch(e){console.warn('qgen count',e&&e.code||e)}
+  try{const all=typeof poolAll==='function'?await poolAll():null;
+    if(all)for(const x of all)pool[x.sub]=(pool[x.sub]||0)+((x.items||[]).length);
+    else{const f=await fb(),snap=await f.fs.getDocs(f.fs.collection(f.db,'qpool'));
+      for(const d of snap.docs){const x=d.data();pool[x.sub]=(pool[x.sub]||0)+((x.items||[]).length)}}}catch(e){console.warn('qgen count',e&&e.code||e)}
   const out={};
   for(const s of SUBJ){if(s.id==='specall')continue;const real=bankFor(s,true).length;out[s.id]={real,pool:pool[s.id]||0,total:real+(pool[s.id]||0)}}
   QGEN.counts=out;QGEN.countAt=Date.now();return out;

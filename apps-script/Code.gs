@@ -6,6 +6,7 @@
  * 2. ตั้งค่าโครงการ (รูปเฟือง) → Script properties เพิ่ม
  *      FOLDER_ID         รหัสโฟลเดอร์ที่จะเก็บไฟล์ (ส่วนท้ายของลิงก์ .../folders/<รหัส>)
  *      FIREBASE_API_KEY  AIzaSyD5w5BpdC_26Vm8hKXvuy6TUGWHY74yHZo
+ *      ADMIN_UIDS        uid ของแอดมินที่เขียนไฟล์ข้อมูลกลาง (คลังโจทย์กลาง) ได้ คั่นด้วยจุลภาค
  * 3. ทำให้ใช้งานได้ → การทำให้ใช้งานได้รายการใหม่ → ประเภท เว็บแอป
  *      เรียกใช้ในฐานะ: ฉัน   ·   ผู้ที่มีสิทธิ์เข้าถึง: ทุกคน
  *    กดอนุญาตสิทธิ์ (ไดรฟ์ + เชื่อมต่อภายนอก) แล้วคัดลอก URL ของเว็บแอปไปวางในหน้า "ข้อมูลในคลังกลาง" ของเว็บ
@@ -16,6 +17,7 @@
  * - GET  ?a=file&id=&off=&t=  อ่านไฟล์ทีละ 8 MB เพื่อเปิดหน้าที่อ้างอิง (เฉพาะไฟล์ในโฟลเดอร์นี้) โฟลเดอร์จึงไม่ต้องแชร์สาธารณะ
  * - POST {a:'start',...}     ตรวจว่าผู้ส่งล็อกอินเว็บจริง ตรวจพื้นที่ว่าง แล้วเปิดการอัปโหลดแบบแบ่งส่ง
  * - POST {a:'chunk',...}     รับไฟล์ทีละส่วน (ไฟล์ใหญ่ส่งได้) ส่วนสุดท้ายได้รหัสไฟล์กลับไป
+ * - POST {a:'putjson',name,content,id?}  เขียนไฟล์ข้อมูล JSON ลงโฟลเดอร์ย่อย baac-data (แอดมินเท่านั้น)
  * ไฟล์ชื่อซ้ำในโฟลเดอร์จะไม่อัปโหลดซ้ำ ใช้ไฟล์เดิม
  */
 const MARGIN = 50 * 1024 * 1024; // เผื่อพื้นที่ไว้ 50 MB
@@ -70,6 +72,36 @@ function doGet(e) {
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
 }
 
+/* ---------- ไฟล์ข้อมูล JSON (คลังโจทย์กลาง ฯลฯ) เก็บในโฟลเดอร์ย่อย baac-data ----------
+   เขียนได้เฉพาะแอดมิน (Script property ADMIN_UIDS = uid ของแอดมิน คั่นด้วยจุลภาค)
+   ไฟล์แชร์แบบทุกคนที่มีลิงก์ดูได้ เว็บอ่านตรงจาก Drive API ไม่ผ่านสคริปต์นี้ (ไม่กินเพดานของ Apps Script)
+   เขียนทับไฟล์เดิม (รหัสไฟล์ไม่เปลี่ยน) ด้วย Drive upload API จึงเขียนไฟล์ใหญ่ได้ */
+function dataDir_(folder) {
+  const it = folder.getFoldersByName('baac-data');
+  if (it.hasNext()) return it.next();
+  const d = folder.createFolder('baac-data');
+  try { d.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (x) {}
+  return d;
+}
+function putJson_(uid, folder, b) {
+  const admins = String(props_().getProperty('ADMIN_UIDS') || '').split(/[\s,]+/).filter(String);
+  if (admins.indexOf(uid) < 0) return { ok: false, error: 'บัญชีนี้ไม่ใช่แอดมินของตัวรับไฟล์ (เพิ่ม uid ใน ADMIN_UIDS)' };
+  const name = String(b.name || '').replace(/[^\w.\-]/g, '').slice(0, 100);
+  if (!/\.json$/.test(name)) return { ok: false, error: 'ชื่อไฟล์ต้องลงท้าย .json' };
+  const content = String(b.content || '');
+  const dir = dataDir_(folder);
+  let file = null;
+  if (b.id) { try { const f = DriveApp.getFileById(String(b.id)); if (inFolder_(f) && !f.isTrashed()) file = f; } catch (x) {} }
+  if (!file) { const it = dir.getFilesByName(name); if (it.hasNext()) file = it.next(); }
+  if (!file) file = dir.createFile(name, '{}', 'application/json');
+  const r = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files/' + file.getId() + '?uploadType=media&supportsAllDrives=true', {
+    method: 'patch', contentType: 'application/json; charset=utf-8', payload: Utilities.newBlob(content, 'application/json').getBytes(),
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (r.getResponseCode() >= 300) return { ok: false, error: 'เขียนไฟล์ไม่สำเร็จ (' + r.getResponseCode() + '): ' + r.getContentText().slice(0, 200) };
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (x) {}
+  return { ok: true, id: file.getId(), name: name, size: content.length };
+}
+
 /* ผู้ส่งต้องล็อกอินเว็บ Baac_Exam (Firebase) — ตรวจ ID token กับ Google */
 function verify_(idToken) {
   if (!idToken) throw new Error('ต้องเข้าสู่ระบบก่อน');
@@ -93,8 +125,9 @@ function inFolder_(file) {
 function doPost(e) {
   try {
     const b = JSON.parse(e.postData.contents || '{}');
-    verify_(b.idToken);
+    const uid = verify_(b.idToken);
     const folderId = props_().getProperty('FOLDER_ID'), folder = DriveApp.getFolderById(folderId);
+    if (b.a === 'putjson') return out_(putJson_(uid, folder, b));
     if (b.a === 'start') {
       const name = String(b.name || 'file.pdf').slice(0, 200), size = +b.size || 0, sha = String(b.sha || '');
       /* ชื่อซ้ำ: ใช้ไฟล์เดิมเฉพาะเมื่อเป็นไฟล์เดียวกันจริง (sha ตรง) หรือผู้เรียกเวอร์ชันเก่าไม่ส่ง sha มา

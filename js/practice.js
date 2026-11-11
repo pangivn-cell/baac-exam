@@ -126,8 +126,8 @@ function choicesHTML(q,pick,locked){
    1) สูตรลัด/วิธีลัด สำหรับทำให้ทันเวลาสอบ: สูตร → แทนค่า → คิดเลข
    2) วิธีคิดแบบเห็นภาพ ไม่ต้องใช้ตัวแปร x: มองเป็นช่อง/ส่วน ทีละขั้น มีข้อสังเกตกำกับ
    ทำครั้งเดียวต่อข้อ เก็บไว้ในเครื่อง (สูงสุด 400 ข้อ) เปิดเฉลยข้อเดิมอีกครั้งไม่ต้องรอ AI */
-const CALCD_KEY='exam-calc-detail2',CALCD_BUSY={},CALCD_Q={},CALCD_OPEN=new Set();
-let CALCD={};try{CALCD=JSON.parse(localStorage.getItem(CALCD_KEY)||'{}')||{};localStorage.removeItem('exam-calc-detail')}catch(e){CALCD={}}
+const CALCD_KEY='exam-calc-detail3',CALCD_BUSY={},CALCD_Q={},CALCD_OPEN=new Set();
+let CALCD={};try{CALCD=JSON.parse(localStorage.getItem(CALCD_KEY)||'{}')||{};localStorage.removeItem('exam-calc-detail');localStorage.removeItem('exam-calc-detail2')}catch(e){CALCD={}}
 function isCalcQ(q){
   if(!q||!Array.isArray(q.choices)||q.choices.length<2||q.kind==='ineq'||qPic(q))return false;
   const dig=q.choices.filter(c=>/\d/.test(String(c))).length,nums=(String(q.stem||'').match(/\d+(?:[.,]\d+)*/g)||[]).length;
@@ -172,14 +172,26 @@ function calcdHTML(q){
   setTimeout(()=>calcdLoad(k),0);
   return `<div class="calcd" data-calcd="${esc(k)}"><p class="src"><span class="spin sm" aria-hidden="true"></span> AI กำลังเขียนสูตรลัดและวิธีคิดแบบละเอียด…</p></div>`;
 }
+/* ตัวเลือกที่เป็นสมการ (เช่น 1+2+7 = 10): คำนวณค่าจริงเองในเครื่อง ส่งให้ AI เป็นข้อเท็จจริง กัน AI บวกเลขผิด
+   ประเมินเฉพาะข้อความที่มีแต่ตัวเลขและเครื่องหมาย + − × ÷ ( ) เท่านั้น */
+function exprFacts(q){
+  const out=[];
+  (q.choices||[]).forEach((c,i)=>{const m=String(c).match(/^\s*([\d\s+\-−×÷*/x.,()]+?)\s*=\s*(-?[\d.,]+)\s*$/);if(!m)return;
+    const e=m[1].replace(/−/g,'-').replace(/[×x]/g,'*').replace(/÷/g,'/').replace(/,/g,'');if(!/^[\d\s+\-*/.()]+$/.test(e))return;
+    let v;try{v=Function('return ('+e+')')()}catch(x){return}if(typeof v!=='number'||!isFinite(v))return;
+    const want=+m[2].replace(/,/g,'');v=Math.round(v*1e6)/1e6;out.push({i,v,want,ok:Math.abs(v-want)<1e-9})});
+  return out.length>=2?out:null;
+}
 async function calcdLoad(k){
   const q=CALCD_Q[k];if(!q||CALCD[k]||CALCD_BUSY[k]===1)return;CALCD_BUSY[k]=1;
-  const old=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).filter(Boolean);
+  const old=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).filter(Boolean),facts=exprFacts(q);
+  /* ตัวเลขที่เฉลยที่ดีต้องมี: ค่าจริงของข้อที่เป็นคำตอบ (โจทย์สมการ) หรือตัวเลขในตัวเลือกที่ถูก */
+  const fa=facts&&facts.find(f=>f.i===q.answer),need=fa?[String(fa.v)]:(String(q.choices[q.answer]).match(/\d+(?:\.\d+)?/g)||[]).slice(0,2);
   const prompt=`เขียนเฉลยข้อสอบคำนวณข้อนี้ สำหรับคนที่ไม่เก่งคณิตศาสตร์เลย และต้องการทำให้ทันเวลาสอบ
 โจทย์: ${q.stem}
 ตัวเลือก: ${q.choices.map((c,i)=>`${TH[i]}. ${c}`).join('  ')}
 คำตอบที่ถูก: ${TH[q.answer]}. ${q.choices[q.answer]} (คำตอบนี้ถูกต้องแล้ว ห้ามเปลี่ยน)
-${old.length?`เฉลยเดิมแบบย่อ: ${old.join(' / ')}\n`:''}
+${old.length?`เฉลยเดิมแบบย่อ: ${old.join(' / ')}\n`:''}${facts?`ค่าจริงของแต่ละตัวเลือก (ระบบคำนวณแล้ว ถูกต้องแน่นอน ใช้ตัวเลขนี้): ${facts.map(f=>`${TH[f.i]}. ได้ ${f.v} ${f.ok?'ตรงกับที่เขียน ✓':`แต่เขียนไว้ ${f.want} ✗`}`).join(' · ')}\n`:''}
 ${/ไม่ถูกต้อง|ไม่ใช่|ผิด|ยกเว้น/.test(q.stem)?`โจทย์นี้ถามหาข้อที่ "ไม่ถูกต้อง/ไม่ใช่" คำตอบที่ถูกคือข้อที่ผิด ต้องแสดงว่าข้อนั้นผิดอย่างไร (ค่าจริงคือเท่าไร) และตรวจข้ออื่นให้เห็นว่าถูก
 `:''}เทคนิคคิดเร็วที่ควรใช้ถ้าเข้ากับโจทย์: บวกเลขหลายตัว → จับคู่ให้ได้ 10 (1+9, 6+4, 3+7) เลขซ้ำใช้คูณ (7+7+7 = 7 × 3) · เลขเรียงกัน → (ต้น + ปลาย) × จำนวนตัว ÷ 2 จำนวนตัว = ปลาย − ต้น + 1 · ร้อยละ → แตกเป็น 10% 5% 1% · คูณ 5 = คูณ 10 แล้วหาร 2 · ตัดตัวเลือกด้วยหลักหน่วย/คู่คี่ก่อนคิดเต็ม
 เขียน 2 ส่วน:
@@ -198,12 +210,17 @@ ${/ไม่ถูกต้อง|ไม่ใช่|ผิด|ยกเว้�
   ตัวอย่างแนวคิด (โจทย์พ่ออายุ 3 เท่าลูก เมื่อ 12 ปีก่อน 6 เท่า): ผลต่างตอนนี้ 2 ส่วน ตอนก่อน 5 ส่วนเล็ก ผลต่างต้องเท่ากัน จึงแบ่งให้ละเอียดเท่ากันที่ 10 ช่อง → ลูกตอนนี้ 5 ช่อง ตอนก่อน 2 ช่อง ต่างกัน 3 ช่อง = 12 ปี → 1 ช่อง = 4 ปี → ลูกอายุ 5 × 4 = 20 ปี
 - steps 4–6 ขั้น ขั้นสุดท้ายเป็นการสรุปคำตอบ แต่ละขั้นมี head = หัวข้อขั้น (เช่น "มองภาพปัจจุบัน: พ่ออายุเป็น 3 เท่าของลูก"), points = รายการย่อย 1–3 ข้อ, math = บรรทัดคำนวณของขั้นนั้น (ไม่มีให้ว่าง), note = ข้อสังเกตที่ทำให้เข้าใจว่าทำไม (ไม่มีให้ว่าง)
 - คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณหารเลขหลายหลักให้แตกให้เห็น
+สำคัญ: calc, math และ check ต้องคิดด้วยตัวเลขจริงของโจทย์ข้อนี้จนเห็นผลลัพธ์จริง ห้ามเขียนเป็นขั้นตอนทั่วไปที่ไม่มีตัวเลข
 check = วิธีตรวจคำตอบ 1–2 ประโยค ใช้วิธีนำคำตอบไปแทนกลับในเงื่อนไขของโจทย์ทีละเงื่อนไขให้เห็นว่าเป็นจริง เขียนตัวเลขให้เห็นชัด · tip = เคล็ดลับจำสำหรับโจทย์แนวนี้ 1 ประโยค
 รูปแบบเลข: ใช้ × ÷ + − = เศษส่วนเขียน {ตัวเศษ}/{ตัวส่วน} หรือ 60/3 ร้อยละเขียน % คำสำคัญหรือคำตอบสุดท้ายครอบด้วย **คำ** ได้ ห้ามเขียนตัวเลขเป็นคำพูด (เช่น "1 ส่วน 20") ไม่ใช้ * เป็นเครื่องหมายคูณ ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
 ตอบเป็น JSON เท่านั้น: {"short":{"name":"","formula":"","given":[""],"calc":[""],"when":""},"vis":{"title":"","intro":"","steps":[{"head":"","points":[""],"math":"","note":""}]},"check":"","tip":""}`;
   try{
-    let hit=null;try{hit=await calcCentralGet(k)}catch(e){}   /* มีคนให้ AI เขียนข้อนี้ไว้แล้ว: ใช้จากคลังกลาง ไม่เสียโควตา AI */
-    const r=hit||await aiJSON(prompt)||{};
+    let hit=null;try{hit=await calcCentralGet('v3'+k)}catch(e){}   /* มีคนให้ AI เขียนข้อนี้ไว้แล้ว: ใช้จากคลังกลาง ไม่เสียโควตา AI */
+    let r=hit;
+    /* AI ตอบเป็นขั้นตอนลอยๆ ไม่มีตัวเลขจริงของข้อนี้ (เช่น ไม่มีผลรวมจริง) → ขอใหม่ 1 ครั้ง */
+    const real=o=>!need.length||need.some(n=>JSON.stringify([o&&o.short,o&&o.vis,o&&o.check]).includes(n));
+    for(let t=0;!r&&t<2;t++){const x=await aiJSON(t?prompt+'\nคำตอบรอบก่อนไม่มีตัวเลขจริง ต้องคิดเลขจริงของข้อนี้ให้เห็นทุกบรรทัด':prompt)||{};if(real(x)||t)r=x}
+    r=r||{};
     const clean=v=>String(v||'').replace(/^\s*(ขั้นที่\s*)?\d+[.)]\s*/,'').trim();
     const s0=r.short&&typeof r.short==='object'?r.short:null,v0=r.vis&&typeof r.vis==='object'?r.vis:{};
     const short=s0&&String(s0.formula||'').trim()?{name:String(s0.name||'').trim(),formula:String(s0.formula).trim(),given:strArr(s0.given),calc:strArr(s0.calc),when:String(s0.when||'').trim()}:null;
@@ -212,7 +229,7 @@ check = วิธีตรวจคำตอบ 1–2 ประโยค ใช�
     CALCD[k]={short,vis:{title:String(v0.title||'').trim(),intro:String(v0.intro||'').trim(),steps},check:String(r.check||'').trim(),tip:String(r.tip||'').trim().slice(0,240),at:Date.now()};
     const ks=Object.keys(CALCD);if(ks.length>400)ks.sort((a,b)=>CALCD[a].at-CALCD[b].at).slice(0,ks.length-400).forEach(x=>delete CALCD[x]);
     try{localStorage.setItem(CALCD_KEY,JSON.stringify(CALCD))}catch(e){}
-    if(!hit)calcCentralPut(k,CALCD[k]);
+    if(!hit)calcCentralPut('v3'+k,CALCD[k]);
     CALCD_BUSY[k]=0;
   }catch(e){CALCD_BUSY[k]='err'}
   document.querySelectorAll('[data-calcd]').forEach(el=>{if(el.dataset.calcd===k)el.outerHTML=calcdHTML(q)});

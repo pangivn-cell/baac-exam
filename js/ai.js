@@ -550,6 +550,8 @@ function renderAISetPill(){const a=activeAI(),p=document.getElementById('aipill'
 function aiChanged(){document.querySelectorAll('.askbox').forEach(b=>b.hidden=!activeAI());if(typeof VIEW!=='undefined'&&VIEW==='mock'&&!M&&!G)renderMock();if(R&&(R.status==='needai'||R.status==='idle')){R.status=activeAI()?'idle':'needai';render()}}
 onAppReady(async()=>{try{if(window.claude&&window.claude.use){SAMPLE=await window.claude.use('sample')}}catch(e){}aiReady=true;renderAISet();aiChanged()});
 
+/* โจทย์คำนวณ: เฉลยต้องละเอียดพอให้คนพื้นฐานคณิตอ่อนทำตามได้ (ใช้ในทุกพรอมป์สร้างโจทย์) */
+const CALC_RULE='- ข้อที่ต้องคำนวณ (ตัวเลข ร้อยละ ดอกเบี้ย อัตราส่วน อนุกรม ฯลฯ) ไม่ต้องจำกัด 2–4 ขั้น ให้เขียนวิธีทำแบบละเอียดสำหรับคนที่ไม่เก่งคณิตเลย 5–10 ขั้น: โจทย์ให้อะไรและถามอะไร → ใช้สูตร/หลักอะไร → แทนค่า → คิดเลขทีละขั้นไม่ข้าม (คูณหารเลขหลายหลักให้แตกให้ดู เช่น 25 × 12 = 250 + 50 = 300) → ได้คำตอบตรงกับตัวเลือกไหน → วิธีตรวจคำตอบง่ายๆ ใช้ × ÷ ไม่ใช้ * /';
 function genPrompt(s,level,n){
   const weak=(P.weak[s.id]||[]).slice(-5);
   return `สร้างข้อสอบใหม่ ${n} ข้อ วิชา "${s.name}" (${s.desc}) แนวข้อสอบความรู้ความสามารถทั่วไป ก.พ. และสอบราชการไทย
@@ -563,6 +565,7 @@ ${CHOICE_RULE}
 - คิดคำตอบให้ถูกต้องแน่นอน ตรวจคำนวณซ้ำก่อนส่ง ห้ามมีข้อที่กำกวม
 - ${s.id==='eng'?'โจทย์และตัวเลือกเป็นภาษาอังกฤษ ส่วนเฉลยอธิบายเป็นภาษาไทย':'ใช้ภาษาไทยทั้งหมด'}
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย ห้ามข้ามขั้น แต่ละขั้นบอกที่มา (from) เช่น "โจทย์บอก" หรือ "คูณ 2 ทั้งสองข้าง"
+${CALC_RULE}
 - ห้ามใช้ markdown ในข้อความ ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;

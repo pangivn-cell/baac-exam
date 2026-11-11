@@ -608,3 +608,4 @@ body.side-off .side{display:none}
 
 .qgrow.none{outline:1px solid var(--bad)}.ghost.danger{color:var(--bad);border-color:var(--bad)}
 
+.calcd{border:1px solid var(--line,#ccc3);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}.calcd .lbl{margin:0}.calcd ol.steps li{line-height:1.6}

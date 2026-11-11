@@ -121,6 +121,55 @@ function choicesHTML(q,pick,locked){
     let cls='ch';if(locked){if(j===q.answer)cls+=' right';else if(j===pick)cls+=' wrong'}else if(j===pick)cls+=' sel';
     return `<button class="${cls}" data-j="${j}" ${locked?'disabled':''} aria-pressed="${j===pick}">${pics?`<b>${TH[j]}</b><span class="chsvg">${q.chSvg[j]}</span>`:mc?`<b>${TH[j]}</b><span>${figText(t,'qfig chfig')}</span>`:esc(t)}</button>`}).join('')}</div>`;
 }
+/* ---------- วิธีคิดแบบละเอียด (โจทย์คำนวณ) ----------
+   เฉลยเดิมของโจทย์คำนวณมักสั้น 2–4 ขั้น คนพื้นฐานคณิตอ่อนตามไม่ทัน → ให้ AI เขียนวิธีทำทีละขั้นแบบไม่ข้ามขั้น (ยึดคำตอบเดิม ห้ามเปลี่ยน)
+   ทำครั้งเดียวต่อข้อ เก็บไว้ในเครื่อง (สูงสุด 400 ข้อ) เปิดเฉลยข้อเดิมอีกครั้งไม่ต้องรอ AI */
+const CALCD_KEY='exam-calc-detail',CALCD_BUSY={},CALCD_Q={};
+let CALCD={};try{CALCD=JSON.parse(localStorage.getItem(CALCD_KEY)||'{}')||{}}catch(e){CALCD={}}
+function isCalcQ(q){
+  if(!q||!Array.isArray(q.choices)||q.choices.length<2||q.kind==='ineq'||qPic(q))return false;
+  const dig=q.choices.filter(c=>/\d/.test(String(c))).length,nums=(String(q.stem||'').match(/\d+(?:[.,]\d+)*/g)||[]).length;
+  return dig>=Math.ceil(q.choices.length*.75)&&nums>=2;
+}
+function calcdHTML(q){
+  if(!isCalcQ(q))return '';
+  const k=qKey(q),d=CALCD[k];CALCD_Q[k]=q;
+  if(d)return `<div class="calcd"><p class="lbl">🧮 วิธีคิดแบบละเอียด ทีละขั้น</p><ol class="steps">${d.s.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>${d.tip?`<p class="src">💡 ${esc(d.tip)}</p>`:''}</div>`;
+  if(!activeAI())return '';
+  if(CALCD_BUSY[k]==='err')return `<div class="calcd" data-calcd="${esc(k)}"><p class="src">เตรียมวิธีคิดแบบละเอียดไม่สำเร็จ <button type="button" class="ghost" data-calcretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;
+  setTimeout(()=>calcdLoad(k),0);
+  return `<div class="calcd" data-calcd="${esc(k)}"><p class="src"><span class="spin sm" aria-hidden="true"></span> AI กำลังเขียนวิธีคิดแบบละเอียดทีละขั้น…</p></div>`;
+}
+async function calcdLoad(k){
+  const q=CALCD_Q[k];if(!q||CALCD[k]||CALCD_BUSY[k]===1)return;CALCD_BUSY[k]=1;
+  const old=(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x).filter(Boolean);
+  const prompt=`อธิบายวิธีคิดข้อสอบคำนวณข้อนี้ ให้คนที่ไม่เก่งคณิตศาสตร์เลยอ่านแล้วทำตามได้
+โจทย์: ${q.stem}
+ตัวเลือก: ${q.choices.map((c,i)=>`${TH[i]}. ${c}`).join('  ')}
+คำตอบที่ถูก: ${TH[q.answer]}. ${q.choices[q.answer]} (คำตอบนี้ถูกต้องแล้ว ห้ามเปลี่ยน)
+${old.length?`เฉลยเดิมแบบย่อ: ${old.join(' / ')}\n`:''}
+เขียนเป็นขั้นตอน ขั้นละ 1–2 ประโยค เรียงตามนี้:
+1. โจทย์ให้อะไรมาบ้าง และถามหาอะไร (เล่าด้วยภาษาง่ายๆ)
+2. ใช้สูตรหรือหลักอะไร และทำไมถึงใช้ (ถ้ามีศัพท์ เช่น ร้อยละ ดอกเบี้ย อัตราส่วน ให้อธิบายความหมายสั้นๆ)
+3. แทนตัวเลขลงในสูตร
+4. คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณ หาร เศษส่วน ทศนิยม ร้อยละ ให้แตกการคิดให้เห็น เช่น 25 × 12 = (25 × 10) + (25 × 2) = 250 + 50 = 300
+5. ได้คำตอบเท่าไร ตรงกับตัวเลือกข้อไหน
+6. วิธีตรวจคำตอบแบบง่าย
+กติกา: ใช้เครื่องหมาย × ÷ − + = ไม่ใช้ * / ไม่ใช้ markdown ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
+tip คือเคล็ดลับจำหรือทางลัดสำหรับโจทย์แนวนี้ 1 ประโยค
+ตอบเป็น JSON เท่านั้น: {"steps":["ขั้นที่ 1","ขั้นที่ 2"],"tip":"เคล็ดลับ"}`;
+  try{
+    const r=await aiJSON(prompt);
+    const s=(Array.isArray(r&&r.steps)?r.steps:[]).map(x=>String(x&&typeof x==='object'?x.text||'':x||'').replace(/^\s*(ขั้นที่\s*)?\d+[.)]\s*/,'').trim()).filter(Boolean).slice(0,16);
+    if(s.length<2)throw{code:'ai_bad_out'};
+    CALCD[k]={s,tip:String(r.tip||'').trim().slice(0,240),at:Date.now()};
+    const ks=Object.keys(CALCD);if(ks.length>400)ks.sort((a,b)=>CALCD[a].at-CALCD[b].at).slice(0,ks.length-400).forEach(x=>delete CALCD[x]);
+    try{localStorage.setItem(CALCD_KEY,JSON.stringify(CALCD))}catch(e){}
+    CALCD_BUSY[k]=0;
+  }catch(e){CALCD_BUSY[k]='err'}
+  document.querySelectorAll('[data-calcd]').forEach(el=>{if(el.dataset.calcd===k)el.outerHTML=calcdHTML(q)});
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-calcretry]');if(!b)return;const k=b.dataset.calcretry;CALCD_BUSY[k]=0;const el=b.closest('[data-calcd]');if(el&&CALCD_Q[k])el.outerHTML=calcdHTML(CALCD_Q[k])});
 function explainHTML(q,pick){
   const ok=pick===q.answer;
   let h=`<div class="explain"><p class="verdict ${ok?'good':'bad'}">${pick==null?'ไม่ได้ตอบ':ok?'ถูกต้อง':'ยังไม่ใช่'} · เฉลย ${isTFU(q)?'':TH[q.answer]+(q.chSvg?'':'. ')}${q.chSvg?'':esc(String(q.choices[q.answer]).replace(FIG_TOK,'').trim())}</p>`;
@@ -128,6 +177,7 @@ function explainHTML(q,pick){
   if(q.exSvg)h+=`<figure class="qsvgw">${q.exSvg}</figure>`;
   if(q.expViz)h+=renderViz(q.expViz);
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
+  h+=calcdHTML(q);
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
   if(q.fixed&&!q.fixed.balance)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
   if(q.cite)h+=`<p class="cite">${q.citeUrl?'📚 ศึกษาเพิ่มเติม':'📄 อ้างอิง'}: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}${/^https:\/\//.test(q.citeUrl||'')?pscLinkHTML(q.citeUrl):''}</p>`;
@@ -491,6 +541,7 @@ ${kb.text?'- ใช้ข้อมูลจากเอกสารอ้าง�
 - ทุกข้อมีตัวเลือก 4 ตัว ถูกเพียงตัวเดียว คละตำแหน่งคำตอบที่ถูก
 ${CHOICE_RULE} ห้ามมีข้อที่กำกวม
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย แต่ละขั้นบอกที่มา (from) เช่น ชื่อกฎหมายและมาตรา หรือชื่อหลักการ
+${CALC_RULE}
 - ใช้ภาษาไทย ศัพท์เฉพาะภาษาอังกฤษเขียนได้ ห้ามใช้ markdown ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"topic":"ชื่อหัวข้อตามที่กำหนด","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"ref":"","steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;

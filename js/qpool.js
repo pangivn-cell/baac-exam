@@ -23,7 +23,7 @@ async function poolAll(){
   try{
     const c=(await snapCfg()).qpool;if(!c||!c.id)return null;
     if(SNAP.id!==c.id+'|'+c.at){
-      const r=await fetch(`${DRIVE_API}/${c.id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}&v=${c.at}`);
+      const r=await driveMedia(c.id,c.at);
       if(!r.ok)throw{code:r.status};
       const j=await r.json();SNAP.docs=Array.isArray(j.docs)?j.docs:[];SNAP.id=c.id+'|'+c.at;SNAP.news=new Map();SNAP.newAt=+c.at-10*60e3;
     }

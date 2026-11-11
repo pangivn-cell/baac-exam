@@ -107,7 +107,7 @@ async function driveSaveJSON(name,obj,id){
   return j.id;
 }
 async function driveReadJSON(f){
-  const r=await fetch(`${DRIVE_API}/${f.id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}&v=${encodeURIComponent(f.h||'')}`);
+  const r=await driveMedia(f.id,f.h||'');
   if(!r.ok)throw{code:'drive_get',message:String(r.status)};
   return r.json();
 }

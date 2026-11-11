@@ -230,7 +230,7 @@ async function calcIdx(){
 async function calcCentralGet(k){
   const idx=await calcIdx(),f=idx&&idx['calcd_'+calcShard(k)+'.json'];if(!f)return null;
   const ck=f.id+'|'+f.t;let data=CALCC.sh.get(ck);
-  if(!data){const r=await fetch(`${DRIVE_API}/${f.id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}&v=${encodeURIComponent(f.t)}`);if(!r.ok)return null;
+  if(!data){const r=await driveMedia(f.id,f.t);if(!r.ok)return null;
     data=await r.json();CALCC.sh.set(ck,data);if(CALCC.sh.size>12)CALCC.sh.delete(CALCC.sh.keys().next().value)}
   const it=data&&data.items&&data.items[k];return it&&typeof it==='object'?it:null;
 }

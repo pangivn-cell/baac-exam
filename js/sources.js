@@ -125,9 +125,20 @@ async function prefetchSource(cardId){
     if(PDF_CACHE.has(s.id)||SRC_LOADING.size)return;await srcBytes(s);
   }catch(e){}
 }
+/* อ่านไฟล์จาก Drive ด้วย API key: ถ้า Google ปฏิเสธเป็นชุด (บล็อกเพราะมองว่าเป็นคำขออัตโนมัติ / 429 / 5xx)
+   พักการอ่าน Drive ทั้งหมด 10 นาที ให้ส่วนอื่นใช้ทางสำรอง ไม่ยิงซ้ำจนถูกบล็อกนานขึ้น */
+let DRIVE_RD_OFF=0;
+async function driveMedia(id,v){
+  if(DRIVE_RD_OFF>Date.now())throw{code:'drive_blocked'};
+  let r;
+  try{r=await fetch(`${DRIVE_API}/${id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}${v!=null&&v!==''?`&v=${encodeURIComponent(v)}`:''}`)}
+  catch(e){DRIVE_RD_OFF=Date.now()+10*60e3;console.warn('Drive อ่านไม่ได้ พัก 10 นาที',e);throw{code:'drive_blocked',message:String(e)}}
+  if(r.status===429||r.status>=500)DRIVE_RD_OFF=Date.now()+10*60e3;
+  return r;
+}
 async function driveBytes(id){
   if(PDF_CACHE.has(id))return PDF_CACHE.get(id);
-  const r=await fetch(`${DRIVE_API}/${id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}`);
+  const r=await driveMedia(id);
   if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw{code:j.error&&j.error.status||String(r.status),message:j.error&&j.error.message||''}}
   const buf=await r.arrayBuffer();if(PDF_CACHE.size>4)PDF_CACHE.delete(PDF_CACHE.keys().next().value);PDF_CACHE.set(id,buf);return buf;
 }

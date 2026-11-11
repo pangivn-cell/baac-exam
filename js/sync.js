@@ -351,9 +351,12 @@ async function syncPushMeta(doc){
   if(!doc.ownerUid){doc.ownerUid=ME.uid;try{await saveDoc(doc)}catch(e){}}
   const f=await fb(),key=syncKey(doc);if(!key)return;
   try{
-    await f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key),
-      {...syncMetaOf(doc),updatedAt:f.fs.serverTimestamp()},{merge:true});
-    doc.syncAt=Date.now();
+    /* เขียนรอยืนยันจากเซิร์ฟเวอร์ไม่เกิน 20 วินาที: ตอนโควตาเขียนเต็ม setDoc ค้างจนกว่าโควตากลับมา (คิวในเครื่องส่งเองทีหลัง)
+       เดิมรอค้าง ทำให้การส่งบัตร/ย่อยไฟล์ที่รอขั้นนี้หยุดทั้งหมด */
+    const w=f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key),{...syncMetaOf(doc),updatedAt:f.fs.serverTimestamp()},{merge:true});
+    const ok=await Promise.race([w.then(()=>true),new Promise(r=>setTimeout(()=>r(false),20000))]);
+    w.catch(e=>syErr(e));
+    if(ok)doc.syncAt=Date.now();
   }catch(e){syErr(e)}
 }
 async function syncPushPages(doc,force){

@@ -58,7 +58,7 @@ const hashStr=s=>{let h=5381;const t=String(s);for(let i=0;i<t.length;i++)h=((h<
 function syncStart(){
   if(!syncOk()){syncStop();return}
   if(SYNC.on)return;
-  SYNC.on=true;syncDevice();SYNC.err='';
+  SYNC.on=true;syncDevice();SYNC.err='';SYNC.fullAt=0;SYNC.meta=new Map();   /* เปิดใหม่/เปลี่ยนบัญชี: อ่านทั้งชุดก่อน */
   if(P.subject&&String(P.subject).startsWith('doc_')){const d=DOCS.find(x=>x.id===String(P.subject).slice(4));if(d&&!docMine(d)){P.subject='ineq';save()}}
   syncPull().catch(e=>syErr(e));
   SYNC.timer=setInterval(()=>{if(!document.hidden)syncPull().catch(e=>syErr(e))},180000);
@@ -175,12 +175,15 @@ async function syncPull(){
   if(!syncOk()||SYNC.pullBusy)return;
   SYNC.pullBusy=true;
   try{
-    const f=await fb(),uid=ME.uid;
-    const snap=await f.fs.getDocs(f.fs.collection(f.db,'users',uid,'docs'));
-    const metas=new Map();
-    for(const s of snap.docs)metas.set(s.id,{id:s.id,...s.data()});
-    SYNC.meta=metas;
-    for(const m of metas.values()){
+    const f=await fb(),uid=ME.uid,t0=Date.now(),col=f.fs.collection(f.db,'users',uid,'docs');
+    /* อ่านเฉพาะรายการที่เปลี่ยนตั้งแต่รอบก่อน (updatedAt) · อ่านทั้งชุดตอนเปิดเว็บและทุก 2 ชั่วโมง
+       เดิมอ่านทั้งชุด (~290 รายการ) ทุก 3 นาทีต่อเครื่อง = ราว 5,800 ครั้ง/ชม./เครื่อง เกินโควตาอ่านฟรีวันละ 50,000 */
+    const full=!SYNC.fullAt||t0-SYNC.fullAt>2*3600e3||!SYNC.meta.size;
+    const snap=await f.fs.getDocs(full?col:f.fs.query(col,f.fs.where('updatedAt','>',f.fs.Timestamp.fromMillis(SYNC.pullAt-5*60000))));
+    const metas=full?new Map():SYNC.meta,changed=[];
+    for(const s of snap.docs){const m={id:s.id,...s.data()};metas.set(s.id,m);changed.push(m)}
+    SYNC.meta=metas;SYNC.pullAt=t0;if(full)SYNC.fullAt=t0;
+    for(const m of changed){
       if(m.deleted){await syncDropLocal(m.id,m.localId);continue}
       /* บันทึกที่ยังว่าง (ไม่มีหน้า ไม่มีต้นฉบับ ไม่มีบัตร): ไม่ดึงมาสร้างรายการใหม่ในเครื่องนี้
          (ไม่ลบบนคลาวด์ เพราะอาจเป็นไฟล์ที่อีกเครื่องเพิ่งอัปโหลดและยังส่งหน้าไม่เสร็จ) */

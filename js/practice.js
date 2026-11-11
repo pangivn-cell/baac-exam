@@ -136,7 +136,7 @@ function isCalcQ(q){
 /* ข้อความคณิต: {ตัวเศษ}/{ตัวส่วน} และ 12/3 แสดงเป็นเศษส่วนซ้อนบนล่าง · **คำ** เป็นตัวหนา */
 function mathHTML(t){
   const fr=(a,b)=>`<span class="fr"><span>${a.trim()}</span><span>${b.trim()}</span></span>`;
-  return esc(String(t||'')).replace(/\{([^{}]+)\}\s*\/\s*\{([^{}]+)\}/g,(_,a,b)=>fr(a,b)).replace(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/g,(_,a,b)=>fr(a,b));
+  return esc(String(t||'')).replace(/\{([^{}]+)\}\s*\/\s*\{([^{}]+)\}/g,(_,a,b)=>fr(a,b)).replace(/\{([^{}]+)\}\s*\/\s*(\d+(?:\.\d+)?)/g,(_,a,b)=>fr(a,b)).replace(/(\d+(?:\.\d+)?)\s*\/\s*\{([^{}]+)\}/g,(_,a,b)=>fr(a,b)).replace(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/g,(_,a,b)=>fr(a,b)).replace(/[{}]/g,'');
 }
 const richHTML=t=>mathHTML(t).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
 const strArr=a=>(Array.isArray(a)?a:[]).map(x=>String(x&&typeof x==='object'?x.text||x.say||'':x||'').trim()).filter(Boolean);

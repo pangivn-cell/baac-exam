@@ -167,6 +167,8 @@ function calcdHTML(q){
   if(!isCalcQ(q))return '';
   const k=qKey(q),d=CALCD[k];CALCD_Q[k]=q;
   if(d)return `<div class="calcd">${calcdBody(d,k)}</div>`;
+  /* โจทย์บวกเลขล้วน: ระบบคิดเองทันที ไม่ต้องรอ และไม่ต้องมี AI */
+  {const loc=sumLocalDetail(q,exprFacts(q));if(loc){CALCD[k]=loc;return `<div class="calcd">${calcdBody(loc,k)}</div>`}}
   if(!activeAI())return '';
   if(CALCD_BUSY[k]==='err')return `<div class="calcd" data-calcd="${esc(k)}"><p class="src">เตรียมวิธีคิดแบบละเอียดไม่สำเร็จ <button type="button" class="ghost" data-calcretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;
   setTimeout(()=>calcdLoad(k),0);

@@ -63,7 +63,7 @@ async function start(go){
     const pre=await takePrefetch(s,level,n);
     /* ข้อแรกขึ้นทันที: สร้าง 2 ข้อก่อนให้เริ่มทำได้เลย ที่เหลือสร้างต่อเบื้องหลัง */
     const quick=!(pre&&pre.length>=Math.ceil(n*.6))&&n>=4;
-    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,quick?2:n,{fast:quick,signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
+    const items=pre&&pre.length>=Math.ceil(n*.6)?pre:await makeItems(s,level,n,{fast:quick,signal:genCtl.signal,weak:(P.weak[s.id]||[]).slice(-5),onProg:d=>{const el=document.getElementById('genp');if(el)el.textContent=`ได้แล้ว ${d} จาก ${n} ข้อ`}});
     if(R!==my)return;
     if(!items.length){R.status='error';R.err='ได้โจทย์ที่ใช้ไม่ได้ ลองสร้างชุดใหม่อีกครั้ง';render();return}
     R.items=items;R.status='play';R.t0=Date.now();
@@ -445,7 +445,7 @@ function refreshSpecTopics(){SPEC_TOPICS=SPEC.map(x=>x[1])}
 let MS={cat:'gen',n:40,min:60,custom:60,limit:3,action:'warn',pick:{gen:[],spec:[]}};
 try{const s=JSON.parse(localStorage.getItem(MSKEY)||'null');if(s)MS={...MS,...s}}catch(e){}
 const saveMS=()=>{try{localStorage.setItem(MSKEY,JSON.stringify(MS))}catch(e){}};
-try{M=JSON.parse(localStorage.getItem(MKEY)||'null');if(!M||!['run','done'].includes(M.status)||!Array.isArray(M.items))M=null}catch(e){M=null}
+try{M=JSON.parse(localStorage.getItem(MKEY)||'null');if(!M||!['run','done'].includes(M.status)||!Array.isArray(M.items))M=null;else M.filling=false}catch(e){M=null}
 const saveM=()=>{try{if(M)localStorage.setItem(MKEY,JSON.stringify(M));else localStorage.removeItem(MKEY)}catch(e){}};
 /* ---------- รายวิชาในหมวดที่ใช้ออกข้อสอบ (ไม่เลือก = ทุกวิชาในหมวด) ---------- */
 if(!MS.pick||typeof MS.pick!=='object')MS.pick={gen:[],spec:[]};
@@ -506,11 +506,11 @@ function qValid(q){
   return !!q.chSvg||new Set(ch.map(c=>String(c).trim().toLowerCase())).size===ch.length;
 }
 const canMore=id=>{const s=SUBJ.find(x=>x.id===id);return !!s&&!s.ai&&!!LOCAL[id]};
-async function fillSet(plan,level,n,ctl,prog,tag,anyMath){
-  const got=new Map(plan.map(p=>[p.id,[]])),seen=new Set(),rep={bad:0,dup:0,extra:{},old:0,short:[]};
+async function fillSet(plan,level,n,ctl,prog,tag,anyMath,seed,onAdd){
+  const got=new Map(plan.map(p=>[p.id,((seed&&seed[p.id])||[]).slice()])),seen=new Set([...got.values()].flat().map(qKey)),rep={bad:0,dup:0,extra:{},old:0,short:[]};
   const total=()=>[...got.values()].reduce((a,l)=>a+l.length,0);
   const add=(p,qs,cap)=>{const l=got.get(p.id);for(const q of qs){if(l.length>=cap||total()>=n)break;
-    if(!qValid(q)){rep.bad++;continue}const k=qKey(q);if(seen.has(k)){rep.dup++;continue}seen.add(k);l.push(q)}};
+    if(!qValid(q)){rep.bad++;continue}const k=qKey(q);if(seen.has(k)){rep.dup++;continue}seen.add(k);l.push(q);if(onAdd)onAdd(q)}};
   const ask=async(p,k)=>{const s=SUBJ.find(x=>x.id===p.id),b=total();
     try{return (await makeItems(s,level,k,{signal:ctl.signal,onProg:d=>prog(b+d)})).map(q=>tag(q,s))}
     catch(e){if(e&&e.code==='cancelled')throw e;p.err=p.err||e;return[]}};
@@ -540,26 +540,54 @@ async function fillSet(plan,level,n,ctl,prog,tag,anyMath){
   return{items:plan.flatMap(p=>got.get(p.id)),rep};
 }
 async function buildMock(){
-  const cat=MS.cat,n=MS.n,useAI=!!activeAI(),ctl=new AbortController();
-  G={status:'gen',cat,n,ctl};renderMock();
-  const prog=k=>{const el=document.getElementById('mgenp');if(el)el.textContent=`ได้แล้ว ${Math.min(k,n)} จาก ${n} ข้อ`};
+  const cat=MS.cat,n=MS.n,useAI=!!activeAI(),ctl=new AbortController(),job={ctl,live:[],begun:false,M:null,n};
+  if(MOCK_JOB)MOCK_JOB.ctl.abort();MOCK_JOB=job;
+  G={status:'gen',cat,n,ctl,job};renderMock();
+  const prog=()=>{const k=job.live.length,el=document.getElementById('mgenp');if(el)el.textContent=`ได้แล้ว ${Math.min(k,n)} จาก ${n} ข้อ`;
+    const b=document.getElementById('mearly');if(b&&k&&k<n){b.hidden=false;b.textContent=`เริ่มสอบเลย (มีแล้ว ${k} ข้อ ที่เหลือ AI สร้างเพิ่มระหว่างสอบ)`}};
+  /* ข้อที่ได้เพิ่ม: ก่อนเริ่มสอบเก็บไว้ในชุด · เริ่มสอบไปแล้วต่อท้ายข้อสอบที่กำลังทำ */
+  const onAdd=q=>{job.live.push(q);
+    if(job.begun){const m=job.M;if(m&&m===M&&m.status==='run'){m.items.push(q);m.picks.push(null);saveM();mockGrow()}}else prog()};
   try{
     const picked=mockPicked(cat).filter(id=>mockOK(SUBJ.find(x=>x.id===id),useAI));
     /* เลือกรายวิชาไว้: ออกข้อสอบเฉพาะวิชาที่เลือก แบ่งจำนวนข้อตามสัดส่วน · ไม่เลือก: สัดส่วนข้อสอบจริง */
     const plan=picked.length?pickPlan(n,picked):cat==='gen'?genPlan(n,useAI):[{id:'specall',k:n}];
     const tag=cat==='spec'&&!picked.length?q=>({...q,sub:'spec',subName:SPEC_TOPICS.includes(q.topic)?q.topic:'อื่นๆ'}):(q,s)=>({...q,sub:q.sub||s.id,subName:s.name});
-    const r=await fillSet(plan,cat==='gen'?3:0,n,ctl,prog,tag,cat==='gen'&&!picked.length);
+    const level=cat==='gen'?3:0;
+    /* ค้นในคลังก่อน (ข้อสอบจริงจากเอกสาร + คลังโจทย์กลาง) ไม่รอ AI · ได้แล้วกดเริ่มสอบได้ทันที ที่เหลือ AI สร้างต่อเบื้องหลัง */
+    const seed={};
+    for(const p of plan){const s=SUBJ.find(x=>x.id===p.id);if(!s||!p.k)continue;
+      try{seed[p.id]=(await makeItems(s,level,p.k,{fast:true,libOnly:true,signal:ctl.signal})).map(q=>tag(q,s)).filter(qValid).slice(0,p.k)}
+      catch(e){if(e&&e.code==='cancelled')throw e;seed[p.id]=[]}
+      if(!G||G.ctl!==ctl)return}
+    {const sk=new Set();for(const p of plan)seed[p.id]=(seed[p.id]||[]).filter(q=>{const k=qKey(q);if(sk.has(k))return false;sk.add(k);return true});}
+    job.live=plan.flatMap(p=>seed[p.id]||[]);prog();
+    const r=await fillSet(plan,level,n,ctl,()=>{},tag,cat==='gen'&&!picked.length,seed,onAdd);
+    if(job.begun){const m=job.M;if(MOCK_JOB===job)MOCK_JOB=null;if(m&&m===M&&m.status==='run'){m.filling=false;saveM();mockGrow(true);if(m.items.length<n)toast(`สร้างข้อสอบเพิ่มได้ ${m.items.length} จาก ${n} ข้อ`,'warn');else toast(`ข้อสอบครบ ${n} ข้อแล้ว`)}return}
+    if(MOCK_JOB===job)MOCK_JOB=null;
     if(!r||!G||G.ctl!==ctl)return;
     if(!r.items.length)throw{code:'empty'};
     /* ชุดทั่วไปเรียงตามวิชาเหมือนข้อสอบจริง ชุดที่เลือกวิชาเองคละกัน */
     G={status:'ready',cat,n,items:picked.length?shuffle(r.items):r.items,rep:r.rep,subs:picked.map(id=>SUBJ.find(x=>x.id===id).name)};
   }catch(e){
+    if(job.begun){if(MOCK_JOB===job)MOCK_JOB=null;const m=job.M;if(m&&m===M&&m.status==='run'&&!(e&&e.code==='cancelled')){m.filling=false;saveM();mockGrow(true);toast(`สร้างข้อที่เหลือไม่สำเร็จ ข้อสอบชุดนี้มี ${m.items.length} ข้อ`,'bad')}return}
     if(!G||G.ctl!==ctl)return;
     if(e&&e.code==='cancelled'){G=null}else G={status:'error',err:e&&e.code==='empty'?'ได้ข้อสอบที่ใช้ไม่ได้ ลองสร้างใหม่อีกครั้ง':errCopy(e&&e.code,'สร้างข้อสอบ')};
   }
   if(VIEW==='mock')renderMock();
 }
-let graceUntil=0,tickT=null;
+let graceUntil=0,tickT=null,MOCK_JOB=null,GROW_T=null;
+/* เริ่มสอบก่อนข้อสอบครบ: ใช้ข้อที่มีแล้ว (จากคลัง + ที่ AI สร้างเสร็จ) ข้อที่เหลือต่อท้ายเข้ามาระหว่างสอบ */
+function beginEarly(){
+  const job=G&&G.job;if(!job||!job.live.length)return;
+  G.items=job.live.slice();beginMock();
+  M.filling=true;M.target=job.n;job.M=M;job.begun=true;saveM();renderMock();
+}
+/* ข้อสอบเพิ่มเข้ามาระหว่างสอบ: อัปเดตแถบบนและรายการข้อ (หน่วงไว้ ไม่วาดหน้าใหม่ถี่เกิน) */
+function mockGrow(now){
+  if(GROW_T&&!now)return;clearTimeout(GROW_T);
+  GROW_T=setTimeout(()=>{GROW_T=null;if(VIEW!=='mock'||!M||M.status!=='run')return;renderBar();const el=document.getElementById('sheet');if(el)renderRun(el)},now?0:1500);
+}
 function beginMock(){
   const mins=mockMins(),now=Date.now();
   M={status:'run',cat:G.cat,catName:CATS[G.cat]+((G.subs||[]).length?` · ${G.subs.length>2?`${G.subs.slice(0,2).join(', ')} และอีก ${G.subs.length-2} วิชา`:G.subs.join(', ')}`:''),items:G.items,picks:Array(G.items.length).fill(null),i:0,startAt:now,endAt:now+mins*60000,mins,viol:[],warned:[],limit:MS.limit,action:MS.action,away:false};
@@ -580,6 +608,7 @@ function tick(){
 function submitMock(reason){
   if(!M||M.status!=='run')return;
   clearInterval(tickT);closeModal(-1);
+  if(MOCK_JOB&&MOCK_JOB.begun){MOCK_JOB.ctl.abort();MOCK_JOB=null}M.filling=false;
   const end=Math.min(Date.now(),M.endAt),n=M.items.length,score=M.items.filter((q,j)=>M.picks[j]===q.answer).length;
   const groups=groupStats(M.items,M.picks,q=>q.subName);
   Object.assign(M,{status:'done',endedAt:end,used:(end-M.startAt)/1000,score,pct:n?score/n:0,auto:reason||'',groups,away:false});
@@ -628,7 +657,9 @@ function renderMock(){
   if(M&&M.status==='done'){head(`ผลสอบ · ${M.catName}`,'');renderMockDone(el);return}
   head('สอบจริง (Mock Exam)','จับเวลาเหมือนห้องสอบ หมดเวลาส่งอัตโนมัติ และตรวจจับการออกนอกหน้าสอบ');
   if(G&&G.status==='gen'){
-    el.innerHTML=`<div class="state"><div class="spin" aria-hidden="true"></div><p><b>กำลังเตรียมข้อสอบ ${G.n} ข้อ</b></p><p class="src" id="mgenp">${G.cat==='gen'?'วิชาที่ระบบสร้างเองเสร็จทันที ส่วนภาษาไทยและอังกฤษรอ AI':'AI กำลังสร้างทีละชุด ชุดละ 20 ข้อ'}</p><button class="ghost" id="mcancel">ยกเลิก</button></div>`;
+    el.innerHTML=`<div class="state"><div class="spin" aria-hidden="true"></div><p><b>กำลังเตรียมข้อสอบ ${G.n} ข้อ</b></p><p class="src" id="mgenp">กำลังค้นข้อสอบในคลังก่อน ที่ขาด AI จะสร้างเพิ่ม</p><div class="btnrow"><button class="primary" id="mearly" hidden></button><button class="ghost" id="mcancel">ยกเลิก</button></div></div>`;
+    document.getElementById('mearly').onclick=beginEarly;
+    if(G.job&&G.job.live.length){const b=document.getElementById('mearly'),k=G.job.live.length;if(k<G.n){b.hidden=false;b.textContent=`เริ่มสอบเลย (มีแล้ว ${k} ข้อ ที่เหลือ AI สร้างเพิ่มระหว่างสอบ)`}}
     document.getElementById('mcancel').onclick=()=>{const c=G&&G.ctl;G=null;if(c)c.abort();renderMock()};return;
   }
   if(G&&G.status==='error'){
@@ -700,7 +731,7 @@ function renderSetup(el){
 function renderBar(){
   const tb=document.getElementById('tbar');if(!M||M.status!=='run'||tb.hidden)return;
   const n=M.items.length,answered=M.picks.filter(p=>p!=null).length,v=M.viol.length;
-  tb.innerHTML=`<span class="clock" id="tclock" role="timer" aria-label="เวลาที่เหลือ"></span><span class="tmeta">ตอบแล้ว ${answered}/${n}</span><span class="tmeta${v?' bad':''}">ออกนอกหน้า ${v}/${M.limit}</span><button class="primary" id="msubmit">ส่งข้อสอบ</button>`;
+  tb.innerHTML=`<span class="clock" id="tclock" role="timer" aria-label="เวลาที่เหลือ"></span><span class="tmeta">ตอบแล้ว ${answered}/${n}${M.filling?` · AI กำลังเพิ่มข้อ (${n}/${M.target})`:''}</span><span class="tmeta${v?' bad':''}">ออกนอกหน้า ${v}/${M.limit}</span><button class="primary" id="msubmit">ส่งข้อสอบ</button>`;
   document.getElementById('msubmit').onclick=askSubmit;tick();
 }
 function renderRun(el){
@@ -708,7 +739,7 @@ function renderRun(el){
   el.innerHTML=fx(`<div class="meta"><span>ข้อ ${i+1} จาก ${n}</span><span>${esc(q.subName||'')}</span></div>
     ${questionHTML(q)}
     ${choicesHTML(q,pick,false)}
-    <div class="navrow"><button class="ghost" id="mprev" ${i?'':'disabled'}>← ข้อก่อนหน้า</button><button class="${pick!=null?'primary':'ghost'}" id="mnext">${i+1<n?'ข้อต่อไป →':'ส่งข้อสอบ'}</button></div>
+    <div class="navrow"><button class="ghost" id="mprev" ${i?'':'disabled'}>← ข้อก่อนหน้า</button>${i+1>=n&&M.filling?'<button class="ghost" id="mnext" disabled>AI กำลังสร้างข้อถัดไป…</button>':`<button class="${pick!=null?'primary':'ghost'}" id="mnext">${i+1<n?'ข้อต่อไป →':'ส่งข้อสอบ'}</button>`}</div>
     <div><p class="lbl" style="margin-bottom:6px">ไปยังข้อ (สีทึบ = ตอบแล้ว)</p><div class="pal">${M.items.map((_,j)=>`<button class="pn${M.picks[j]!=null?' done':''}${j===i?' cur':''}" data-j="${j}" aria-label="ข้อ ${j+1}${M.picks[j]!=null?' ตอบแล้ว':''}"${j===i?' aria-current="true"':''}>${j+1}</button>`).join('')}</div></div>`);
   const go=j=>{M.i=j;saveM();renderRun(el);el.scrollIntoView({block:'start',behavior:'smooth'})};
   el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{if(M.status!=='run')return;M.picks[M.i]=+b.dataset.j;saveM();renderBar();renderRun(el)});

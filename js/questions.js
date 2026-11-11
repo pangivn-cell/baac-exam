@@ -333,7 +333,7 @@ async function makeItems1(s,level,n,o={}){
   GEN_AVOID=avoidFor(s);
   let items=dedupeQs(await makeItems0(s,level,n-retry.length,o),seen);
   /* ข้อที่ถูกตัดออกเพราะซ้ำ: สร้างเพิ่มอีกรอบ (ไม่เกิน 2 รอบ) */
-  for(let r=0;r<2&&items.length<n-retry.length;r++){
+  for(let r=0;r<2&&!o.fast&&items.length<n-retry.length;r++){   /* fast: ได้จากคลังเท่าไรเริ่มเลย ที่ขาดให้เบื้องหลังเติม */
     let more=[];try{more=await makeItems0(s,level,n-retry.length-items.length,o)}catch(e){if(e&&e.code==='cancelled')throw e;break}
     const add=dedupeQs(more,seen);if(!add.length)break;items.push(...add);
   }
@@ -348,8 +348,14 @@ async function makeItems0(s,level,n,o={}){
   if(!activeAI())return offlineItems(s,level,n);
   const orig=pickBank(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));
   if(orig.length>=n)return shuffle(orig);
-  /* fast = ข้อแรกของชุด (practice.js start): มีข้อสอบจริงแล้วเริ่มทำได้เลย ไม่รอ AI · ที่เหลือ loadMore สร้างต่อเบื้องหลัง */
-  if(o.fast&&orig.length)return shuffle(orig);
+  /* fast = เริ่มชุด (practice.js start / สอบจริงช่วงแรก): ค้นในคลังก่อน (ข้อสอบจริงจากเอกสาร + คลังโจทย์กลาง) ได้เท่าไรเริ่มทำได้เลย
+     ที่เหลือ loadMore / fillSet ให้ AI สร้างต่อเบื้องหลัง · คลังไม่มีเลย: ให้ AI สร้างแค่ 2 ข้อแรก (จากบัตรความรู้ในคลังก่อน ถ้ามี) */
+  if(o.fast){
+    const lib=pickBank(pool,Math.min(pool.length,n)).map(c=>bankQ(c,s)),seen=new Set(lib.map(qKey));
+    if(lib.length<n&&typeof poolTake==='function'){try{for(const q of await poolTake(s,level,n-lib.length))if(!seen.has(qKey(q))){seen.add(qKey(q));lib.push(q)}}catch(e){}}
+    if(lib.length||o.libOnly)return shuffle(lib.slice(0,n));
+    n=Math.min(n,2);
+  }
   let gen=[];
   try{gen=await makeNew(s,level,n-orig.length,{...o,onProg:d=>o.onProg&&o.onProg(orig.length+d)},pool)}
   catch(e){if(!orig.length||(e&&e.code==='cancelled'))throw e}

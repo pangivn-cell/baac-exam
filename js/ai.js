@@ -161,7 +161,42 @@ const SLOW_M={};
 const slowLast=(prov,ms)=>{const now=Date.now();return[...ms.filter(m=>!(SLOW_M[prov+':'+m]>now)),...ms.filter(m=>SLOW_M[prov+':'+m]>now)]};
 const modelsOf=(prov,first)=>slowLast(prov,prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
 /* หลาย key: วนสลับ key ทุกคำขอ (กระจายโควตา) · ลองทุก key กับโมเดลหลักก่อน แล้วค่อยลดไปโมเดลสำรอง */
-async function keyCall(prov,input,json,signal,model0){
+/* งานที่ผู้ใช้รออยู่ (สร้างโจทย์ ติวเตอร์): Gemini ให้เวลาแบบไล่ขั้น
+   รอบแรกรอ key ละ 10 วินาที (นับจากช่วงที่ไม่มีข้อความไหลมา) ไม่ตอบ → สลับ key ถัดไปทันที จนครบทุก key
+   รอบสอง 20 วินาที รอบสาม 40 รอบสี่ 80 · โมเดลที่ช้ากับ 2 key ในรอบเดียวกัน = โมเดลค้าง ย้ายไปโมเดลสำรองและพักไว้ 10 นาที */
+const FAST_ROUNDS=[10,20,40,80];
+let SLOW_TOAST=0;
+function slowNotice(){
+  const now=Date.now();if(now-SLOW_TOAST<10*60000||typeof toast!=='function')return;SLOW_TOAST=now;
+  const n=keysOf('gemini').length,other=KEY_PROVS.filter(p=>p!=='gemini'&&provReady(p)).length;
+  toast(`Gemini ตอบช้า ระบบกำลังสลับ key/โมเดลให้อัตโนมัติ · ${n<3?'ใส่ Gemini key เพิ่ม (จากบัญชี Google อื่น)':other?'':'ใส่ key ของ AI ตัวอื่นเพิ่ม เช่น Groq (ฟรีและเร็ว)'} ในหน้าตั้งค่า AI เพื่อความรวดเร็ว`.replace(' ·  ใน',' · ใน'),'warn');
+}
+async function gemFast(input,json,signal,model0){
+  const first=model0||AIP.gemini.model,ks=keysOf('gemini'),t0=Date.now();
+  const rr=(KEY_RR.gemini=((KEY_RR.gemini||0)+1)%Math.max(1,ks.length)),ring=[...ks.slice(rr),...ks.slice(0,rr)];
+  let err;
+  for(const sec of FAST_ROUNDS){
+    const now=Date.now(),live=ring.filter(k=>!(KEY_DOWN[k]>now)),keys=live.length?live:ring.slice(0,1),hits={},lim=Math.min(2,keys.length);
+    let tried=false;
+    for(const k of keys){
+      if(Date.now()-t0>240000)break;
+      const model=modelsOf('gemini',first).find(m=>!keyModelDown(k,m)&&!((hits[m]||0)>=lim));if(!model)continue;
+      AIP.gemini.key=k;tried=true;
+      try{const t=await keyCallOnce('gemini',model,input,json,signal,sec*1000);LAST_MODEL=model;delete KEY_WHY[k];return t}
+      catch(e){
+        if(!e||typeof e!=='object'||e.code==='cancelled')throw e;e.prov='gemini';e.model=model;
+        if(e.slow||e.code==='overloaded'||e.code==='network'){hits[model]=(hits[model]||0)+1;if(hits[model]>=lim)SLOW_M['gemini:'+model]=Date.now()+10*60000;if(e.slow)slowNotice();err=err||e;continue}
+        if(e.code==='bad_model'){if(model!==first)DEAD_MODELS.add('gemini:'+model);else hits[model]=99;err=err||e;continue}
+        if(KEY_SWITCH.includes(e.code)){keyDown('gemini',k,model,e.code);err=e;continue}
+        throw e;
+      }
+    }
+    if(!tried||Date.now()-t0>240000)break;
+  }
+  throw err||{code:'overloaded'};
+}
+async function keyCall(prov,input,json,signal,model0,o={}){
+  if(o.fast&&prov==='gemini'&&keysOf('gemini').length)return gemFast(input,json,signal,model0);
   const ks=prov==='local'?[]:keysOf(prov);
   if(ks.length<2)return keyCall1(prov,input,json,signal,model0);
   const rr=(KEY_RR[prov]=((KEY_RR[prov]||0)+1)%ks.length),ring=[...ks.slice(rr),...ks.slice(0,rr)];
@@ -231,7 +266,43 @@ async function anthCall(model,turns,signal,json){
   return msg.content.filter(b=>b.type==='text').map(b=>b.text).join('');
 }
 const AI_TMO={local:360000};
-async function keyCallOnce(prov,model,input,json,signal){
+const gemBody=(turns,json)=>JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>i.url?{file_data:{mime_type:i.mime,file_uri:i.url}}:{inline_data:{mime_type:i.mime,data:i.data}})]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})});
+/* Gemini แบบไหลทีละช่วง (SSE): จับเวลาเฉพาะช่วงที่ไม่มีข้อมูลไหลมาเลย (idle)
+   โมเดลที่ค้างจะเงียบ → หมดเวลาเร็ว ส่วนคำตอบยาวที่กำลังไหลมาเรื่อยๆ ไม่ถูกตัดกลางทาง */
+async function gemStream(model,input,json,signal,idle){
+  const ctl=new AbortController();let tm=null,idleHit=false;
+  const arm=()=>{clearTimeout(tm);tm=setTimeout(()=>{idleHit=true;ctl.abort()},idle)};
+  const onAb=()=>ctl.abort();
+  if(signal){if(signal.aborted)throw{code:'cancelled'};signal.addEventListener('abort',onAb,{once:true})}
+  arm();
+  try{
+    let res;
+    try{res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,{method:'POST',signal:ctl.signal,
+      headers:{'Content-Type':'application/json','x-goog-api-key':AIP.gemini.key},body:gemBody(normTurns(input),json)})}
+    catch(e){throw{code:'network',message:String(e)}}
+    if(!res.ok){clearTimeout(tm);await httpFail(res)}
+    const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',fin='';
+    const eat=line=>{line=line.trim();if(!line.startsWith('data:'))return;let j;try{j=JSON.parse(line.slice(5))}catch(e){return}
+      if(j.error)throw{code:'upstream_error',message:String(j.error.message||'').slice(0,300)};
+      const c=j.candidates&&j.candidates[0];if(!c)return;
+      text+=((c.content&&c.content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');if(c.finishReason)fin=c.finishReason};
+    for(;;){
+      let r;try{r=await rd.read()}catch(e){throw{code:'network',message:String(e)}}
+      if(r.done)break;arm();buf+=dec.decode(r.value,{stream:true});
+      const lines=buf.split(/\r?\n/);buf=lines.pop();lines.forEach(eat);
+    }
+    eat(buf);
+    if(!text.trim())throw{code:'empty_completion'};
+    if(json&&fin==='MAX_TOKENS')throw{code:'truncated'};
+    return text;
+  }catch(e){
+    if(signal&&signal.aborted)throw{code:'cancelled'};
+    if(idleHit)throw{code:'overloaded',slow:true,message:`${model} ไม่ตอบภายใน ${idle/1000} วินาที`};
+    throw e;
+  }finally{clearTimeout(tm);if(signal)signal.removeEventListener('abort',onAb)}
+}
+async function keyCallOnce(prov,model,input,json,signal,idle){
+  if(idle&&prov==='gemini')return gemStream(model,input,json,signal,idle);
   /* จำกัดเวลาต่อคำขอ: บางช่วงโมเดลหลักของ Gemini ค้างฝั่ง Google ไม่ตอบเลย (เคยรอเกิน 5 นาที) → หมดเวลาแล้วสลับไปโมเดลสำรอง
      AI ในเครื่อง: หมดเวลา = ถือว่าคำตอบยาวเกิน ให้ aiWin แบ่งช่วงครึ่งหนึ่งแล้วทำใหม่ */
   const ms=AI_TMO[prov]||(json?75000:60000),tsig=AbortSignal.timeout(ms),sig=signal&&AbortSignal.any?AbortSignal.any([signal,tsig]):tsig;
@@ -252,7 +323,7 @@ async function keyCallOnce0(prov,model,input,json,signal){
     if(prov==='gemini'){
       res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal,
         headers:{'Content-Type':'application/json','x-goog-api-key':AIP.gemini.key},
-        body:JSON.stringify({contents:turns.map(t=>({role:t.role==='assistant'?'model':'user',parts:typeof t.content==='string'?[{text:t.content}]:[{text:t.content.text},...t.content.images.map(i=>i.url?{file_data:{mime_type:i.mime,file_uri:i.url}}:{inline_data:{mime_type:i.mime,data:i.data}})]})),...(json?{generationConfig:{responseMimeType:'application/json'}}:{})})});
+        body:gemBody(turns,json)});
     }else{
       const meta=prov==='meta',oai=OAI_PROVS[prov],cus=prov==='custom'||prov==='local'||!!oai,cf=oai?{...cfgOf(prov),url:oai.url}:cfgOf(prov);
       /* custom: ไม่ส่ง response_format เพราะหลายเจ้า/โมเดลในเครื่องไม่รองรับ (looseJSON แกะ JSON จากข้อความให้)
@@ -339,7 +410,7 @@ async function aiText(input,{signal,onText}={}){
   if(!order.length)order.push(p);
   let err;
   for(const x of order){
-    try{const t=await keyCall(x,input,false,signal,x==='local'?LLMHOST.model:undefined);LAST_AI=x;if(onText)onText({text:t});return t}
+    try{const t=await keyCall(x,input,false,signal,x==='local'?LLMHOST.model:undefined,{fast:true});LAST_AI=x;if(onText)onText({text:t});return t}
     catch(e){if(!e||!FALLBACK_CODES.includes(e.code))throw e;err=err||e;if(['quota','no_credit'].includes(e.code))PROV_DOWN[x]=now+30*60000}
   }
   throw err;
@@ -348,7 +419,7 @@ async function aiJSON(input,{signal,onText,task}={}){
   /* signal.route: งานเบื้องหลัง (เติมโจทย์) ระบุ AI เอง ไม่กระทบงานอื่นที่ทำพร้อมกัน */
   const {p,model}=(signal&&signal.route)||aiRoute(task);if(!p)throw{code:'no_ai'};
   if(p==='claude')return SAMPLE.json(input,{cache:false,signal,onText});
-  const t=await keyCall(p,input,true,signal,model);if(onText)onText({text:t});return looseJSON(t);
+  const t=await keyCall(p,input,true,signal,model,{fast:task!=='proc'});if(onText)onText({text:t});return looseJSON(t);
 }
 const HIDE_CODES=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'];
 function errCopy(code,what){

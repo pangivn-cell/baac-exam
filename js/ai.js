@@ -170,15 +170,28 @@ const modelsOf=(prov,first)=>slowLast(prov,prov==='gemini'?[first,...GEMINI_FALL
    โมเดลที่ช้าเกินเวลากับ 2 key = โมเดลค้าง ย้ายไปโมเดลสำรองและพักไว้ 10 นาที · ยิงพร้อมกันไม่เกิน 8 คำขอ (ให้ทุกโมเดลได้ลองก่อนต้องรอคำขอที่ค้าง) */
 const FAST_ROUNDS=[10,20,40],FAST_MAX=8;
 let SLOW_TOAST=0;
+/* AI ตัวอื่นที่ใส่ key ไว้แล้ว (ฟรี) ใช้เป็นตัวสำรองตอน Gemini ช้า เรียงตามความเร็วที่วัดได้: Groq → OpenRouter → อื่นๆ → Typhoon */
+const ALT_ORDER=['groq','openrouter'],ALT_LAST=['typhoon'];
+const altProvs=()=>{const free=Object.keys(OAI_PROVS).filter(p=>!OAI_PROVS[p].paid&&provReady(p)&&liveKeys(p).length);
+  return [...ALT_ORDER.filter(p=>free.includes(p)),...free.filter(p=>!ALT_ORDER.includes(p)&&!ALT_LAST.includes(p)),...ALT_LAST.filter(p=>free.includes(p))]};
+const PROV_GOOD={};
 function slowNotice(){
-  const now=Date.now();if(now-SLOW_TOAST<10*60000||typeof toast!=='function')return;SLOW_TOAST=now;
-  const n=keysOf('gemini').length;
-  toast(`Gemini ตอบช้า ระบบกำลังสลับ key/โมเดลให้อัตโนมัติ · ${n<3?'ใส่ Gemini key เพิ่มจากบัญชี Google อื่น':'ใส่ key ของ AI ตัวอื่นที่เร็วกว่า เช่น Groq (ฟรี)'} ในหน้าตั้งค่า AI เพื่อความรวดเร็ว`,'warn');
+  /* มี AI ตัวอื่นให้สลับอยู่แล้ว = สลับเงียบๆ ไม่ต้องเตือน · ไม่มีเลยจึงบอกสั้นๆ ไม่เกิน 30 นาทีครั้ง */
+  const now=Date.now();if(altProvs().length||now-SLOW_TOAST<30*60000||typeof toast!=='function')return;SLOW_TOAST=now;
+  toast('Gemini ตอบช้า · ใส่ key AI ตัวอื่นในตั้งค่า AI จะเร็วขึ้น');
 }
 function gemFast(input,json,signal,model0){
-  const first=model0||AIP.gemini.model,ks=keysOf('gemini');
+  const first=model0||AIP.gemini.model,ks=keysOf('gemini'),alts=altProvs();
   const rr=(KEY_RR.gemini=((KEY_RR.gemini||0)+1)%Math.max(1,ks.length)),ring=[...ks.slice(rr),...ks.slice(0,rr)];
-  const slots=[];for(const gap of FAST_ROUNDS)for(const k of ring)slots.push({k,gap});
+  /* ลำดับยิง: Gemini key แรก → ไม่ตอบใน 10 วิ ยิง AI ตัวอื่นที่มี key (Groq ฯลฯ) → Gemini key ถัดไป · รอบสอง/สามเว้นระยะ 20/40 วิ
+     ถ้า Gemini ช้าอยู่ (ทุกโมเดลถูกพัก) และ AI ตัวอื่นเพิ่งตอบได้ภายใน 10 นาที ให้ยิงตัวนั้นก่อนเลย */
+  const now=Date.now(),gemSlow=modelsOf('gemini',first).every(m=>SLOW_M['gemini:'+m]>now);
+  const good=alts.filter(p=>PROV_GOOD[p]>now),slots=[];
+  for(const gap of FAST_ROUNDS){
+    const gem=ring.map(k=>({p:'gemini',k,gap})),alt=alts.map(p=>({p,k:liveKeys(p)[0],gap}));
+    if(gap===FAST_ROUNDS[0]&&gemSlow&&good.length)slots.push(...alt.filter(x=>good.includes(x.p)),...gem.slice(0,1),...alt.filter(x=>!good.includes(x.p)),...gem.slice(1));
+    else slots.push(...gem.slice(0,1),...alt,...gem.slice(1));
+  }
   return new Promise((resolve,reject)=>{
     const ctls=new Set(),late={},pend={};let done=false,i=0,inflight=0,err=null,timer=null;
     const finish=(ok,v)=>{if(done)return;done=true;clearTimeout(timer);for(const c of ctls)c.abort();if(signal)signal.removeEventListener('abort',onAb);ok?resolve(v):reject(v)};
@@ -186,26 +199,31 @@ function gemFast(input,json,signal,model0){
     if(signal){if(signal.aborted){reject({code:'cancelled'});return}signal.addEventListener('abort',onAb,{once:true})}
     const next=()=>{
       clearTimeout(timer);if(done)return;
-      while(i<slots.length&&KEY_DOWN[slots[i].k]>Date.now())i++;
+      while(i<slots.length&&(!slots[i].k||KEY_DOWN[slots[i].k]>Date.now()))i++;
       if(i>=slots.length||inflight>=FAST_MAX){if(!inflight)finish(false,err||{code:'overloaded'});return}   /* ไม่มี key ให้ยิงเพิ่ม: รอคำขอที่ค้างอยู่ */
-      /* กระจายโมเดล: เลือกตัวแรกตามลำดับที่ยังมีคำขอค้างน้อยที่สุดในรอบนี้ ไม่ยิงซ้ำโมเดลเดียวที่ค้างอยู่ */
-      const ms=modelsOf('gemini',first).filter(m=>!keyModelDown(slots[i].k,m)),s=slots[i++];
-      const model=ms.reduce((b,m)=>b==null||(pend[m]||0)<(pend[b]||0)?m:b,null);
+      const s=slots[i++];let model;
+      if(s.p==='gemini'){
+        /* กระจายโมเดล: เลือกตัวแรกตามลำดับที่ยังมีคำขอค้างน้อยที่สุดในรอบนี้ ไม่ยิงซ้ำโมเดลเดียวที่ค้างอยู่ */
+        const ms=modelsOf('gemini',first).filter(m=>!keyModelDown(s.k,m));
+        model=ms.reduce((b,m)=>b==null||(pend[m]||0)<(pend[b]||0)?m:b,null);
+      }else model=cfgOf(s.p).model||(OAI_PROVS[s.p].models||[])[0]||'';
       if(!model){next();return}
       launch(s,model);
-      timer=setTimeout(()=>{late[model]=(late[model]||0)+1;if(late[model]>=Math.min(2,ks.length)){SLOW_M['gemini:'+model]=Date.now()+10*60000;delete GOOD_M['gemini:'+model]}slowNotice();next()},s.gap*1000);
+      timer=setTimeout(()=>{if(s.p==='gemini'){late[model]=(late[model]||0)+1;if(late[model]>=Math.min(2,ks.length)){SLOW_M['gemini:'+model]=Date.now()+10*60000;delete GOOD_M['gemini:'+model]}}slowNotice();next()},s.gap*1000);
     };
     const launch=(s,model)=>{
-      const c=new AbortController();ctls.add(c);inflight++;pend[model]=(pend[model]||0)+1;AIP.gemini.key=s.k;   /* key ถูกอ่านตอนสร้างคำขอทันที (ก่อน await แรก) */
-      keyCallOnce('gemini',model,input,json,c.signal).then(t=>{LAST_MODEL=model;delete KEY_WHY[s.k];delete SLOW_M['gemini:'+model];GOOD_M['gemini:'+model]=Date.now()+10*60000;finish(true,t)},e=>{
+      const c=new AbortController(),pk=s.p+':'+model;ctls.add(c);inflight++;pend[model]=(pend[model]||0)+1;AIP[s.p].key=s.k;   /* key ถูกอ่านตอนสร้างคำขอทันที (ก่อน await แรก) */
+      keyCallOnce(s.p,model,input,json,c.signal).then(t=>{LAST_MODEL=model;LAST_AI=s.p;delete KEY_WHY[s.k];delete SLOW_M[pk];
+        if(s.p==='gemini')GOOD_M[pk]=Date.now()+10*60000;else PROV_GOOD[s.p]=Date.now()+10*60000;finish(true,t)},e=>{
         ctls.delete(c);inflight--;pend[model]--;if(done)return;
-        if(e&&typeof e==='object'){e.prov='gemini';e.model=model;
-          if(e.code==='bad_model'){if(model!==first)DEAD_MODELS.add('gemini:'+model)}
+        if(e&&typeof e==='object'){e.prov=s.p;e.model=model;
+          if(s.p!=='gemini'){if(KEY_SWITCH.includes(e.code))keyDown(s.p,s.k,model,e.code);delete PROV_GOOD[s.p]}   /* ตัวสำรองล้ม (รวมคำตอบยาวเกิน): รอตัวอื่นต่อ */
+          else if(e.code==='bad_model'){if(model!==first)DEAD_MODELS.add(pk)}
           else if(KEY_SWITCH.includes(e.code))keyDown('gemini',s.k,model,e.code);
-          else if(e.code==='overloaded'){SLOW_M['gemini:'+model]=Date.now()+10*60000;delete GOOD_M['gemini:'+model]}
+          else if(e.code==='overloaded'){SLOW_M[pk]=Date.now()+10*60000;delete GOOD_M[pk]}
           else if(!['network','empty_completion','upstream_error'].includes(e.code)){finish(false,e);return}   /* truncated ฯลฯ: ผู้เรียกจัดการเอง (แบ่งงานให้เล็กลง) */
         }
-        err=err||e;next();   /* ล้มเร็ว: ยิง key ถัดไปทันที ไม่ต้องรอครบเวลา */
+        if(!err||(e&&e.code==='truncated'))err=e;next();   /* ล้มเร็ว: ยิงตัวถัดไปทันที ไม่ต้องรอครบเวลา */
       });
     };
     next();

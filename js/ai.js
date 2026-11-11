@@ -156,7 +156,10 @@ const perModel=(prov,code)=>(prov==='gemini'||prov==='openrouter')&&(code==='quo
 const keyDown=(prov,k,model,code)=>{const until=Date.now()+(code==='bad_key'?864e5:code==='rate_limited'?60e3:30*60e3);
   if(perModel(prov,code))KEY_MDOWN[k+'|'+model]=until;else KEY_DOWN[k]=until;KEY_WHY[k]=code};
 const keyModelDown=(k,model)=>KEY_MDOWN[k+'|'+model]>Date.now();
-const modelsOf=(prov,first)=>(prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
+/* โมเดลที่ตอบช้าผิดปกติ (เกินเวลา) จำไว้ 10 นาที แล้วย้ายไปลองท้ายสุด ไม่ให้ทุกคำขอต้องรอจนหมดเวลาซ้ำ */
+const SLOW_M={};
+const slowLast=(prov,ms)=>{const now=Date.now();return[...ms.filter(m=>!(SLOW_M[prov+':'+m]>now)),...ms.filter(m=>SLOW_M[prov+':'+m]>now)]};
+const modelsOf=(prov,first)=>slowLast(prov,prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
 /* หลาย key: วนสลับ key ทุกคำขอ (กระจายโควตา) · ลองทุก key กับโมเดลหลักก่อน แล้วค่อยลดไปโมเดลสำรอง */
 async function keyCall(prov,input,json,signal,model0){
   const ks=prov==='local'?[]:keysOf(prov);
@@ -188,6 +191,7 @@ async function keyCall1(prov,input,json,signal,model0,only){
       catch(e){lastErr=e;if(e&&typeof e==='object'){e.prov=prov;e.model=model}
         if(e.code==='bad_model'&&prov==='gemini'&&model!==first)DEAD_MODELS.add(prov+':'+model);
         if(e.code!=='bad_model')keyErr=keyErr||e;
+        if(e.slow)break;
         if(e.code==='overloaded'||e.code==='network'&&attempt===0){await sleep(1500*(attempt+1),signal);continue}
         if(e.code==='bad_model'||((e.code==='rate_limited'||e.code==='quota')&&(prov==='gemini'||prov==='openrouter')))break;
         throw e;
@@ -226,7 +230,22 @@ async function anthCall(model,turns,signal,json){
   if(json&&msg.stop_reason==='max_tokens')throw{code:'truncated'};
   return msg.content.filter(b=>b.type==='text').map(b=>b.text).join('');
 }
+const AI_TMO={local:360000};
 async function keyCallOnce(prov,model,input,json,signal){
+  /* จำกัดเวลาต่อคำขอ: บางช่วงโมเดลหลักของ Gemini ค้างฝั่ง Google ไม่ตอบเลย (เคยรอเกิน 5 นาที) → หมดเวลาแล้วสลับไปโมเดลสำรอง
+     AI ในเครื่อง: หมดเวลา = ถือว่าคำตอบยาวเกิน ให้ aiWin แบ่งช่วงครึ่งหนึ่งแล้วทำใหม่ */
+  const ms=AI_TMO[prov]||(json?75000:60000),tsig=AbortSignal.timeout(ms),sig=signal&&AbortSignal.any?AbortSignal.any([signal,tsig]):tsig;
+  try{return await keyCallOnce0(prov,model,input,json,sig)}
+  catch(e){
+    if(tsig.aborted&&!(signal&&signal.aborted)){
+      if(prov==='local')throw{code:'truncated',slow:true};
+      SLOW_M[prov+':'+model]=Date.now()+10*60000;
+      throw{code:'overloaded',slow:true,message:`${model} ไม่ตอบภายใน ${ms/1000} วินาที`};
+    }
+    throw e;
+  }
+}
+async function keyCallOnce0(prov,model,input,json,signal){
   const turns=normTurns(input);let res;
   if(prov==='anthropic'){const t=await anthCall(model,turns,signal,json);if(!t.trim())throw{code:'empty_completion'};return t}
   try{
@@ -240,7 +259,7 @@ async function keyCallOnce(prov,model,input,json,signal){
          Typhoon/Groq/OpenRouter: ไม่บอก max_tokens = ใช้ค่าตั้งต้นของเซิร์ฟเวอร์ที่สั้น โจทย์ 3 ข้อก็ถูกตัด (truncated) */
       res=await fetch(cus?chatURL(cf.url):meta?'https://api.meta.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions',{method:'POST',signal,
         headers:{'Content-Type':'application/json',...(cf.key?{'Authorization':'Bearer '+cf.key}:{})},
-        body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:i.url||`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{}),...(json&&oai?{max_tokens:8192}:{})})});
+        body:JSON.stringify({model,messages:turns.map(t=>typeof t.content==='string'?t:{role:t.role,content:[{type:'text',text:t.content.text},...t.content.images.map(i=>({type:'image_url',image_url:{url:i.url||`data:${i.mime};base64,${i.data}`}}))]}),...(json&&!meta&&!cus?{response_format:{type:'json_object'}}:{}),...(json&&(oai||prov==='local')?{max_tokens:8192}:{})})});
     }
   }catch(e){if(e&&e.name==='AbortError')throw{code:'cancelled'};throw{code:'network',message:String(e)}}
   if(!res.ok)await httpFail(res);

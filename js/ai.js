@@ -158,7 +158,10 @@ const keyDown=(prov,k,model,code)=>{const until=Date.now()+(code==='bad_key'?864
 const keyModelDown=(k,model)=>KEY_MDOWN[k+'|'+model]>Date.now();
 /* โมเดลที่ตอบช้าผิดปกติ (เกินเวลา) จำไว้ 10 นาที แล้วย้ายไปลองท้ายสุด ไม่ให้ทุกคำขอต้องรอจนหมดเวลาซ้ำ */
 const SLOW_M={};
-const slowLast=(prov,ms)=>{const now=Date.now();return[...ms.filter(m=>!(SLOW_M[prov+':'+m]>now)),...ms.filter(m=>SLOW_M[prov+':'+m]>now)]};
+/* ลำดับโมเดล: ตัวที่เพิ่งตอบสำเร็จ (10 นาที) ก่อน → ตัวที่ไม่ช้า → ตัวที่ช้า (ตัวที่ถูกพักนานสุดแล้วลองก่อน) */
+const GOOD_M={};
+const slowLast=(prov,ms)=>{const now=Date.now(),sl=m=>SLOW_M[prov+':'+m]>now?SLOW_M[prov+':'+m]:0,gd=m=>GOOD_M[prov+':'+m]>now?1:0;
+  return ms.slice().sort((a,b)=>gd(b)-gd(a)||(!!sl(a))-(!!sl(b))||sl(a)-sl(b))};
 const modelsOf=(prov,first)=>slowLast(prov,prov==='gemini'?[first,...GEMINI_FALLBACK.filter(m=>m!==first)]:prov==='openrouter'&&first!=='openrouter/free'?[first,'openrouter/free']:[first]).filter(m=>!DEAD_MODELS.has(prov+':'+m));
 /* หลาย key: วนสลับ key ทุกคำขอ (กระจายโควตา) · ลองทุก key กับโมเดลหลักก่อน แล้วค่อยลดไปโมเดลสำรอง */
 /* งานที่ผู้ใช้รออยู่ (สร้างโจทย์ ติวเตอร์): Gemini ยิงทีละ key แบบไล่ขั้น และรอไปพร้อมกัน
@@ -177,7 +180,7 @@ function gemFast(input,json,signal,model0){
   const rr=(KEY_RR.gemini=((KEY_RR.gemini||0)+1)%Math.max(1,ks.length)),ring=[...ks.slice(rr),...ks.slice(0,rr)];
   const slots=[];for(const gap of FAST_ROUNDS)for(const k of ring)slots.push({k,gap});
   return new Promise((resolve,reject)=>{
-    const ctls=new Set(),late={};let done=false,i=0,inflight=0,err=null,timer=null;
+    const ctls=new Set(),late={},pend={};let done=false,i=0,inflight=0,err=null,timer=null;
     const finish=(ok,v)=>{if(done)return;done=true;clearTimeout(timer);for(const c of ctls)c.abort();if(signal)signal.removeEventListener('abort',onAb);ok?resolve(v):reject(v)};
     const onAb=()=>finish(false,{code:'cancelled'});
     if(signal){if(signal.aborted){reject({code:'cancelled'});return}signal.addEventListener('abort',onAb,{once:true})}
@@ -185,19 +188,21 @@ function gemFast(input,json,signal,model0){
       clearTimeout(timer);if(done)return;
       while(i<slots.length&&KEY_DOWN[slots[i].k]>Date.now())i++;
       if(i>=slots.length||inflight>=FAST_MAX){if(!inflight)finish(false,err||{code:'overloaded'});return}   /* ไม่มี key ให้ยิงเพิ่ม: รอคำขอที่ค้างอยู่ */
-      const s=slots[i++],model=modelsOf('gemini',first).find(m=>!keyModelDown(s.k,m));
+      /* กระจายโมเดล: เลือกตัวแรกตามลำดับที่ยังมีคำขอค้างน้อยที่สุดในรอบนี้ ไม่ยิงซ้ำโมเดลเดียวที่ค้างอยู่ */
+      const ms=modelsOf('gemini',first).filter(m=>!keyModelDown(slots[i].k,m)),s=slots[i++];
+      const model=ms.reduce((b,m)=>b==null||(pend[m]||0)<(pend[b]||0)?m:b,null);
       if(!model){next();return}
       launch(s,model);
-      timer=setTimeout(()=>{late[model]=(late[model]||0)+1;if(late[model]>=Math.min(2,ks.length))SLOW_M['gemini:'+model]=Date.now()+10*60000;slowNotice();next()},s.gap*1000);
+      timer=setTimeout(()=>{late[model]=(late[model]||0)+1;if(late[model]>=Math.min(2,ks.length)){SLOW_M['gemini:'+model]=Date.now()+10*60000;delete GOOD_M['gemini:'+model]}slowNotice();next()},s.gap*1000);
     };
     const launch=(s,model)=>{
-      const c=new AbortController();ctls.add(c);inflight++;AIP.gemini.key=s.k;   /* key ถูกอ่านตอนสร้างคำขอทันที (ก่อน await แรก) */
-      keyCallOnce('gemini',model,input,json,c.signal).then(t=>{LAST_MODEL=model;delete KEY_WHY[s.k];finish(true,t)},e=>{
-        ctls.delete(c);inflight--;if(done)return;
+      const c=new AbortController();ctls.add(c);inflight++;pend[model]=(pend[model]||0)+1;AIP.gemini.key=s.k;   /* key ถูกอ่านตอนสร้างคำขอทันที (ก่อน await แรก) */
+      keyCallOnce('gemini',model,input,json,c.signal).then(t=>{LAST_MODEL=model;delete KEY_WHY[s.k];delete SLOW_M['gemini:'+model];GOOD_M['gemini:'+model]=Date.now()+10*60000;finish(true,t)},e=>{
+        ctls.delete(c);inflight--;pend[model]--;if(done)return;
         if(e&&typeof e==='object'){e.prov='gemini';e.model=model;
           if(e.code==='bad_model'){if(model!==first)DEAD_MODELS.add('gemini:'+model)}
           else if(KEY_SWITCH.includes(e.code))keyDown('gemini',s.k,model,e.code);
-          else if(e.code==='overloaded')SLOW_M['gemini:'+model]=Date.now()+10*60000;
+          else if(e.code==='overloaded'){SLOW_M['gemini:'+model]=Date.now()+10*60000;delete GOOD_M['gemini:'+model]}
           else if(!['network','empty_completion','upstream_error'].includes(e.code)){finish(false,e);return}   /* truncated ฯลฯ: ผู้เรียกจัดการเอง (แบ่งงานให้เล็กลง) */
         }
         err=err||e;next();   /* ล้มเร็ว: ยิง key ถัดไปทันที ไม่ต้องรอครบเวลา */

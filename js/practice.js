@@ -134,7 +134,7 @@ function isCalcQ(q){
 function calcdHTML(q){
   if(!isCalcQ(q))return '';
   const k=qKey(q),d=CALCD[k];CALCD_Q[k]=q;
-  if(d)return `<div class="calcd"><p class="lbl">🧮 วิธีคิดแบบละเอียด ทีละขั้น</p><ol class="steps">${d.s.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>${d.tip?`<p class="src">💡 ${esc(d.tip)}</p>`:''}</div>`;
+  if(d)return `<div class="calcd"><p class="lbl">🧮 วิธีคิดแบบละเอียด ทีละขั้น</p><ol class="steps">${d.s.map(t=>typeof t==='string'?`<li>${esc(t)}</li>`:`<li>${esc(t.t||'')}${t.m?`<div class="cmath">${esc(t.m)}</div>`:''}</li>`).join('')}</ol>${d.tip?`<p class="src">💡 ${esc(d.tip)}</p>`:''}</div>`;
   if(!activeAI())return '';
   if(CALCD_BUSY[k]==='err')return `<div class="calcd" data-calcd="${esc(k)}"><p class="src">เตรียมวิธีคิดแบบละเอียดไม่สำเร็จ <button type="button" class="ghost" data-calcretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;
   setTimeout(()=>calcdLoad(k),0);
@@ -148,19 +148,20 @@ async function calcdLoad(k){
 ตัวเลือก: ${q.choices.map((c,i)=>`${TH[i]}. ${c}`).join('  ')}
 คำตอบที่ถูก: ${TH[q.answer]}. ${q.choices[q.answer]} (คำตอบนี้ถูกต้องแล้ว ห้ามเปลี่ยน)
 ${old.length?`เฉลยเดิมแบบย่อ: ${old.join(' / ')}\n`:''}
-เขียนเป็นขั้นตอน ขั้นละ 1–2 ประโยค เรียงตามนี้:
+เขียนเป็นขั้นตอน แต่ละขั้นมี say = คำอธิบายภาษาง่าย 1–2 ประโยค และ math = บรรทัดคำนวณแบบคณิตศาสตร์ของขั้นนั้น (ขั้นที่ไม่มีการคำนวณให้ math เป็นค่าว่าง) เรียงตามนี้:
 1. โจทย์ให้อะไรมาบ้าง และถามหาอะไร (เล่าด้วยภาษาง่ายๆ)
 2. ใช้สูตรหรือหลักอะไร และทำไมถึงใช้ (ถ้ามีศัพท์ เช่น ร้อยละ ดอกเบี้ย อัตราส่วน ให้อธิบายความหมายสั้นๆ)
 3. แทนตัวเลขลงในสูตร
-4. คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณ หาร เศษส่วน ทศนิยม ร้อยละ ให้แตกการคิดให้เห็น เช่น 25 × 12 = (25 × 10) + (25 × 2) = 250 + 50 = 300
+4. คิดเลขทีละขั้น ห้ามข้ามขั้น การคูณ หาร เศษส่วน ทศนิยม ร้อยละ ให้แตกการคิดให้เห็น เช่น math: 25 × 12 = (25 × 10) + (25 × 2) = 250 + 50 = 300 หรือ math: 1/20 + 1/30 = 3/60 + 2/60 = 5/60 = 1/12
 5. ได้คำตอบเท่าไร ตรงกับตัวเลือกข้อไหน
 6. วิธีตรวจคำตอบแบบง่าย
-กติกา: ใช้เครื่องหมาย × ÷ − + = ไม่ใช้ * / ไม่ใช้ markdown ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
+กติกา: math เขียนแบบสมการคณิตศาสตร์ ใช้ × ÷ + − = เศษส่วนเขียน a/b ร้อยละเขียน % ห้ามเขียนตัวเลขเป็นคำพูด (เช่น "1 ส่วน 20" ให้เขียน 1/20) ไม่ใช้ * ไม่ใช้ markdown ไม่ใช้ LaTeX ไม่ต้องใส่เลขข้อหน้าขั้น ภาษาไทยทั้งหมด
 tip คือเคล็ดลับจำหรือทางลัดสำหรับโจทย์แนวนี้ 1 ประโยค
-ตอบเป็น JSON เท่านั้น: {"steps":["ขั้นที่ 1","ขั้นที่ 2"],"tip":"เคล็ดลับ"}`;
+ตอบเป็น JSON เท่านั้น: {"steps":[{"say":"คำอธิบาย","math":"บรรทัดคำนวณ"}],"tip":"เคล็ดลับ"}`;
   try{
     const r=await aiJSON(prompt);
-    const s=(Array.isArray(r&&r.steps)?r.steps:[]).map(x=>String(x&&typeof x==='object'?x.text||'':x||'').replace(/^\s*(ขั้นที่\s*)?\d+[.)]\s*/,'').trim()).filter(Boolean).slice(0,16);
+    const clean=v=>String(v||'').replace(/^\s*(ขั้นที่\s*)?\d+[.)]\s*/,'').trim();
+    const s=(Array.isArray(r&&r.steps)?r.steps:[]).map(x=>x&&typeof x==='object'?{t:clean(x.say||x.text),m:String(x.math||'').replace(/\*/g,'×').trim()}:{t:clean(x),m:''}).filter(x=>x.t||x.m).slice(0,16);
     if(s.length<2)throw{code:'ai_bad_out'};
     CALCD[k]={s,tip:String(r.tip||'').trim().slice(0,240),at:Date.now()};
     const ks=Object.keys(CALCD);if(ks.length>400)ks.sort((a,b)=>CALCD[a].at-CALCD[b].at).slice(0,ks.length-400).forEach(x=>delete CALCD[x]);

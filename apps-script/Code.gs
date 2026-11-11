@@ -17,7 +17,8 @@
  * - GET  ?a=file&id=&off=&t=  อ่านไฟล์ทีละ 8 MB เพื่อเปิดหน้าที่อ้างอิง (เฉพาะไฟล์ในโฟลเดอร์นี้) โฟลเดอร์จึงไม่ต้องแชร์สาธารณะ
  * - POST {a:'start',...}     ตรวจว่าผู้ส่งล็อกอินเว็บจริง ตรวจพื้นที่ว่าง แล้วเปิดการอัปโหลดแบบแบ่งส่ง
  * - POST {a:'chunk',...}     รับไฟล์ทีละส่วน (ไฟล์ใหญ่ส่งได้) ส่วนสุดท้ายได้รหัสไฟล์กลับไป
- * - POST {a:'putjson',name,content,id?}  เขียนไฟล์ข้อมูล JSON ลงโฟลเดอร์ย่อย baac-data (แอดมินเท่านั้น)
+ * - POST {a:'putjson',name,content,id?}  เขียนไฟล์ข้อมูล JSON ลงโฟลเดอร์ย่อย baac-data
+ *                            ผู้ใช้เขียนได้เฉพาะไฟล์ u_<uid>_* ของตัวเอง (บัตรความรู้/ข้อความหน้าเอกสาร) · ไฟล์อื่นแอดมินเท่านั้น
  * ไฟล์ชื่อซ้ำในโฟลเดอร์จะไม่อัปโหลดซ้ำ ใช้ไฟล์เดิม
  */
 const MARGIN = 50 * 1024 * 1024; // เผื่อพื้นที่ไว้ 50 MB
@@ -84,14 +85,16 @@ function dataDir_(folder) {
   return d;
 }
 function putJson_(uid, folder, b) {
-  const admins = String(props_().getProperty('ADMIN_UIDS') || '').split(/[\s,]+/).filter(String);
-  if (admins.indexOf(uid) < 0) return { ok: false, error: 'บัญชีนี้ไม่ใช่แอดมินของตัวรับไฟล์ (เพิ่ม uid ใน ADMIN_UIDS)' };
-  const name = String(b.name || '').replace(/[^\w.\-]/g, '').slice(0, 100);
+  const admins = String(props_().getProperty('ADMIN_UIDS') || '').split(/[\s,]+/).filter(String), admin = admins.indexOf(uid) >= 0;
+  const name = String(b.name || '').replace(/[^\w.\-]/g, '').slice(0, 180);
   if (!/\.json$/.test(name)) return { ok: false, error: 'ชื่อไฟล์ต้องลงท้าย .json' };
+  /* ผู้ใช้ทั่วไปเขียนได้เฉพาะไฟล์ของตัวเอง (ชื่อขึ้นต้น u_<uid>_) · ไฟล์กลาง (คลังโจทย์) เฉพาะแอดมิน */
+  const own = name.indexOf('u_' + uid + '_') === 0;
+  if (!admin && !own) return { ok: false, error: 'บัญชีนี้เขียนไฟล์นี้ไม่ได้' };
   const content = String(b.content || '');
   const dir = dataDir_(folder);
   let file = null;
-  if (b.id) { try { const f = DriveApp.getFileById(String(b.id)); if (inFolder_(f) && !f.isTrashed()) file = f; } catch (x) {} }
+  if (b.id) { try { const f = DriveApp.getFileById(String(b.id)); if (inFolder_(f) && !f.isTrashed() && f.getName() === name) file = f; } catch (x) {} }
   if (!file) { const it = dir.getFilesByName(name); if (it.hasNext()) file = it.next(); }
   if (!file) file = dir.createFile(name, '{}', 'application/json');
   const r = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files/' + file.getId() + '?uploadType=media&supportsAllDrives=true', {

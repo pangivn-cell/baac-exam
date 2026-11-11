@@ -85,8 +85,33 @@ function syncDocFromMeta(m){
     txtSha:m.txtSha||'',dupOf:m.dupOf||'',dupSkipped:+m.dupSkipped||0,subs:Array.isArray(m.subs)?m.subs:[],ownerUid:m.ownerUid||ME.uid,remote:true,
     /* เดิมไม่ได้รับสถานะ "เก็บตก" มาด้วย เครื่องใหม่จึงย่อยทั้งไฟล์ซ้ำตั้งแต่ต้นจนบัตรซ้ำ */
     fill:m.stage!=='ready'&&!!m.fill,audit:m.stage!=='ready'&&!!m.audit,reprocess:m.stage!=='ready'&&!!m.fill,reqAt:+m.reqAt||0,doneAt:+m.doneAt||0,
-    win:+m.win||0,qBy:m.qBy||'',qAt:+m.qAt||0,cardsPS:Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[]};
+    win:+m.win||0,qBy:m.qBy||'',qAt:+m.qAt||0,cardsPS:Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[],
+    cardsFile:dfOf(m.cardsFile),pagesFile:dfOf(m.pagesFile)};
 }
+/* ---------- เก็บบัตรความรู้/ข้อความหน้าเอกสารเป็นไฟล์ JSON ใน Google Drive ของแอดมิน (แทนก้อนใน Firestore) ----------
+   เขียนผ่านตัวรับไฟล์ Apps Script (ผู้ใช้เขียนได้เฉพาะไฟล์ u_<uid>_*) · อ่านตรงจาก Drive API (ไฟล์แชร์แบบทุกคนที่มีลิงก์ดูได้)
+   meta ใน Firestore เก็บแค่ {id: รหัสไฟล์, h: ลายนิ้วมือ} → เครื่องอื่นโหลดใหม่เฉพาะเมื่อลายนิ้วมือเปลี่ยน
+   เอกสารเก่าที่ยังอยู่ใน Firestore (ไม่มี cardsFile/pagesFile) อ่านแบบเดิม และค่อยๆ ย้ายขึ้น Drive (driveMigrateTick)
+   ตัวรับไฟล์ใช้ไม่ได้ → ส่งเข้า Firestore แบบเดิม งานไม่หยุด */
+const dfOf=x=>x&&x.id?{id:String(x.id),h:String(x.h||'')}:null;
+function driveUp(){return typeof SRC!=='undefined'&&(SRC.dirs||[]).find(d=>d.up)}
+async function driveStoreOK(){
+  if(SYNC.driveOff>Date.now())return false;
+  try{if(typeof ensureSrcDirs==='function')await ensureSrcDirs()}catch(e){}
+  return !!driveUp();
+}
+async function driveSaveJSON(name,obj,id){
+  const d=driveUp();if(!d)throw{code:'no_up'};
+  const j=await upCall(d.up,{a:'putjson',idToken:await idTok(),name,id:id||'',content:JSON.stringify(obj)});
+  if(!j||!j.ok){SYNC.driveOff=Date.now()+10*60e3;throw{code:'drive_put',message:j&&j.error||''}}
+  return j.id;
+}
+async function driveReadJSON(f){
+  const r=await fetch(`${DRIVE_API}/${f.id}?alt=media&supportsAllDrives=true&key=${FB_CFG.apiKey}&v=${encodeURIComponent(f.h||'')}`);
+  if(!r.ok)throw{code:'drive_get',message:String(r.status)};
+  return r.json();
+}
+const driveName=(doc,kind)=>`u_${ME.uid}_${syncKey(doc)}_${kind}.json`;
 function syncRememberFigs(doc,figs){
   for(const f of figs||[])if(f&&f.id)PFIG.set(f.id,{id:f.id,docId:doc.id,page:+f.page||1,desc:f.desc||'',w:+f.w||0,h:+f.h||0});
 }
@@ -147,6 +172,9 @@ async function syncMerge(local,m){
   /* ลายนิ้วมือก้อนบัตรบนคลาวด์: ใช้ดึงเฉพาะก้อนที่เปลี่ยน และใช้เทียบตอนเครื่องนี้ส่งขึ้น (ไม่มี = ผู้เขียนรุ่นเก่า ต้องโหลด/ส่งทั้งชุด) */
   {const ps=Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[];if(ps.join()!==(local.cardsPS||[]).join()){local.cardsPS=ps;ch=true}}
   if(m.counts){local.cardCount=+m.counts.cards||0;local.qCount=+m.counts.q||0}
+  {const cf=dfOf(m.cardsFile),pf=dfOf(m.pagesFile);
+   if(cf&&(!local.cardsFile||local.cardsFile.h!==cf.h||local.cardsFile.id!==cf.id)){local.cardsFile=cf;ch=true}
+   if(pf&&(!local.pagesFile||local.pagesFile.h!==pf.h||local.pagesFile.id!==pf.id)){local.pagesFile=pf;ch=true}}
   if(m.label!=null&&local.label!==m.label){local.label=m.label;ch=true}
   if(Array.isArray(m.subs)&&(m.subs||[]).join('|')!==(local.subs||[]).join('|')){local.subs=m.subs.slice();ch=true}
   if(m.txtSha&&local.txtSha!==m.txtSha){local.txtSha=m.txtSha;ch=true}
@@ -168,6 +196,7 @@ async function syncMerge(local,m){
   if(m.qBy!=null&&(local.qBy!==(m.qBy||'')||local.qAt!==(+m.qAt||0))){local.qBy=m.qBy||'';local.qAt=+m.qAt||0;ch=true}
   if(ch){await saveDoc(local);syncDocSubjects()}
   const have=CARDS.filter(c=>c.docId===local.id).length;
+  if(local.cardsFile&&local.cardsFile.h!==local.cardsFileGot)needCards=true;
   if(needCards||((m.counts&&+m.counts.cards||0)>have))syncHydrateQueue(local,{cards:true,pages:false});
   if(needPages)syncHydrateQueue(local,{cards:false,pages:true});
 }
@@ -217,9 +246,11 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
   SYNC.hydrating.add(doc.id);
   try{
     const f=await fb(),base=['users',ME.uid,'docs',key];
-    if(pages&&(doc.pagesParts||0)>0&&(!doc.pages||!doc.pages.length)){
-      const snap=await f.fs.getDocs(f.fs.collection(f.db,...base,'pages'));
-      const list=snap.docs.slice().sort((a,b)=>+a.id-+b.id).flatMap(s=>s.data().pages||[]);
+    if(pages&&((doc.pagesParts||0)>0||doc.pagesFile)&&(!doc.pages||!doc.pages.length)){
+      let list;
+      if(doc.pagesFile)list=((await driveReadJSON(doc.pagesFile)).pages)||[];
+      else{const snap=await f.fs.getDocs(f.fs.collection(f.db,...base,'pages'));
+        list=snap.docs.slice().sort((a,b)=>+a.id-+b.id).flatMap(s=>s.data().pages||[])}
       if(list.length){
         const by=new Map();for(const p of doc.pages||[])by.set(+p.n,p);
         for(const p of list){const old=by.get(+p.n);by.set(+p.n,(old&&old.text&&!p.text)?old:p)}
@@ -230,17 +261,19 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
       }
       if(doc.pagesRemote){doc.pagesRemote=false;await saveDoc(doc)}
     }
-    if(cards&&!SYNC.pushing.has(doc.id)&&PROC_ID!==doc.id&&((doc.cardsParts||0)>0||(doc.delCards||[]).length||(doc.cardsResetAt||0))){
+    if(cards&&!SYNC.pushing.has(doc.id)&&PROC_ID!==doc.id&&((doc.cardsParts||0)>0||doc.cardsFile||(doc.delCards||[]).length||(doc.cardsResetAt||0))){
       /* ดึงเฉพาะก้อนที่ลายนิ้วมือต่างจากที่เครื่องนี้มีแล้ว · โหลดทั้งชุดเมื่อ: ครั้งแรก ไม่มีลายนิ้วมือ (ผู้เขียนรุ่นเก่า) หรือมีการล้างบัตรทั้งชุดใหม่ */
-      const ps=doc.cardsPS||[],got=doc.cardsPSGot||[],reset=+doc.cardsResetAt||0;
-      const part=ps.length>0&&ps.length===(doc.cardsParts||0)&&got.length>0&&!(reset>(+doc.cardsResetSeen||0));
-      let shots;
-      if(part){const idx=ps.map((h,i)=>h!==got[i]?i:-1).filter(i=>i>=0);
-        shots=(await Promise.all(idx.map(i=>f.fs.getDoc(f.fs.doc(f.db,...base,'cards',String(i)))))).filter(s=>s.exists())}
-      else shots=(await f.fs.getDocs(f.fs.collection(f.db,...base,'cards'))).docs.slice().sort((a,b)=>+a.id-+b.id);
+      const ps=doc.cardsPS||[],got=doc.cardsPSGot||[],reset=+doc.cardsResetAt||0,df=doc.cardsFile;
+      /* ไฟล์ใน Drive = ทั้งชุดในไฟล์เดียว: โหลดเมื่อลายนิ้วมือต่างจากที่โหลดไว้ */
+      const part=df?doc.cardsFileGot&&!(reset>(+doc.cardsResetSeen||0)):ps.length>0&&ps.length===(doc.cardsParts||0)&&got.length>0&&!(reset>(+doc.cardsResetSeen||0));
       const remote=new Map();
-      for(const s of shots)for(const c of s.data().cards||[])if(c&&c.id)remote.set(c.id,vizIn(c));
-      SYNC.cardParts=(SYNC.cardParts||0)+shots.length;
+      if(df){if(df.h!==doc.cardsFileGot){const j=await driveReadJSON(df);for(const c of j.cards||[])if(c&&c.id)remote.set(c.id,vizIn(c))}}
+      else{let shots;
+        if(part){const idx=ps.map((h,i)=>h!==got[i]?i:-1).filter(i=>i>=0);
+          shots=(await Promise.all(idx.map(i=>f.fs.getDoc(f.fs.doc(f.db,...base,'cards',String(i)))))).filter(s=>s.exists())}
+        else shots=(await f.fs.getDocs(f.fs.collection(f.db,...base,'cards'))).docs.slice().sort((a,b)=>+a.id-+b.id);
+        for(const s of shots)for(const c of s.data().cards||[])if(c&&c.id)remote.set(c.id,vizIn(c));
+        SYNC.cardParts=(SYNC.cardParts||0)+shots.length}
       const have=new Map(CARDS.filter(c=>c.docId===doc.id).map(c=>[c.id,c])),add=[];
       for(const [id,rc] of remote){
         const old=have.get(id);
@@ -252,10 +285,11 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
       if(doc.cardsRemote){doc.cardsRemote=false;doc.cardCount=CARDS.filter(c=>c.docId===doc.id).length;doc.qCount=CARDS.filter(c=>c.docId===doc.id&&c.type==='q').length;await saveDoc(doc)}
       /* บัตรที่ถูกลบ (หรือล้างทั้งชุดตอนอ่านใหม่) จากอีกเครื่อง ต้องหายจากเครื่องนี้ด้วย */
       const del=new Set(doc.delCards||[]);
-      const gone=CARDS.filter(c=>c.docId===doc.id&&(del.has(c.id)||(!part&&reset&&!remote.has(c.id))));
+      const gone=CARDS.filter(c=>c.docId===doc.id&&(del.has(c.id)||(!part&&reset&&remote.size&&!remote.has(c.id))));
       if(gone.length){CARDS=CARDS.filter(c=>!gone.includes(c));try{await kbDelMany('cards',gone.map(c=>c.id))}catch(e){}}
       /* จำว่าก้อนไหนมีแล้ว (ไม่มีลายนิ้วมือบนคลาวด์ = ครั้งหน้าโหลดทั้งชุดเหมือนเดิม) */
-      if(ps.length===(doc.cardsParts||0)){doc.cardsPSGot=ps.slice();doc.cardsResetSeen=reset;await saveDoc(doc)}
+      if(df){doc.cardsFileGot=df.h;doc.cardsResetSeen=reset;await saveDoc(doc)}
+      else if(ps.length===(doc.cardsParts||0)){doc.cardsPSGot=ps.slice();doc.cardsResetSeen=reset;await saveDoc(doc)}
       if(add.length||gone.length){syncDocSubjects();renderSide();if(VIEW==='kb')renderKB();}
       /* ทำดัชนีความหมายให้บัตรที่ดึงมาจากเครื่องอื่น (ถ้ามี AI key) เพื่อให้ค้นหา/ถาม AI ได้เหมือนเดิม */
       if(typeof canEmbed==='function'&&canEmbed()){const miss=CARDS.filter(c=>c.docId===doc.id&&!c.emb).slice(0,100);if(miss.length)embedCards(miss).catch(()=>{})}
@@ -267,7 +301,7 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
 async function ensureDocPages(doc){
   if(!doc)return[];
   if(doc.pages&&doc.pages.length)return doc.pages;
-  if(!doc.pagesParts)return doc.pages||[];
+  if(!doc.pagesParts&&!doc.pagesFile)return doc.pages||[];
   await syncHydrate(doc,{cards:false,pages:true});
   return doc.pages||[];
 }
@@ -307,7 +341,8 @@ function syncMetaOf(doc){
     txtSha:doc.txtSha||'',dupOf:doc.dupOf||'',dupSkipped:+doc.dupSkipped||0,subs:(doc.subs||[]).slice(0,20),
     /* งานรอบปัจจุบัน (สั่งเมื่อ reqAt เสร็จเมื่อ doneAt) + เครื่องที่จองไว้ ให้ทุกเครื่องเห็นงานชุดเดียวกัน */
     audit:!!doc.audit,reqAt:+doc.reqAt||0,doneAt:+doc.doneAt||0,qBy:doc.stage==='ready'?'':(doc.qBy||''),qAt:doc.stage==='ready'?0:(+doc.qAt||0),
-    counts,createdMs:+doc.at||Date.now(),deleted:false
+    counts,createdMs:+doc.at||Date.now(),deleted:false,
+    ...(doc.cardsFile?{cardsFile:doc.cardsFile}:{}),...(doc.pagesFile?{pagesFile:doc.pagesFile}:{})
   };
 }
 async function syncPushMeta(doc){
@@ -331,7 +366,14 @@ async function syncPushPages(doc,force){
     return;
   }
   const sig=doc.pages.length+'|'+doc.chars+'|'+hashStr(doc.pages.map(p=>p.text||'').join('\n'));
-  if(!force&&doc.pagesSig===sig&&doc.pagesParts>0)return;
+  if(!force&&doc.pagesSig===sig&&(doc.pagesParts>0||doc.pagesFile))return;
+  if(await driveStoreOK()){
+    try{const id=await driveSaveJSON(driveName(doc,'pages'),{v:1,pages:doc.pages},doc.pagesFile&&doc.pagesFile.id);
+      doc.pagesFile={id,h:hashStr(sig)};doc.pagesParts=1;doc.pagesPS=[];doc.pagesSig=sig;doc.pagesRev=(doc.pagesRev||0)+1;doc.pagesRemote=false;
+      await saveDoc(doc);await syncPushMeta(doc);return}
+    catch(e){console.warn('drive pages',e&&e.message||e)}
+  }
+  if(doc.pagesFile)return;   /* ไฟล์อยู่บน Drive แล้ว ตัวรับไฟล์ล่มชั่วคราว: รอส่งรอบหน้า ไม่กลับไปเขียน Firestore */
   const f=await fb(),key=syncKey(doc),parts=jchunks(doc.pages,600000);
   /* ส่งเฉพาะก้อนหน้าที่เปลี่ยน (ระหว่างอ่านภาพ ส่งทุก 8 หน้า เดิมส่งข้อความทั้งไฟล์ซ้ำทุกรอบ) */
   const ps=parts.map(p=>hashStr(JSON.stringify(p))),was=Array.isArray(doc.pagesPS)?doc.pagesPS:[],had=doc.pagesParts||0;
@@ -348,7 +390,14 @@ async function syncPushCards(doc,force){
   if(doc.cardsRemote&&(doc.cardsParts||0)>0)return;
   const list=CARDS.filter(c=>c.docId===doc.id).map(syncCardOut).sort((a,b)=>(a.at||0)-(b.at||0)||String(a.id).localeCompare(String(b.id)));
   const sig=list.length+'|'+hashStr(JSON.stringify(list));
-  if(!force&&doc.cardsSig===sig&&doc.cardsParts>0)return;
+  if(!force&&doc.cardsSig===sig&&(doc.cardsParts>0||doc.cardsFile))return;
+  if(await driveStoreOK()){
+    try{const id=await driveSaveJSON(driveName(doc,'cards'),{v:1,cards:list},doc.cardsFile&&doc.cardsFile.id),h=hashStr(sig);
+      doc.cardsFile={id,h};doc.cardsFileGot=h;doc.cardsParts=1;doc.cardsPS=[];doc.cardsPSGot=[];doc.cardsSig=sig;doc.cardsRev=(doc.cardsRev||0)+1;doc.cardsRemote=false;
+      doc.cardCount=list.length;doc.qCount=list.filter(c=>c.type==='q').length;await saveDoc(doc);await syncPushMeta(doc);return}
+    catch(e){console.warn('drive cards',e&&e.message||e)}
+  }
+  if(doc.cardsFile)return;
   const f=await fb(),key=syncKey(doc),parts=jchunks(list,600000);
   /* ส่งเฉพาะก้อนที่เปลี่ยน: บัตรเรียงตามเวลาสร้าง บัตรใหม่ต่อท้าย ก้อนต้นๆ จึงเหมือนเดิม (เดิมส่งทั้งไฟล์ซ้ำทุกช่วงที่ย่อยเสร็จ
      ไฟล์ 1,211 บัตร × 201 ช่วง = ส่งก้อนเดิมหลายร้อยรอบ) · cardsPS = ลายนิ้วมือของแต่ละก้อนที่อยู่บนคลาวด์
@@ -473,7 +522,7 @@ async function syncDisown(doc){
 }
 /* ไฟล์ที่เครื่องนี้เห็นว่า "พร้อมใช้แต่บัตร 0 ใบ": อีกเครื่องอาจย่อยใหม่เสร็จไปแล้ว (บัตรอยู่บนคลาวด์ แต่เครื่องนี้ยังไม่ได้โหลด)
    ถ้าคลาวด์มีบัตร: รับผลจากคลาวด์ โหลดบัตรมา แล้วคืน true (ไม่ต้องย่อยซ้ำ) */
-const cloudHasCards=m=>(+m.cardsParts||0)>0||!!(m.counts&&+m.counts.cards>0);
+const cloudHasCards=m=>(+m.cardsParts||0)>0||!!(m.cardsFile&&m.cardsFile.id)||!!(m.counts&&+m.counts.cards>0);
 async function syncAdoptCloudCards(doc,m){
   if(!syncOk()||!doc||doc.central)return false;
   try{
@@ -481,6 +530,7 @@ async function syncAdoptCloudCards(doc,m){
     if(!m||m.deleted||!cloudHasCards(m))return false;
     if(m.leaseBy&&m.leaseBy!==syncDevice()&&(Date.now()-(+m.leaseAt||0)<SYNC_LEASE_MS))return false;   /* อีกเครื่องกำลังย่อยอยู่ บัตรยังไม่ครบ */
     Object.assign(doc,{stage:'ready',reprocess:false,fill:false,audit:false,err:'',warn:'',prog:'',doneAt:+m.doneAt||Date.now(),cardsParts:+m.cardsParts||0,cardsRemote:true,cardCount:+((m.counts&&m.counts.cards)||0),
+      cardsFile:dfOf(m.cardsFile),cardsFileGot:'',
       cardsPS:Array.isArray(m.cardsPS)&&m.cardsPS.length===(+m.cardsParts||0)?m.cardsPS:[],cardsPSGot:[]});
     await saveDoc(doc);
     try{await syncHydrate(doc,{cards:true})}catch(e){}

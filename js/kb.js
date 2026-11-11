@@ -1536,6 +1536,13 @@ async function autoRetry(){
     /* ไฟล์ที่ย่อยเสร็จในเครื่องนี้แต่บัตรยังไม่ขึ้นคลาวด์ (ส่งไม่สำเร็จตอนโควตาเต็ม หรือปิดเว็บก่อนส่งเสร็จ) → ส่งใหม่ รอบละ 5 ไฟล์ */
     if(!qOut&&ME&&typeof syncQueue==='function'){let k=0;for(const d of mine){if(k>=5)break;
       if(d.stage!=='ready'||busy(d)||d.cardsRemote||(+d.cardsParts||0)>0||!CARDS.some(c=>c.docId===d.id))continue;syncQueue(d,{cards:true,pages:false,figs:false});k++}}
+    /* ย้ายบัตร/ข้อความหน้าของเอกสารเดิมจาก Firestore ขึ้นไฟล์ใน Drive ทีละไฟล์ (นาทีละ 2 ไฟล์) · บัตรยังไม่ได้โหลดมาเครื่องนี้ = โหลดก่อน รอบหน้าค่อยส่ง */
+    if(!qOut&&ME&&typeof driveStoreOK==='function'&&!PROC_ID&&await driveStoreOK()){let k=0;
+      for(const d of mine){if(k>=2)break;if(d.stage!=='ready'||busy(d)||d.dupOf)continue;
+        const legacyCards=(+d.cardsParts||0)>0&&!d.cardsFile,legacyPages=(+d.pagesParts||0)>0&&!d.pagesFile;if(!legacyCards&&!legacyPages)continue;k++;
+        try{if(legacyCards){if(d.cardsRemote)await syncHydrate(d,{cards:true});if(!d.cardsRemote)await syncPushCards(d,true)}
+          if(legacyPages){if(!(d.pages||[]).length)await syncHydrate(d,{cards:false,pages:true});if((d.pages||[]).length)await syncPushPages(d,true)}}
+        catch(e){console.warn('drive migrate',d.name,e&&e.message||e)}}}
     if(!qOut)for(const d of mine){
       if(busy(d)||d.stage==='ready'||(!activeAI()&&!localUp()&&!hostKnown()))continue;
       if(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d))continue;

@@ -373,8 +373,11 @@ async function aiWin(win,mk,depth=0){
   let r=null;
   for(let att=0;att<2&&!r;att++){try{r=await mk(win)}catch(e){if(!(e&&(e.code==='invalid_json'||e.code==='truncated')))throw e;if(e.code==='truncated')break}}
   const parts=r||depth>=2?[win]:splitWin(win);
-  if(parts.length<2)return[{win,r}];
-  const out=[];for(const p of parts)out.push(...await aiWin(p,mk,depth+1));return out;
+  if(parts.length<2){if(!depth&&!r)throw{code:'ai_bad_out'};return[{win,r}]}
+  const out=[];for(const p of parts)out.push(...await aiWin(p,mk,depth+1));
+  /* ทุกส่วนได้คำตอบที่อ่านไม่ได้/ถูกตัด: เดิมคืนค่าว่างไป ช่วงนั้นถูกนับว่าย่อยเสร็จ ได้ไฟล์ "พร้อมใช้" ที่มีบัตร 0 ใบ → ให้เป็นข้อผิดพลาด ระบบลองใหม่เอง */
+  if(!depth&&out.every(x=>!x.r))throw{code:'ai_bad_out'};
+  return out;
 }
 /* หน้าที่มีเนื้อหาพอสมควรแต่ยังไม่มีบัตร/ข้อสอบจากไฟล์นี้เลย (ไม่นับสารบัญ) → ให้ AI เก็บตกอีกรอบ */
 const QLIKE=/(^|\n)\s*\d{1,3}\s*[.)]\s*\S[\s\S]*?(^|\n|\s)[กขคง1-4]\s*[.)]/m;
@@ -1537,6 +1540,13 @@ async function autoRetry(){
       if(noRetry(d.errCode))continue;
       if(!d.nextTry){retryLater(d,d.errCode);await saveDoc(d);continue}
       if(now>=d.nextTry){d.nextTry=0;await saveDoc(d);queueDoc(d.id)}
+    }
+    /* กู้ไฟล์ที่ "พร้อมใช้" แต่บัตร 0 ใบ ทั้งที่มีข้อความ (ย่อยตอน AI ตอบถูกตัด ระบบเดิมนับว่าเสร็จ) → ย่อยใหม่ครั้งเดียว */
+    if(activeAI()||localUp())for(const d of mine){
+      if(d.stage!=='ready'||busy(d)||d.zeroRetry||d.dupOf||(+d.chars||0)<300||(+d.cardCount||0)>0||(+d.cardsParts||0)>0||d.cardsRemote)continue;
+      if(CARDS.some(c=>c.docId===d.id)||sameInCentral(d)||(typeof docBusyElsewhere==='function'&&docBusyElsewhere(d)))continue;
+      Object.assign(d,{zeroRetry:now,stage:'digest',digDone:0,fill:false,audit:false,reprocess:true,reqAt:now,err:'',warn:''});
+      await saveDoc(d);if(typeof syncPushMeta==='function')syncPushMeta(d);queueDoc(d.id);
     }
     for(const d of mine){
       if(d.stage!=='ready'||busy(d)||!d.needSolve||!activeAI()||now-(+d.solveAt||0)<30*60000)continue;

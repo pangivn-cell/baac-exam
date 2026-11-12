@@ -324,16 +324,16 @@ function stripStemChoices(q){
 /* ชื่อย่อในโจทย์ (นาย ก, นาง ข, ด.ช. ค) → ชื่อคนจริง อ่านง่ายกว่า · ตัวอักษรเดียวกันในข้อเดียวกัน = คนเดียวกัน ได้ชื่อเดียวกันทั้งโจทย์ ตัวเลือก และเฉลย
    เปลี่ยนเฉพาะตอนแสดง (ข้อมูลในคลังคงเดิม) และจำรหัสข้อเดิมไว้ (_k) ให้ระบบจำข้อที่ทำแล้ว/ตอบถูกแล้วได้เหมือนเดิม */
 const NM_MALE=['สมชาย','วิชัย','ธนากร','ประเสริฐ','อนุชา','กิตติ','สุรชัย','พงศกร','ณัฐวุฒิ','ชัยวัฒน์'],NM_FEMALE=['มาลี','สุดา','วิภาวรรณ','นภา','กัลยา','ปิยะดา','รัตนา','จันทร์เพ็ญ','อรอุมา','ศิริพร'];
-const NM_PRE=/(นางสาว|นาย|นาง|น\.ส\.|เด็กชาย|เด็กหญิง|ด\.ช\.|ด\.ญ\.)\s*([ก-ฮ])(?![ก-๙])/g;
+const NM_PRE=/(นางสาว|นาย|นาง|น\.ส\.|เด็กชาย|เด็กหญิง|ด\.ช\.|ด\.ญ\.)\s+([ก-ฮ])(?![ก-๙])/g;
 function humanizeQ(q){
   if(!q||typeof q.stem!=='string')return q;
   const txt=[q.stem,...(q.choices||[]).map(String),...(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x)].join('\n'),map={};let m,mi=0,fi=0;
   NM_PRE.lastIndex=0;
-  while((m=NM_PRE.exec(txt))){const L=m[2];if(map[L])continue;const male=/^(นาย|เด็กชาย|ด\.ช\.)$/.test(m[1]);map[L]=male?NM_MALE[mi++%NM_MALE.length]:NM_FEMALE[fi++%NM_FEMALE.length]}
+  while((m=NM_PRE.exec(txt))){const L=m[2];if(map[L])continue;const male=/^(นาย|เด็กชาย|ด\.ช\.)$/.test(m[1]);map[L]={pre:m[1],name:male?NM_MALE[mi++%NM_MALE.length]:NM_FEMALE[fi++%NM_FEMALE.length]}}
   if(!Object.keys(map).length)return q;
   /* ตัวอักษรเดี่ยวที่หมายถึงคนเดิม (เช่น "ก อายุมากกว่า ข") เปลี่ยนด้วย ยกเว้นที่หมายถึงตัวเลือก (ข้อ ก / ตอบ ข / ตัวเลือก ค) */
-  const conv=t=>String(t).replace(NM_PRE,(_,pre,L)=>pre+map[L]).replace(/(^|[\s(,"“'])([ก-ฮ])(?=$|[\s),.:"”'])/g,(all,b,L,off,str)=>{
-    if(!map[L])return all;const before=str.slice(Math.max(0,off-12),off+b.length);return /(ข้อ|ตอบ|ตัวเลือก|เฉลย)\s*$/.test(before)?all:b+map[L]});
+  const conv=t=>String(t).replace(NM_PRE,(_,pre,L)=>map[L].pre+map[L].name).replace(/(^|[\s(,"“'])([ก-ฮ])(?=$|[\s),:"”'])/g,(all,b,L,off,str)=>{
+    if(!map[L])return all;const before=str.slice(Math.max(0,off-12),off+b.length);return /(ข้อ|ตอบ|ตัวเลือก|เฉลย)\s*$/.test(before)?all:b+map[L].name});
   const k=qKey(q),out={...q,_k:k,stem:conv(q.stem)};
   if(Array.isArray(q.choices))out.choices=q.choices.map(c=>/^\s*[ก-ฮ]\s*$/.test(String(c))?c:conv(c));
   if(Array.isArray(q.steps))out.steps=q.steps.map(x=>Array.isArray(x)?[conv(x[0]),x[1]]:conv(x));

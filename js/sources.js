@@ -52,7 +52,8 @@ function loadSrcIndex(force){
         catch(e){d.err=srcErrText(e);errs.push(`${d.name||d.id}: ${d.err}`)}
       }
       SRC.files=files;SRC.at=Date.now();SRC.err=errs.join(' · ');SRC.ready=true;
-      try{localStorage.setItem(SRC_IDX_KEY,JSON.stringify({dk,at:SRC.at,err:SRC.err,files:[...files]}))}catch(e){}
+      /* อ่านโฟลเดอร์ไม่สำเร็จ: ไม่จำรายชื่อที่ไม่ครบไว้ 12 ชั่วโมง (เดิมจำไว้ ทำให้หาไฟล์ไม่เจอทั้งที่มีอยู่) */
+      if(!errs.length)try{localStorage.setItem(SRC_IDX_KEY,JSON.stringify({dk,at:SRC.at,err:SRC.err,files:[...files]}))}catch(e){}
     }catch(e){SRC.err=srcErrText(e);SRC.failAt=Date.now()}   /* ล้มเหลว: หน้าที่เรียกต้องรอก่อนลองใหม่ ไม่งั้นวาดหน้าแล้วโหลดซ้ำวนไม่รู้จบ */
     finally{SRC.loading=null}
   })();
@@ -159,7 +160,9 @@ async function openSource(cardId){
     if(!buf){
       if(!ME)throw{why:'เข้าสู่ระบบก่อน จึงจะเปิดไฟล์ต้นฉบับจาก Google Drive ได้'};
       if(!SRC.ready)await loadSrcIndex();
-      const s=srcFor(d);
+      let s=srcFor(d);
+      /* รายชื่อไฟล์ที่จำไว้อาจเก่า (เพิ่งอัปโหลดไฟล์ใหม่) → อ่านโฟลเดอร์ใหม่ 1 ครั้งก่อนบอกว่าไม่พบ */
+      if(!s&&Date.now()-(SRC.at||0)>2*60000){await loadSrcIndex(true);s=srcFor(d)}
       if(!s)throw{why:SRC.dirs.length?`ยังไม่พบไฟล์ชื่อนี้ในโฟลเดอร์ Google Drive ที่ตั้งไว้${isReviewerMe()?' (ตั้งลิงก์ไฟล์เองได้ที่หน้า ข้อมูลในคลังกลาง)':''}`:'แอดมินยังไม่ได้ตั้งโฟลเดอร์ไฟล์ต้นฉบับ (Google Drive)'};
       link=driveView(s.id);
       if(!/pdf/i.test(s.mime||'')&&!/\.pdf$/i.test(s.name||''))throw{why:'ไฟล์นี้ไม่ใช่ PDF เปิดดูใน Google Drive แทน'};

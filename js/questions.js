@@ -170,7 +170,7 @@ const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.
 const lostChoices=c=>{const q=c&&c.q;if(!q||!Array.isArray(q.choices)||q.choices.length<3)return false;
   if(!q.choices.every(x=>/^\s*[ก-ฮ]\s*\.?\s*$/.test(String(x))))return false;   /* ตัวเลขหลักเดียว (2 4 6 8) เป็นคำตอบจริงได้ ไม่นับ */
   if((c.figs||[]).length||qPic(q)||/\[รูป/.test(q.stem||''))return false;
-  return (String(q.stem||'').match(/(^|\s)[กขคงจ]\s*[.)]/g)||[]).length<2};
+  return (String(q.stem||'').match(/(^|[\s(])[กขคงจ]\s*[.)]/g)||[]).length<2};
 /* c.broken = ข้อที่ข้อมูลในโจทย์หาย (เช่น โจทย์สดมภ์ที่อ่านตารางพลาด) ตอบไม่ได้ ซ่อนไว้จนกว่าจะซ่อมเสร็จ (ซิงก์ไปทุกเครื่องพร้อมบัตร) */
 /* ข้อจากไฟล์ที่ตัวเลือกซ้ำกันเอง (อ่านไฟล์พลาด) ตอบไม่ได้ว่าข้อไหนถูก ไม่เอามาออกข้อสอบ */
 const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};

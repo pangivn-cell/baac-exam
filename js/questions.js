@@ -90,7 +90,7 @@ const skipped=c=>!!(c&&SKIPT['c:'+c.id]);
 /* คะแนนเลือกบัตร: ข้อที่เคยผิด/ยังไม่เคยเจอ/สำคัญมาก่อน แต่ข้อที่เพิ่งเจอได้คะแนนลด และสุ่มมากขึ้นให้แนวคำถามเปลี่ยนทุกรอบ */
 function cardScore(c){const s=c.st||{},now=Date.now(),seen=s.ls?now-s.ls:Infinity;
   return Math.min(s.w||0,3)*2-(s.r||0)*1.2+(s.n?0:2.5)+(c.imp||2)*.6+(s.lw&&now-s.lw<3*864e5?1.5:0)
-    -(seen<864e5?3:seen<3*864e5?1.5:0)-(skipped(c)?60:0)-(c.q&&tellOpen(c.q)?2:0)-(SKIPT[pageKey(c)]?3:0)+Math.random()*4}
+    -(seen<864e5?3:seen<3*864e5?1.5:0)-(skipped(c)?60:0)-(c.q&&tellOpen(c.q)?4:0)-(c.q&&String(c.q.stem||'').length>300?3:c.q&&String(c.q.stem||'').length>200?1.5:0)-(SKIPT[pageKey(c)]?3:0)+Math.random()*4}
 /* เลือกบัตรถัดไป: กระจายไปหลายหน้า/หลายไฟล์ · หน้าเดียวกับบัตรที่เลือกไปแล้วในรอบนี้ได้คะแนนลด หน้าใกล้กันลดน้อยกว่า */
 function pickCard(pool,used){
   const fresh=pool.filter(c=>!used.has(c.id)),arr=fresh.length?fresh:pool;if(!arr.length)return null;

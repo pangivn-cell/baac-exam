@@ -73,7 +73,10 @@ async function poolTake(s,level,k){
     if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
     out.push({q:withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null),d:near(d)?0:dist(d)});
   }
-  const pick=shuffle(out).sort((a,b)=>a.d-b.d).slice(0,k).map(x=>x.q);for(const q of pick)POOL.used.add(qKey(q));
+  /* โจทย์ยาวเกิน / เดาจากความยาวได้ ถูกเลื่อนไปท้าย · เรื่องเดียวกัน (topic) ไม่ซ้ำในชุดเดียวกันถ้าเลี่ยงได้ */
+  const pen=x=>x.d+(String(x.q.stem||'').length>300?2:0)+(typeof lenTell==='function'&&lenTell(x.q)?2:0)+Math.random();
+  const sorted=shuffle(out).sort((a,b)=>pen(a)-pen(b)),tp=new Set(),first=[],rest=[];for(const x of sorted){const t=x.q.topic||'';if(t&&tp.has(t))rest.push(x);else{tp.add(t);first.push(x)}}
+  const pick=[...first,...rest].slice(0,k).map(x=>x.q);for(const q of pick)POOL.used.add(qKey(q));
   return pick;
 }
 /* โจทย์ที่แบ่งได้: AI สร้าง และไม่ได้มาจากเอกสารส่วนตัว */

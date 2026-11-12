@@ -220,7 +220,7 @@ function qKey0(q){
   const t=qText(q).toLowerCase().replace(/[\s"'“”‘’.,:;!?()\[\]\-_/]+/g,'').slice(0,240);
   return 'k'+djb(t)+t.length;
 }
-function qKey(q){const p=qPic(q);return p?qKey0(q)+'p'+djb(p+'|'+(q.choices||[]).join('|')):qKey0(q)}
+function qKey(q){if(q&&q._k)return q._k;const p=qPic(q);return p?qKey0(q)+'p'+djb(p+'|'+(q.choices||[]).join('|')):qKey0(q)}
 const qMastered=q=>{if(QLOG_OFF)return false;const e=QLOG[qKey(q)];return!!e&&e.s==='r'};
 /* ลายนิ้วมือบัตรความรู้: ใช้กันบัตรซ้ำเมื่อย่อยไฟล์ซ้ำ/ไฟล์ที่เนื้อหาซ้ำกัน */
 const cardKey=c=>{const n=s=>String(s||'').toLowerCase().replace(/[\s\-_.,:;!?()\[\]{}"'“”]+/g,'');return n(c.topic)+'|'+n(c.title)+'|'+n(c.fact).slice(0,400)};
@@ -321,8 +321,26 @@ function stripStemChoices(q){
   const stem=lines.slice(0,i).join('\n').trim();if(!stem)return q;
   return{...q,origKey:q.origKey||qKey(q),stem};
 }
+/* ชื่อย่อในโจทย์ (นาย ก, นาง ข, ด.ช. ค) → ชื่อคนจริง อ่านง่ายกว่า · ตัวอักษรเดียวกันในข้อเดียวกัน = คนเดียวกัน ได้ชื่อเดียวกันทั้งโจทย์ ตัวเลือก และเฉลย
+   เปลี่ยนเฉพาะตอนแสดง (ข้อมูลในคลังคงเดิม) และจำรหัสข้อเดิมไว้ (_k) ให้ระบบจำข้อที่ทำแล้ว/ตอบถูกแล้วได้เหมือนเดิม */
+const NM_MALE=['สมชาย','วิชัย','ธนากร','ประเสริฐ','อนุชา','กิตติ','สุรชัย','พงศกร','ณัฐวุฒิ','ชัยวัฒน์'],NM_FEMALE=['มาลี','สุดา','วิภาวรรณ','นภา','กัลยา','ปิยะดา','รัตนา','จันทร์เพ็ญ','อรอุมา','ศิริพร'];
+const NM_PRE=/(นางสาว|นาย|นาง|น\.ส\.|เด็กชาย|เด็กหญิง|ด\.ช\.|ด\.ญ\.)\s*([ก-ฮ])(?![ก-๙])/g;
+function humanizeQ(q){
+  if(!q||typeof q.stem!=='string')return q;
+  const txt=[q.stem,...(q.choices||[]).map(String),...(q.steps||[]).map(x=>Array.isArray(x)?x[0]:x)].join('\n'),map={};let m,mi=0,fi=0;
+  NM_PRE.lastIndex=0;
+  while((m=NM_PRE.exec(txt))){const L=m[2];if(map[L])continue;const male=/^(นาย|เด็กชาย|ด\.ช\.)$/.test(m[1]);map[L]=male?NM_MALE[mi++%NM_MALE.length]:NM_FEMALE[fi++%NM_FEMALE.length]}
+  if(!Object.keys(map).length)return q;
+  /* ตัวอักษรเดี่ยวที่หมายถึงคนเดิม (เช่น "ก อายุมากกว่า ข") เปลี่ยนด้วย ยกเว้นที่หมายถึงตัวเลือก (ข้อ ก / ตอบ ข / ตัวเลือก ค) */
+  const conv=t=>String(t).replace(NM_PRE,(_,pre,L)=>pre+map[L]).replace(/(^|[\s(,"“'])([ก-ฮ])(?=$|[\s),.:"”'])/g,(all,b,L,off,str)=>{
+    if(!map[L])return all;const before=str.slice(Math.max(0,off-12),off+b.length);return /(ข้อ|ตอบ|ตัวเลือก|เฉลย)\s*$/.test(before)?all:b+map[L]});
+  const k=qKey(q),out={...q,_k:k,stem:conv(q.stem)};
+  if(Array.isArray(q.choices))out.choices=q.choices.map(c=>/^\s*[ก-ฮ]\s*$/.test(String(c))?c:conv(c));
+  if(Array.isArray(q.steps))out.steps=q.steps.map(x=>Array.isArray(x)?[conv(x[0]),x[1]]:conv(x));
+  return out;
+}
 function mixAll(a){
-  if(!Array.isArray(a))return a;const out=a.map(q=>mixQ(stripStemChoices(cleanSetCode(q))));
+  if(!Array.isArray(a))return a;const out=a.map(q=>humanizeQ(mixQ(stripStemChoices(cleanSetCode(q)))));
   const ks=Object.keys(MIXPOS);if(ks.length>4000)for(const k of ks.slice(0,ks.length-4000))delete MIXPOS[k];
   try{localStorage.setItem(MIX_KEY,JSON.stringify(MIXPOS))}catch(e){}
   return out;
@@ -442,6 +460,7 @@ ${picSub?`- ห้ามสร้างข้อที่อ่านคำต�
 ${CHOICE_RULE} ห้ามมีข้อที่กำกวม
 - เฉลยแต่ละข้อมี 2–4 ขั้น สั้น ภาษาง่าย แต่ละขั้นบอกที่มา (from) เช่น ชื่อกฎหมาย หลักการ หรือ "บัตรความรู้"
 ${CALC_RULE}
+${NAME_RULE}
 - ใช้ภาษาไทย ศัพท์เฉพาะภาษาอังกฤษเขียนได้ ยกเว้นหัวข้อภาษาอังกฤษ ให้โจทย์และตัวเลือกเป็นภาษาอังกฤษแต่เฉลยเป็นไทย ห้ามใช้ markdown ไม่ต้องใส่ ก ข ค ง หน้าตัวเลือก
 ตอบเป็น JSON เท่านั้น รูปแบบ:
 {"questions":[{"card":"รหัสบัตรหรือว่าง",${sent.length?'"fig":"รหัสรูปหรือว่าง",':''}"topic":"หัวข้อ","stem":"โจทย์","choices":["ตัวเลือก1","ตัวเลือก2","ตัวเลือก3","ตัวเลือก4"],"answer":0,"viz":null,"steps":[{"text":"ขั้นอธิบาย","from":"ที่มา"}]}]}`;

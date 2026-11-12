@@ -184,7 +184,7 @@ const pickBank=(pool,k)=>{const used=new Set(),out=[];while(out.length<k){const 
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
     fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,calc:!!c.calc,topic:c.topic,sub:s.id,subName:s.name},null);
-  q.ansAI=c.ansSrc==='AI';return q;
+  q.ansAI=c.ansSrc==='AI';if(c.fixedAt)q.fixedAt=c.fixedAt;return q;
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
 function offlineItems(s,level,n){
@@ -347,8 +347,15 @@ function humanizeQ(q){
   if(Array.isArray(q.steps))out.steps=q.steps.map(x=>Array.isArray(x)?[conv(x[0]),x[1]]:conv(x));
   return out;
 }
+const dropPicLabel=q=>q&&Array.isArray(q.choices)&&q.choices.some(c=>/^\s*\(?[ก-จ]\)?\s*\.?\s*\[รูป/.test(String(c)))?{...q,choices:q.choices.map(c=>String(c).replace(/^\s*\(?[ก-จ]\)?\s*\.?\s*(?=\[รูป)/,''))}:q;
+/* ข้อในชุดที่สร้างไว้ก่อน (หรือชุดที่ทำค้าง) แต่การ์ดในคลังถูกแก้แล้ว (รูป/เฉลยใหม่): ใช้ฉบับล่าสุดตอนแสดง ถ้ายังไม่ได้ตอบ */
+function freshQ(q,s){
+  if(!q||!q.card||q.fixedAt)return q;const c=CARDS.find(x=>x.id===q.card&&x.type==='q');
+  if(!c||!c.fixedAt||!c.q)return q;
+  const n=mixAll([bankQ(c,s||{id:q.sub,name:q.subName})])[0];n.fixedAt=c.fixedAt;return n;
+}
 function mixAll(a){
-  if(!Array.isArray(a))return a;const out=a.map(q=>humanizeQ(mixQ(stripStemChoices(cleanSetCode(q)))));
+  if(!Array.isArray(a))return a;const out=a.map(q=>humanizeQ(mixQ(stripStemChoices(cleanSetCode(dropPicLabel(q))))));
   const ks=Object.keys(MIXPOS);if(ks.length>4000)for(const k of ks.slice(0,ks.length-4000))delete MIXPOS[k];
   try{localStorage.setItem(MIX_KEY,JSON.stringify(MIXPOS))}catch(e){}
   return out;

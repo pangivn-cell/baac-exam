@@ -495,6 +495,7 @@ function render(){
   if(VIEW!=='practice')return;
   renderSide();
   const el=document.getElementById('sheet');if(!R)return;
+  if(R.items&&R.items[R.i]&&R.picks&&R.picks[R.i]==null&&typeof freshQ==='function'){const nq=freshQ(R.items[R.i]);if(nq!==R.items[R.i])R.items[R.i]=nq}
   if(R.status==='pscload'){el.innerHTML=`<div class="state"><div class="spin" aria-hidden="true"></div><p><b>กำลังโหลดข้อมูลผลิตภัณฑ์</b></p></div>`;return}
   if(R.status==='loading'){el.innerHTML=`<div class="state"><div class="spin" aria-hidden="true"></div><p><b>กำลังให้ AI สร้างโจทย์ใหม่ ระดับ ${R.level}</b></p><p class="src" id="genp">ใช้เวลาประมาณครึ่งนาทีถึงหนึ่งนาที</p><button class="ghost" id="cancelgen">ยกเลิก</button></div>`;document.getElementById('cancelgen').onclick=()=>{genCtl&&genCtl.abort();R.status='error';R.err='ยกเลิกแล้ว กดสร้างชุดใหม่เมื่อพร้อม';render()};return}
   if(R.status==='idle'){el.innerHTML=`<div class="state"><p><b>พร้อมสร้างโจทย์ชุดใหม่ ระดับ ${R.level}</b></p><p class="src">AI จะสร้างโจทย์ ${P.count} ข้อตามระดับของคุณ ใช้ ${AINAME[activeAI()]||'AI'} จากบัญชีของคุณ</p><button class="primary" id="go">สร้างโจทย์</button></div>`;document.getElementById('go').onclick=()=>start(true);return}
@@ -936,6 +937,7 @@ function renderBar(){
   document.getElementById('msubmit').onclick=askSubmit;tick();
 }
 function renderRun(el){
+  if(M.picks[M.i]==null&&typeof freshQ==='function'){const nq=freshQ(M.items[M.i]);if(nq!==M.items[M.i]){M.items[M.i]=nq;saveM()}}
   const n=M.items.length,i=M.i,q=M.items[i],pick=M.picks[i];
   el.innerHTML=fx(`<div class="meta"><span>ข้อ ${i+1} จาก ${n}</span><span>${esc(q.subName||'')}</span></div>
     ${questionHTML(q)}

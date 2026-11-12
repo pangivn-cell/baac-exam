@@ -619,3 +619,9 @@ body.side-off .side{display:none}
 .calcd .cnote{margin:4px 0 0;color:#e8618c;font-style:italic;font-size:.95em}
 .calcd .csep{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
 .calcd .ccheck{margin:0;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,#2fb36b 14%,transparent)}
+/* ตัวเลือกที่เป็นรูป: ขยายให้ใหญ่พอดูรายละเอียดได้ (รูปจากไฟล์มักเล็ก) และวาง 2 คอลัมน์บนจอกว้าง */
+.choices.mc:has(.chfig){display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){.choices.mc:has(.chfig){grid-template-columns:1fr}}
+.ch .qfig.chfig{max-width:100%}
+.ch .qfig.chfig img{height:clamp(110px,18vw,170px);width:auto;max-width:100%;max-height:none;object-fit:contain}
+.stem .qfig.infig img,.qtext .qfig.infig img{min-height:120px;width:auto;object-fit:contain}

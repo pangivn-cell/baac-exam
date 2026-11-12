@@ -278,7 +278,12 @@ function retryItems(s,k){
   if(k<=0)return[];
   return Object.values(QLOG).filter(e=>e.s==='w'&&e.q&&(e.sub===s.id||(s.id==='specall'&&SPEC_TOPICS.includes(e.q.topic||e.q.subName))))
     .filter(e=>!(e.q.sub==='psc'&&typeof pscRetryOK==='function'&&!pscRetryOK(e.q)))
-    .sort((a,b)=>a.t-b.t).slice(0,k).map(e=>({...JSON.parse(JSON.stringify(e.q)),retry:true,sub:e.q.sub||s.id,subName:e.q.subName||s.name}));
+    .sort((a,b)=>a.t-b.t)
+    /* ข้อที่เคยตอบผิดเก็บไว้เป็นฉบับเก่า: ใช้การ์ดฉบับล่าสุดถ้าถูกแก้แล้ว (รูป/เฉลยใหม่) และข้ามข้อที่ใช้ไม่ได้แล้ว (ถูกลบ/รูปหาย/ตัวเลือกหาย) */
+    .map(e=>{const q={...JSON.parse(JSON.stringify(e.q)),retry:true,sub:e.q.sub||s.id,subName:e.q.subName||s.name};const n=typeof freshQ==='function'?freshQ(q,s):q;if(n!==q)n.retry=true;return n})
+    .filter(q=>{const c=q.card&&CARDS.find(x=>x.id===q.card);
+      return !(c&&c.broken)&&!placeholderQ(q)&&!figMissing(q)&&!(q.fig&&!figOK(q.fig))&&!lostChoices({q})})
+    .slice(0,k);
 }
 /* ตัดข้อที่ตอบถูกแล้ว และข้อซ้ำกันในชุดเดียวกัน */
 function dedupeQs(list,seen){

@@ -166,11 +166,11 @@ const figMissing=c=>{const q=c.q||c;return [...String((q.stem||'')+' '+(q.choice
 /* ข้อความที่มีป้ายรูป → แสดงรูปจริงตรงตำแหน่งป้าย */
 const figText=(t,cls)=>esc(String(t||'')).replace(FIG_TOK,(m,id)=>figHTML(id,cls||'qfig infig'));
 const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!c.broken&&!placeholderQ(c.q)&&!lostChoices(c)&&!QHIDE[c.id]&&!figMissing(c)&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))].filter(c=>!dupChoices(c))};
-/* ตัวเลือกเหลือแค่ตัวอักษร (ก ข ค ง / 1 2 3 4) แต่ไม่มีรูปและโจทย์ไม่ได้บอกค่าของแต่ละตัวเลือก = ค่าตัวเลือกหายตอนย่อยไฟล์ ตอบไม่ได้ */
+/* ตัวเลือกเหลือแค่ตัวอักษร (ก ข ค ง) แต่ไม่มีรูปและโจทย์ไม่ได้บอกค่าของแต่ละตัวเลือก = ค่าตัวเลือกหายตอนย่อยไฟล์ ตอบไม่ได้ */
 const lostChoices=c=>{const q=c&&c.q;if(!q||!Array.isArray(q.choices)||q.choices.length<3)return false;
-  if(!q.choices.every(x=>/^\s*[ก-ฮ1-9]\s*\.?\s*$/.test(String(x))))return false;
+  if(!q.choices.every(x=>/^\s*[ก-ฮ]\s*\.?\s*$/.test(String(x))))return false;   /* ตัวเลขหลักเดียว (2 4 6 8) เป็นคำตอบจริงได้ ไม่นับ */
   if((c.figs||[]).length||qPic(q)||/\[รูป/.test(q.stem||''))return false;
-  return (String(q.stem||'').match(/(^|\s)[กขคงจ1-5]\s*[.)]/g)||[]).length<2};
+  return (String(q.stem||'').match(/(^|\s)[กขคงจ]\s*[.)]/g)||[]).length<2};
 /* c.broken = ข้อที่ข้อมูลในโจทย์หาย (เช่น โจทย์สดมภ์ที่อ่านตารางพลาด) ตอบไม่ได้ ซ่อนไว้จนกว่าจะซ่อมเสร็จ (ซิงก์ไปทุกเครื่องพร้อมบัตร) */
 /* ข้อจากไฟล์ที่ตัวเลือกซ้ำกันเอง (อ่านไฟล์พลาด) ตอบไม่ได้ว่าข้อไหนถูก ไม่เอามาออกข้อสอบ */
 const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};

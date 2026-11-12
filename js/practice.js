@@ -705,7 +705,7 @@ function qValid(q){
   if(!q||!Number.isInteger(q.answer)||q.answer<0||!(qText(q).trim()||q.svg)||placeholderQ(q))return false;
   const ch=q.choices;if(!Array.isArray(ch))return !!q.kind&&q.kind!=='mc';
   if(ch.length<2||q.answer>=ch.length||ch.some(c=>String(c==null?'':c).trim()===''&&!q.chSvg))return false;
-  return !!q.chSvg||new Set(ch.map(c=>String(c).trim().toLowerCase())).size===ch.length;
+  return !!q.chSvg||(typeof spotDiff==='function'&&spotDiff(q))||new Set(ch.map(c=>String(c).trim().toLowerCase())).size===ch.length;
 }
 const canMore=id=>{const s=SUBJ.find(x=>x.id===id);return !!s&&!s.ai&&!!LOCAL[id]};
 async function fillSet(plan,level,n,ctl,prog,tag,anyMath,seed,onAdd){

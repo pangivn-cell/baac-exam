@@ -176,7 +176,10 @@ const lostChoices=c=>{const q=c&&c.q;if(!q||!Array.isArray(q.choices)||q.choices
   return (String(q.stem||'').match(/(^|[\s(])[กขคงจ]\s*[.)]/g)||[]).length<2};
 /* c.broken = ข้อที่ข้อมูลในโจทย์หาย (เช่น โจทย์สดมภ์ที่อ่านตารางพลาด) ตอบไม่ได้ ซ่อนไว้จนกว่าจะซ่อมเสร็จ (ซิงก์ไปทุกเครื่องพร้อมบัตร) */
 /* ข้อจากไฟล์ที่ตัวเลือกซ้ำกันเอง (อ่านไฟล์พลาด) ตอบไม่ได้ว่าข้อไหนถูก ไม่เอามาออกข้อสอบ */
-const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};
+/* โจทย์จับผิด "ข้อใดแตกต่างจากข้ออื่น": ตัวเลือกเหมือนกันทุกข้อยกเว้นข้อเดียว เป็นเรื่องปกติ ไม่นับเป็นตัวเลือกซ้ำ */
+const spotDiff=q=>{const ch=((q&&q.choices)||[]).map(x=>String(x).trim());if(ch.length<3||!/แตกต่าง|ต่างจาก|ไม่เหมือน/.test(String(q.stem||'')))return false;
+  const u=ch.filter(x=>ch.filter(y=>y===x).length===1);return u.length===1&&ch.indexOf(u[0])===q.answer};
+const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return !spotDiff(c.q)&&new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};

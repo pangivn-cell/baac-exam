@@ -161,7 +161,10 @@ const QHIDE_KEY='exam-qhide';let QHIDE={};try{QHIDE=JSON.parse(localStorage.getI
 const saveQHide=()=>{try{localStorage.setItem(QHIDE_KEY,JSON.stringify(QHIDE))}catch(e){}};
 /* โจทย์/ตัวเลือกที่เป็นรูป เก็บเป็นป้าย [รูป Fxxx] · ป้ายที่ไม่มีรูปจริงในเครื่องหรือคลังกลาง = ข้อมูลหาย ไม่เอามาออกข้อสอบ */
 const FIG_TOK=/\[รูป (F[a-z0-9]+)\]/gi;
-const figOK=id=>FIGS.has(id)||PFIG.has(id)||(typeof CFIG!=='undefined'&&CFIG.has(id));
+/* รูปที่คลังกลางไม่มีจริง (โหลดแล้วไม่พบ): จำไว้ในเครื่อง ข้อที่ใช้รูปนี้ไม่ออกข้อสอบอีก ไม่ค้าง "กำลังโหลดรูป" */
+let DEADFIG=new Set();try{DEADFIG=new Set(JSON.parse(localStorage.getItem('exam-deadfig')||'[]'))}catch(e){}
+const markDeadFig=id=>{if(DEADFIG.has(id))return;DEADFIG.add(id);try{localStorage.setItem('exam-deadfig',JSON.stringify([...DEADFIG].slice(-2000)))}catch(e){}};
+const figOK=id=>!DEADFIG.has(id)&&(FIGS.has(id)||PFIG.has(id)||(typeof CFIG!=='undefined'&&CFIG.has(id)));
 const figMissing=c=>{const q=c.q||c;return [...String((q.stem||'')+' '+(q.choices||[]).join(' ')).matchAll(FIG_TOK)].some(m=>!figOK(m[1]))};
 /* ข้อความที่มีป้ายรูป → แสดงรูปจริงตรงตำแหน่งป้าย */
 const figText=(t,cls)=>esc(String(t||'')).replace(FIG_TOK,(m,id)=>figHTML(id,cls||'qfig infig'));

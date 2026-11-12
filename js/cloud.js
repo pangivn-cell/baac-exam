@@ -166,7 +166,7 @@ const figWait={};
 function fetchCloudFig(id){
   if(figWait[id])return figWait[id];
   return figWait[id]=(async()=>{
-    try{const f=await fb(),s=await f.fs.getDoc(fsDoc('kbfigs',id));if(!s.exists())return false;const x=s.data();
+    try{const f=await fb(),s=await f.fs.getDoc(fsDoc('kbfigs',id));if(!s.exists()){if(typeof markDeadFig==='function')markDeadFig(id);document.querySelectorAll(`img[data-cfig="${id}"]`).forEach(im=>{im.alt='รูปประกอบหาย (ข้อนี้จะไม่ออกข้อสอบอีก)'});return false}const x=s.data();
       const bin=atob(x.data),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
       await saveFigs([{id,docId:'c_'+(x.packId||CFIG.get(id)||''),page:x.page||1,mime:x.mime,blob:new Blob([u8],{type:x.mime}),desc:x.desc||'',at:Date.now()}]);
       document.querySelectorAll(`img[data-cfig="${id}"]`).forEach(im=>{im.src=figURL(id);im.removeAttribute('data-cfig')});return true;

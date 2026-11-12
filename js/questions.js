@@ -33,6 +33,7 @@ function figURL(id){const f=FIGS.get(id);if(!f)return '';if(!f.url)f.url=URL.cre
 function figHTML(id,cls){const f=FIGS.get(id);
   if(!f&&PFIG.has(id)){fetchPersonalFig(id);return `<figure class="${cls||'qfig'}"><img data-pfig="${id}" alt="กำลังโหลดรูปประกอบ" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
   if(!f&&CFIG.has(id)){fetchCloudFig(id);return `<figure class="${cls||'qfig'}"><img data-cfig="${id}" alt="กำลังโหลดรูปประกอบ" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
+  if(!f&&/^F/.test(id)&&typeof fetchCloudFig==='function'&&!(typeof DEADFIG!=='undefined'&&DEADFIG.has(id))){fetchCloudFig(id);return `<figure class="${cls||'qfig'}"><img data-cfig="${id}" alt="กำลังโหลดรูปประกอบ" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
   if(!f)return `<p class="src">(ไม่พบรูปประกอบ ${esc(id)})</p>`;
   return `<figure class="${cls||'qfig'}"><img src="${figURL(id)}" alt="${esc(f.desc||'รูปประกอบโจทย์')}" loading="lazy" onclick="this.closest('figure').classList.toggle('big')"></figure>`}
 const canvasBlob=(cv,type,q)=>new Promise(ok=>cv.toBlob(ok,type,q));
@@ -358,8 +359,8 @@ function humanizeQ(q){
 const dropPicLabel=q=>q&&Array.isArray(q.choices)&&q.choices.some(c=>/^\s*\(?[ก-จ]\)?\s*\.?\s*\[รูป/.test(String(c)))?{...q,choices:q.choices.map(c=>String(c).replace(/^\s*\(?[ก-จ]\)?\s*\.?\s*(?=\[รูป)/,''))}:q;
 /* ข้อในชุดที่สร้างไว้ก่อน (หรือชุดที่ทำค้าง) แต่การ์ดในคลังถูกแก้แล้ว (รูป/เฉลยใหม่): ใช้ฉบับล่าสุดตอนแสดง ถ้ายังไม่ได้ตอบ */
 function freshQ(q,s){
-  if(!q||!q.card||q.fixedAt)return q;const c=CARDS.find(x=>x.id===q.card&&x.type==='q');
-  if(!c||!c.fixedAt||!c.q)return q;
+  if(!q||!q.card)return q;const c=CARDS.find(x=>x.id===q.card&&x.type==='q');
+  if(!c||!c.fixedAt||!c.q||(q.fixedAt&&+q.fixedAt>=+c.fixedAt))return q;   /* การ์ดถูกแก้ใหม่กว่าฉบับที่อยู่ในชุด → ใช้ฉบับใหม่ */
   const n=mixAll([bankQ(c,s||{id:q.sub,name:q.subName})])[0];n.fixedAt=c.fixedAt;return n;
 }
 function mixAll(a){

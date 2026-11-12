@@ -625,3 +625,4 @@ body.side-off .side{display:none}
 .ch .qfig.chfig{max-width:100%}
 .ch .qfig.chfig img{height:clamp(110px,18vw,170px);width:auto;max-width:100%;max-height:none;object-fit:contain}
 .stem .qfig.infig img,.qtext .qfig.infig img{min-height:120px;width:auto;object-fit:contain}
+.qfig.infig img{max-height:280px}

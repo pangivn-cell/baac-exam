@@ -453,13 +453,15 @@ function pscT10(a,lv){
 const PSC_TYPES=[[.17,'t1'],[.12,'t2'],[.12,'t3'],[.16,'t4'],[.1,'t5'],[.08,'t6'],[.05,'t7'],[.05,'t8'],[.15,'t10']];
 function pscLocal(level,n){
   if(!PSC||!PSC.length)return[];
-  const lv=level||3,hs=pscHeads(),out=[],seen=new Set(),usedA=new Set();
+  const lv=level||3,hs=pscHeads(),out=[],seen=new Set(),usedA=new Set(),tyN={};
   for(let t=0;out.length<n&&t<n*20;t++){
-    let r=Math.random(),ty='t1';for(const [w,k] of PSC_WEB?PSC_TYPES.filter(t=>t[1]!=='t8'):PSC_TYPES){if(r<w){ty=k;break}r-=w}
+    /* หมุนเวียนแบบคำถาม: แบบที่ออกไปแล้วในชุดนี้ถูกตัดออกจากการสุ่มจนกว่าจะครบทุกแบบ (เดิมสุ่มอิสระ ได้แบบเดิมซ้ำๆ จนเดาได้) */
+    const TY=(PSC_WEB?PSC_TYPES.filter(t=>t[1]!=='t8'):PSC_TYPES),minU=Math.min(...TY.map(t=>tyN[t[1]]||0)),avail=TY.filter(t=>(tyN[t[1]]||0)===minU),tot=avail.reduce((a,t)=>a+t[0],0);
+    let r=Math.random()*tot,ty=avail[0][1];for(const [w,k] of avail){if(r<w){ty=k;break}r-=w}
     const h=rnd(hs),cand=(ty==='t1'||ty==='t2'||ty==='t4'||ty==='t5')?PSC.filter(a=>pscSec(a,h)):PSC;
     const fresh=cand.filter(a=>!usedA.has(a.id)),a=rnd(fresh.length?fresh:cand);if(!a)continue;
     const q=ty==='t1'?pscT1(a,h,lv):ty==='t2'?pscT2(a,h,lv):ty==='t3'?pscT3(a,lv):ty==='t4'?pscT4(a,h,lv):ty==='t5'?pscT5(a,h,lv):ty==='t6'?pscT6(a,lv):ty==='t7'?pscT7(a,lv):ty==='t10'?pscT10(a,lv):pscT8(a);
-    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem)||pscHasMemo(q)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);out.push({...q,ptype:ty});
+    if(!q||(typeof qValid==='function'&&!qValid(q))||q.choices.some(pscBadV)||PSC_PERSON.test(q.stem)||pscHasMemo(q)||(q.ph&&!pscOkH(q.ph)))continue;const k=q.stem;if(seen.has(k))continue;seen.add(k);usedA.add(a.id);tyN[ty]=(tyN[ty]||0)+1;out.push({...q,ptype:ty});
   }
   return shuffle(out);
 }

@@ -311,6 +311,20 @@ async function calcCentralPut(k,d){
   try{const j=await upCall(up.up,{a:'calcput',idToken:await idTok(),shard:calcShard(k),key:k,val:JSON.stringify(val)});if(j&&j.ok)CALCC.idxAt=0}catch(e){}
 }
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-calcretry]');if(!b)return;const k=b.dataset.calcretry;CALCD_BUSY[k]=0;const el=b.closest('[data-calcd]');if(el&&CALCD_Q[k])el.outerHTML=calcdHTML(CALCD_Q[k])});
+/* ---------- สาระที่ควรจำ (บรรณารักษ์) ----------
+   ข้อสอบเป็นทางเข้าสู่เนื้อหา: หลังตอบ แสดงบัตรความรู้จากเอกสารต้นทางของข้อนั้น (ห้องสมุด = คลังเอกสาร, หนังสือ = วิชา)
+   ข้อที่ AI สร้างจากบัตร → บัตรนั้น · ข้อสอบจริงจากเอกสาร → บัตรความรู้หน้าเดียวกัน/หน้าใกล้กัน (ไม่เกิน 2 ใบ) */
+function learnCards(q){
+  const c=q&&q.card&&CARDS.find(x=>x.id===q.card);if(!c)return[];
+  if(c.type!=='q')return[c];
+  const near=CARDS.filter(x=>x.docId===c.docId&&x.type!=='q'&&x.fact&&c.page!=null&&Math.abs(+x.page-(+c.page))<=1);
+  near.sort((a,b)=>Math.abs(+a.page-(+c.page))-Math.abs(+b.page-(+c.page))||(b.imp||2)-(a.imp||2));
+  return near.slice(0,2);
+}
+function learnHTML(q){
+  const cs=learnCards(q);if(!cs.length)return '';
+  return `<details class="learn" open><summary>📘 สาระที่ควรจำจากเอกสาร</summary>${cs.map(c=>`<div class="lcard"><b>${esc(c.title||c.topic||'')}</b><p>${esc(String(c.fact||'').slice(0,600))}</p><p class="src">${esc(cardCite(c))}</p></div>`).join('')}</details>`;
+}
 function explainHTML(q,pick){
   const ok=pick===q.answer;
   let h=`<div class="explain"><p class="verdict ${ok?'good':'bad'}">${pick==null?'ไม่ได้ตอบ':ok?'ถูกต้อง':'ยังไม่ใช่'} · เฉลย ${isTFU(q)?'':TH[q.answer]+(q.chSvg?'':'. ')}${q.chSvg?'':esc(String(q.choices[q.answer]).replace(FIG_TOK,'').trim())}</p>`;
@@ -321,6 +335,7 @@ function explainHTML(q,pick){
   h+=calcdHTML(q);
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
   if(q.fixed&&!q.fixed.balance)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
+  h+=learnHTML(q);
   if(q.cite)h+=`<p class="cite">${q.citeUrl?'📚 ศึกษาเพิ่มเติม':'📄 อ้างอิง'}: ${esc(q.cite)}${q.by?` · อัปโหลดโดย ${esc(q.by)}`:''}${/^https:\/\//.test(q.citeUrl||'')?pscLinkHTML(q.citeUrl):''}</p>`;
   if(q.card&&typeof srcBtn==='function')h+=srcBtn(q);
   {const rp=typeof cloudCardOf==='function'&&cloudCardOf(q),dc=isMC(q)&&q.stem&&(q.card&&CARDS.some(x=>x.id===q.card&&x.type==='q')||q.poolId||q.pool||q.gen==='ai'||q.orig)?qdelRef(q):'';

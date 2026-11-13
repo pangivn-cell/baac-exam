@@ -21,7 +21,12 @@ const kbPutMany=(s,arr)=>kbTx(s,'readwrite',st=>{for(const x of arr)st.put(x)});
 const kbDelMany=(s,ids)=>kbTx(s,'readwrite',st=>{for(const id of ids)st.delete(id)});
 /* บันทึกไม่ได้ (พื้นที่เบราว์เซอร์เต็ม) = ปิดหน้าแล้วความคืบหน้าหาย ต้องบอกผู้ใช้ ไม่เงียบ · ถ้าล็อกอินอยู่ ความคืบหน้ายังอยู่บนคลาวด์ (syncClaim ดึงกลับมา) */
 let SAVE_WARNED=0;
-async function saveDoc(d){if(d.deleted)return;const {prog,...rest}=d;try{await kbPutMany('docs',[rest]);d.mem=false}catch(e){d.mem=true;
+/* stAt = เวลาที่ "เครื่องนี้" เปลี่ยนสถานะงานของไฟล์ (ขั้น/รอบที่สั่ง) ใช้ตัดสินตอนซิงก์ว่าสถานะไหนใหม่กว่า
+   ครั้งแรกที่เห็นไฟล์ (ยังไม่มี _st) แค่จำไว้ ไม่นับเป็นการเปลี่ยน — ไม่งั้นทุกไฟล์เก่าจะกลายเป็น "เครื่องนี้ใหม่สุด" แล้วทับคลาวด์ */
+const stKey=d=>(d.stage||'')+'|'+(+d.reqAt||0);
+async function saveDoc(d){if(d.deleted)return;
+  {const k=stKey(d);if(d._st===undefined)d._st=k;else if(d._st!==k){d._st=k;d.stAt=Date.now()}}
+  const {prog,...rest}=d;try{await kbPutMany('docs',[rest]);d.mem=false}catch(e){d.mem=true;
   if(Date.now()-SAVE_WARNED>600000){SAVE_WARNED=Date.now();if(typeof toast==='function')toast('บันทึกความคืบหน้าในเบราว์เซอร์ไม่ได้ (พื้นที่เต็ม) · ลบไฟล์ต้นฉบับที่ไม่ใช้ในคลังความรู้เพื่อคืนพื้นที่ หรือเข้าสู่ระบบเพื่อเก็บความคืบหน้าบนคลาวด์','bad')}}}
 async function saveCards(arr){if(arr.length)try{await kbPutMany('cards',arr)}catch(e){}}
 

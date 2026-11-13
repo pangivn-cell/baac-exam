@@ -142,12 +142,29 @@ async function syncHydrateRun(){
   if(SYNC_HYRUN)return;SYNC_HYRUN=true;
   try{while(SYNC_HYQ.length){const [d,o]=SYNC_HYQ.shift();try{await syncHydrate(d,o)}catch(e){}}}finally{SYNC_HYRUN=false}
 }
+/* เครื่องนี้เป็นเจ้าของสถานะงานล่าสุดของไฟล์: กำลังย่อยอยู่ หรือเปลี่ยนสถานะแล้วยังไม่ได้ส่งขึ้นคลาวด์ */
+function syncStateMine(doc){
+  return PROC_ID===doc.id||!!doc._lease||(doc.leaseBy===syncDevice()&&doc.stage!=='ready')||(+doc.stAt||0)>(+doc.syncAt||0);
+}
 async function syncMerge(local,m){
   if(!local||local.central||PROC_ID===local.id||local._lease)return;
   const rms=m.updatedAt&&m.updatedAt.toMillis?m.updatedAt.toMillis():0;
   if(rms&&rms<=(local.syncAt||0))return;
   let ch=false;
   const rk=syncRank(m.stage),lk=syncRank(local.stage),rq=+m.reqAt||0,dn=+m.doneAt||0;
+  /* สถานะงานยึดคลาวด์เป็นหลัก (ใครเปลี่ยนล่าสุดชนะ): คลาวด์ถูกเขียนหลังเครื่องนี้ส่งครั้งล่าสุด และเครื่องนี้ไม่มีการเปลี่ยนที่ยังไม่ได้ส่ง
+     → รับขั้น/รอบงานจากคลาวด์ตรงๆ ทั้งทาง "เสร็จ→ต้องทำใหม่" และ "ค้าง→เสร็จ" ทุกเครื่องจึงเห็นรายการเดียวกัน
+     เดิมใช้กฎลำดับขั้น (รับแต่ขั้นที่สูงกว่า) + กันงานเก็บตก ทำให้เครื่องหนึ่งค้าง "รอประมวลผล" ส่วนอีกเครื่องว่า "เสร็จแล้ว" ไปตลอด */
+  const cloudWins=m.stage&&((+m.stAt||0)>(+local.stAt||0)||!syncStateMine(local));
+  if(cloudWins&&stKey(m)!==stKey(local)){
+    const ready=m.stage==='ready';
+    Object.assign(local,{stage:m.stage,reqAt:rq,doneAt:Math.max(dn,+local.doneAt||0),fill:ready?false:!!m.fill,audit:ready?false:!!m.audit,
+      reprocess:!ready&&rq>dn,digDone:+m.digDone||0,win:+m.win||0,ocrDone:Array.isArray(m.ocrDone)?m.ocrDone:(local.ocrDone||[]),
+      err:'',errCode:'',tries:0,nextTry:0,stAt:Math.max(+m.stAt||0,+local.stAt||0)});
+    if(ready&&Array.isArray(m.summ)&&m.summ.length)local.summ=m.summ;
+    local._st=stKey(local);ch=true;
+    if(ready&&typeof PROCQ!=='undefined'){const i=PROCQ.indexOf(local.id);if(i>=0)PROCQ.splice(i,1)}
+  }
   /* อีกเครื่องสั่งงานรอบใหม่ (เก็บตก/ตรวจซ้ำ/ย่อยใหม่) ที่ยังไม่เสร็จ: รับสถานะงานเดียวกันมา
      ให้ระบบจองคิวตัดสินว่าเครื่องไหนทำ (เดิมเครื่องนี้ไม่รู้ ส่วนเครื่องใหม่ย่อยทั้งไฟล์ซ้ำ) */
   /* เครื่องนี้ว่า "เสร็จแล้ว" แต่ไม่มีบัตรสักใบ และไม่เคยส่งสถานะเสร็จขึ้นคลาวด์ ขณะที่คลาวด์ยังบอกว่ามีเครื่องอื่นกำลังทำงานรอบเดียวกันอยู่
@@ -178,6 +195,9 @@ async function syncMerge(local,m){
   {const cf=dfOf(m.cardsFile),pf=dfOf(m.pagesFile);
    if(cf&&(!local.cardsFile||local.cardsFile.h!==cf.h||local.cardsFile.id!==cf.id)){local.cardsFile=cf;ch=true}
    if(pf&&(!local.pagesFile||local.pagesFile.h!==pf.h||local.pagesFile.id!==pf.id)){local.pagesFile=pf;ch=true}}
+  if(m.subId){const rk2=s=>({approved:3,rejected:2,pending:1}[s]||0);
+    if(!local.subId||(local.subId===m.subId&&rk2(m.subStatus)>rk2(local.subStatus))){
+      Object.assign(local,{subId:m.subId,subParts:Array.isArray(m.subParts)?m.subParts:[m.subId],subStatus:m.subStatus||'pending',subNote:m.subNote||''});ch=true;SYNC.subChanged=true}}
   if(m.label!=null&&local.label!==m.label){local.label=m.label;ch=true}
   if(Array.isArray(m.subs)&&(m.subs||[]).join('|')!==(local.subs||[]).join('|')){local.subs=m.subs.slice();ch=true}
   if(m.txtSha&&local.txtSha!==m.txtSha){local.txtSha=m.txtSha;ch=true}
@@ -224,6 +244,11 @@ async function syncPull(){
       await syncAdopt(m,true);
     }
     if(!SYNC.firstPush){SYNC.firstPush=true;syncPushLocal(metas).catch(e=>syErr(e))}
+    if(SYNC.subChanged){SYNC.subChanged=false;if(typeof rebuildCloudIndex==='function')rebuildCloudIndex()}
+    /* ไฟล์ที่เครื่องนี้ส่งเข้าคลังกลางไว้ก่อนมีการซิงก์ข้อมูลนี้: ส่งขึ้นให้เครื่องอื่นรู้ (ครั้งเดียว) */
+    if(full){const ls=DOCS.filter(d=>{if(d.central||!d.subId||!syncMine(d))return false;const mm=metas.get(syncKey(d));
+        return mm&&!mm.deleted&&(mm.subId!==d.subId||mm.subStatus!==(d.subStatus||'pending'))});
+      if(ls.length)(async()=>{for(const d of ls){try{await syncPushMeta(d)}catch(e){}}})()}
     SYNC.last=Date.now();SYNC.err='';
   }catch(e){syErr(e)}
   finally{
@@ -348,9 +373,11 @@ function syncMetaOf(doc){
     delCards:(doc.delCards||[]).slice(-1000),cardsResetAt:+doc.cardsResetAt||0,cardsPS:Array.isArray(doc.cardsPS)?doc.cardsPS.slice(0,200):[],
     txtSha:doc.txtSha||'',dupOf:doc.dupOf||'',dupSkipped:+doc.dupSkipped||0,subs:(doc.subs||[]).slice(0,20),
     /* งานรอบปัจจุบัน (สั่งเมื่อ reqAt เสร็จเมื่อ doneAt) + เครื่องที่จองไว้ ให้ทุกเครื่องเห็นงานชุดเดียวกัน */
-    audit:!!doc.audit,reqAt:+doc.reqAt||0,doneAt:+doc.doneAt||0,qBy:doc.stage==='ready'?'':(doc.qBy||''),qAt:doc.stage==='ready'?0:(+doc.qAt||0),
+    audit:!!doc.audit,reqAt:+doc.reqAt||0,doneAt:+doc.doneAt||0,stAt:+doc.stAt||0,qBy:doc.stage==='ready'?'':(doc.qBy||''),qAt:doc.stage==='ready'?0:(+doc.qAt||0),
     counts,createdMs:+doc.at||Date.now(),deleted:false,
-    ...(doc.cardsFile?{cardsFile:doc.cardsFile}:{}),...(doc.pagesFile?{pagesFile:doc.pagesFile}:{})
+    ...(doc.cardsFile?{cardsFile:doc.cardsFile}:{}),...(doc.pagesFile?{pagesFile:doc.pagesFile}:{}),
+    /* ส่งเข้าคลังกลางแล้ว: ทุกเครื่องต้องรู้ ไม่งั้นเครื่องอื่นนับข้อสอบซ้ำ (ชุดของตัวเอง + ชุดในคลังกลาง) และส่งไฟล์เดิมซ้ำ */
+    ...(doc.subId?{subId:doc.subId,subParts:doc.subParts||[doc.subId],subStatus:doc.subStatus||'pending',subNote:doc.subNote||''}:{})
   };
 }
 async function syncPushMeta(doc){
@@ -361,7 +388,11 @@ async function syncPushMeta(doc){
   try{
     /* เขียนรอยืนยันจากเซิร์ฟเวอร์ไม่เกิน 20 วินาที: ตอนโควตาเขียนเต็ม setDoc ค้างจนกว่าโควตากลับมา (คิวในเครื่องส่งเองทีหลัง)
        เดิมรอค้าง ทำให้การส่งบัตร/ย่อยไฟล์ที่รอขั้นนี้หยุดทั้งหมด */
-    const w=f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key),{...syncMetaOf(doc),updatedAt:f.fs.serverTimestamp()},{merge:true});
+    /* สถานะงาน (ขั้น/รอบ/ความคืบหน้า) ส่งขึ้นเฉพาะเมื่อเครื่องนี้เป็นคนเปลี่ยนล่าสุด หรือกำลังย่อยไฟล์นี้อยู่
+       เดิมส่งทุกครั้ง: เครื่องที่สถานะเก่าค้าง (เช่น ส่งข้อความหน้าขึ้นไปเฉยๆ) เขียนทับ "เสร็จแล้ว" ของอีกเครื่อง → สองเครื่องเห็นไม่ตรงกัน */
+    const meta=syncMetaOf(doc);
+    if(!syncStateMine(doc)&&SYNC.meta.has(key))for(const k of ['stage','status','reqAt','doneAt','stAt','fill','audit','digDone','win','ocrDone','leaseBy','leaseAt','qBy','qAt','summ'])delete meta[k];
+    const w=f.fs.setDoc(f.fs.doc(f.db,'users',ME.uid,'docs',key),{...meta,updatedAt:f.fs.serverTimestamp()},{merge:true});
     const ok=await Promise.race([w.then(()=>true),new Promise(r=>setTimeout(()=>r(false),20000))]);
     w.catch(e=>syErr(e));
     if(ok)doc.syncAt=Date.now();

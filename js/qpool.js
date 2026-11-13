@@ -69,6 +69,7 @@ async function poolTake(s,level,k){
   for(const d of shuffle(docs.slice()))for(const raw of d.items||[]){
     let q;try{q=JSON.parse(raw)}catch(e){continue}
     if(typeof placeholderQ==='function'&&placeholderQ(q))continue;   /* โจทย์ที่ AI ลอกตัวอย่างรูปแบบมา (ตัวเลือก1..4) */
+    if(typeof wrongLang==='function'&&wrongLang(q,s.name))continue;   /* ภาษาอังกฤษในวิชาที่สอบเป็นภาษาไทย (AI ในเครื่องเขียนมา) */
     const key=qKey(q),done=(d.used&&d.used[key])||[];
     if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
     out.push({q:withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null),d:near(d)?0:dist(d)});
@@ -82,6 +83,7 @@ async function poolTake(s,level,k){
 /* โจทย์ที่แบ่งได้: AI สร้าง และไม่ได้มาจากเอกสารส่วนตัว */
 function poolable(q){
   if(!q||q.gen!=='ai'||!q.stem||!Array.isArray(q.choices)||q.answer==null)return false;
+  if(typeof wrongLang==='function'&&wrongLang(q))return false;
   if(!q.card)return true;const c=CARDS.find(x=>x.id===q.card);
   return !!c&&String(c.docId).startsWith('c_');
 }

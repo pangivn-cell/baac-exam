@@ -731,6 +731,7 @@ ${NAME_RULE}
    → ยังขาด ใช้ข้อในคลังที่เคยตอบถูกแล้ว → ยังขาดจริงๆ แจ้งว่าวิชาไหนขาดเท่าไรเพราะอะไร */
 function qValid(q){
   if(!q||!Number.isInteger(q.answer)||q.answer<0||!(qText(q).trim()||q.svg)||placeholderQ(q))return false;
+  if(typeof wrongLang==='function'&&wrongLang(q))return false;   /* AI ตอบเป็นภาษาอังกฤษในวิชาภาษาไทย */
   const ch=q.choices;if(!Array.isArray(ch))return !!q.kind&&q.kind!=='mc';
   if(ch.length<2||q.answer>=ch.length||ch.some(c=>String(c==null?'':c).trim()===''&&!q.chSvg))return false;
   return !!q.chSvg||(typeof spotDiff==='function'&&spotDiff(q))||new Set(ch.map(c=>String(c).trim().toLowerCase())).size===ch.length;

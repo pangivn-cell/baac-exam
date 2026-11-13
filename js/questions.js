@@ -175,6 +175,12 @@ const lostChoices=c=>{const q=c&&c.q;if(!q||!Array.isArray(q.choices)||q.choices
   if(!q.choices.every(x=>/^\s*[ก-ฮ]\s*\.?\s*$/.test(String(x))))return false;   /* ตัวเลขหลักเดียว (2 4 6 8) เป็นคำตอบจริงได้ ไม่นับ */
   if((c.figs||[]).length||qPic(q)||/\[รูป/.test(q.stem||''))return false;
   return (String(q.stem||'').match(/(^|[\s(])[กขคงจ]\s*[.)]/g)||[]).length<2};
+/* โจทย์ภาษาอังกฤษในวิชาที่สอบเป็นภาษาไทย: AI ในเครื่อง (Ollama) มักตอบเป็นอังกฤษแม้สั่งให้ใช้ไทย · วิชาภาษาอังกฤษไม่นับ
+   นับอักษรไทยเทียบอักษรอังกฤษในโจทย์+ตัวเลือก (ศัพท์อังกฤษในวงเล็บ เช่น Character, NPL ไม่ทำให้ตกเกณฑ์) */
+const ENG_SUBJ=/อังกฤษ|english/i;
+const engText=s=>{s=String(s||'').replace(/\[รูป [^\]]*\]/g,'');const t=(s.match(/[฀-๿]/g)||[]).length,e=(s.match(/[A-Za-z]/g)||[]).length;return e>=40&&t<e*0.3};
+const wrongLang=(q,subj)=>{if(!q)return false;const names=[subj,q.subName,q.topic].filter(Boolean).join(' ');if(ENG_SUBJ.test(names))return false;
+  return engText(String(q.stem||'')+' '+(Array.isArray(q.choices)?q.choices.join(' '):''))};
 /* c.broken = ข้อที่ข้อมูลในโจทย์หาย (เช่น โจทย์สดมภ์ที่อ่านตารางพลาด) ตอบไม่ได้ ซ่อนไว้จนกว่าจะซ่อมเสร็จ (ซิงก์ไปทุกเครื่องพร้อมบัตร) */
 /* ข้อจากไฟล์ที่ตัวเลือกซ้ำกันเอง (อ่านไฟล์พลาด) ตอบไม่ได้ว่าข้อไหนถูก ไม่เอามาออกข้อสอบ */
 /* โจทย์จับผิด "ข้อใดแตกต่างจากข้ออื่น": ตัวเลือกเหมือนกันทุกข้อยกเว้นข้อเดียว เป็นเรื่องปกติ ไม่นับเป็นตัวเลือกซ้ำ */

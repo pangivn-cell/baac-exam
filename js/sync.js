@@ -152,7 +152,7 @@ async function syncMerge(local,m){
      ให้ระบบจองคิวตัดสินว่าเครื่องไหนทำ (เดิมเครื่องนี้ไม่รู้ ส่วนเครื่องใหม่ย่อยทั้งไฟล์ซ้ำ) */
   /* เครื่องนี้ว่า "เสร็จแล้ว" แต่ไม่มีบัตรสักใบ และไม่เคยส่งสถานะเสร็จขึ้นคลาวด์ ขณะที่คลาวด์ยังบอกว่ามีเครื่องอื่นกำลังทำงานรอบเดียวกันอยู่
      = เสร็จปลอม (เคยเจอ: 10 ไฟล์ข้อสอบโชว์ "เสร็จแล้ว" เครื่องหนึ่ง แต่อีกเครื่องยังย่อยอยู่ จริงๆ ยังไม่มีข้อสอบ) → ใช้สถานะคลาวด์ ทั้งสองเครื่องเห็นตรงกัน */
-  const fakeDone=local.stage==='ready'&&m.stage!=='ready'&&!(dn>rq)&&rq&&rq>=(+local.reqAt||0)&&!CARDS.some(c=>c.docId===local.id)&&!cloudHasCards(m)&&(+local.syncAt||0)<(+local.doneAt||0);
+  const fakeDone=local.stage==='ready'&&m.stage!=='ready'&&!(dn>rq)&&rq&&rq>=(+local.reqAt||0)&&!CARDS.some(c=>c.docId===local.id)&&!(m.counts&&+m.counts.cards>0)&&(+local.syncAt||0)<(+local.doneAt||0);
   if((fakeDone||rq>(+local.reqAt||0))&&m.stage!=='ready'&&!(dn>rq)){
     Object.assign(local,{reqAt:rq,reprocess:true,fill:!!m.fill,audit:!!m.audit,stage:m.stage||'digest',digDone:+m.digDone||0,win:+m.win||0,
       ocrDone:Array.isArray(m.ocrDone)?m.ocrDone:(local.ocrDone||[]),err:'',errCode:'',tries:0,nextTry:0});ch=true}

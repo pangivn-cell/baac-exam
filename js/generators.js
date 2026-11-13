@@ -674,4 +674,70 @@ function genSpatial(level,n){
   return many(()=>{const k=order[i++%order.length];for(let g=0;g<30;g++){const q=SPA_GEN[k](level);if(q)return q}return null},n);
 }
 const staticGen=(bank,l,n)=>many(()=>{const pool=(typeof bank!=='undefined'?bank:[]).filter(q=>q.level===l);if(!pool.length)return null;const q=rnd(pool);return{kind:'mc',stem:q.stem,choices:q.choices.slice(),answer:q.answer,steps:(q.steps||[]).map(t=>[t,''])};},n);
-const LOCAL={series:(l,n)=>many(()=>genSeries1(l),n),math:(l,n)=>many(()=>Math.random()<.2&&typeof genCount1==='function'&&genCount1(l)||genMath1(l),n),countobj:(l,n)=>genCountSet(l,n),addseq:(l,n)=>staticGen(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[],l,n),agecount:(l,n)=>staticGen(typeof AGE_BANK!=='undefined'?AGE_BANK:[],l,n),animallegs:(l,n)=>staticGen(typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[],l,n),logic:(l,n)=>many(()=>genLogic1(l),n),spatial:genSpatial,dir:(l,n)=>genDir(l,n),data:(l,n)=>genData(l,n)};
+/* ---------- อัตราส่วน (วิชาแยก) ----------
+   ตัวสร้างโจทย์คิดเฉลยเองทุกข้อ ไม่ใช้ AI · ขั้นแรกเป็นวิธีลัด "หาค่า 1 ส่วน" ขั้นท้ายเป็นวิธีตรวจคำตอบ
+   ระดับ 1 แบ่ง/หาอีกฝั่ง/ทำให้อย่างต่ำ → 2 ผลต่าง ผสม มาตราส่วน → 3 แบ่ง 3 คน ต่ออัตราส่วน เพิ่มเท่ากัน → 4–5 ย้ายของ อายุ เติมน้ำ */
+const RT_NAMES=['สมชาย','มาลี','วิชัย','สุดา','ธนากร','นภา','ประพันธ์','กานดา','อรุณ','จันทร์เพ็ญ','สมศักดิ์','วันดี'];
+const RT_POOL={1:['share2','find','simplify'],2:['share2','diff','mix','scale','find'],3:['share3','chain','addsame','diff','mix'],4:['chain3','transfer','addsame','age','mixchange'],5:['transfer','age','mixchange','chain3','addsame']};
+const gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b)[a,b]=[b,a%b];return a};
+const lcm=(a,b)=>a/gcd(a,b)*b;
+const rtTxt=(...xs)=>{const g=xs.reduce(gcd);return xs.map(x=>x/g).join(' : ')};
+const rtMC=(stem,ans,dist,steps,fmt)=>mkMC(stem,ans,[...dist,ans*2,ans*1.5,ans*3,ans/2].filter(x=>x>0&&Math.abs(x-ans)>1e-9&&(Number.isInteger(ans)?Number.isInteger(Math.round(x*100)/100):true)),steps,fmt);
+function rtPair(max){let a,b;do{a=ri(1,max);b=ri(1,max)}while(a===b||gcd(a,b)!==1);return[a,b]}
+function genRatio1(level){
+  const [P,Q,R]=shuffle([...RT_NAMES]).slice(0,3),bt=x=>nf(x)+' บาท',kind=rnd(RT_POOL[level]);
+  switch(kind){
+    case 'share2':{const [a,b]=rtPair(level>1?9:6),u=(level>1?ri(2,60):ri(2,20))*10,T=(a+b)*u,who=Math.random()<.5,k=who?a:b,ans=k*u;
+      return rtMC(`แบ่งเงิน ${nf(T)} บาท ให้${P}และ${Q}ในอัตราส่วน ${a} : ${b} ${who?P:Q}ได้เงินกี่บาท`,ans,[(who?b:a)*u,(k+1)*u,T-u,T/k,ans+u],
+        [[`ลัด: 1 ส่วน = ${nf(T)} ÷ (${a} + ${b}) = ${nf(T)} ÷ ${a+b} = ${nf(u)} บาท`,'เงินทั้งหมดหารด้วยจำนวนส่วนทั้งหมด'],[`${who?P:Q}ได้ ${k} ส่วน = ${k} × ${nf(u)} = ${nf(ans)} บาท`,'จำนวนส่วนของคนที่ถาม × ค่า 1 ส่วน'],[`ตรวจ: ${nf(a*u)} + ${nf(b*u)} = ${nf(T)} และ ${nf(a*u)} : ${nf(b*u)} = ${a} : ${b} ✓`,'รวมกันต้องได้เงินทั้งหมด']],bt)}
+    case 'share3':{let a,b,c;do{a=ri(1,7);b=ri(1,7);c=ri(1,7)}while(new Set([a,b,c]).size<3||[a,b,c].reduce(gcd)!==1);
+      const u=ri(3,40)*10,T=(a+b+c)*u,i=ri(0,2),k=[a,b,c][i],nm=[P,Q,R][i],ans=k*u;
+      return rtMC(`แบ่งเงิน ${nf(T)} บาท ให้${P} ${Q} และ${R} ในอัตราส่วน ${a} : ${b} : ${c} ${nm}ได้เงินกี่บาท`,ans,[[a,b,c][(i+1)%3]*u,[a,b,c][(i+2)%3]*u,u*(k+1),ans+2*u,T/3],
+        [[`ลัด: รวม ${a} + ${b} + ${c} = ${a+b+c} ส่วน → 1 ส่วน = ${nf(T)} ÷ ${a+b+c} = ${nf(u)} บาท`,'บวกทุกตัวในอัตราส่วนก่อน'],[`${nm}ได้ ${k} ส่วน = ${k} × ${nf(u)} = ${nf(ans)} บาท`,'จำนวนส่วน × ค่า 1 ส่วน'],[`ตรวจ: ${nf(a*u)} + ${nf(b*u)} + ${nf(c*u)} = ${nf(T)} ✓`,'รวมกันต้องเท่าเงินทั้งหมด']],bt)}
+    case 'find':{const [a,b]=rtPair(9),u=ri(2,level>1?50:15)*(level>1?10:1),A=a*u,ans=b*u;
+      return rtMC(`อัตราส่วนเงินของ${P}ต่อ${Q}เป็น ${a} : ${b} ถ้า${P}มีเงิน ${nf(A)} บาท ${Q}มีเงินกี่บาท`,ans,[A*a/b,(a+b)*u,(b+1)*u,Math.abs(b-1)*u,A+b],
+        [[`ลัด: ${P} ${a} ส่วน = ${nf(A)} บาท → 1 ส่วน = ${nf(A)} ÷ ${a} = ${nf(u)} บาท`,'หาค่า 1 ส่วนจากฝั่งที่รู้'],[`${Q} ${b} ส่วน = ${b} × ${nf(u)} = ${nf(ans)} บาท`,'จำนวนส่วนของอีกฝั่ง × ค่า 1 ส่วน'],[`ตรวจ: ${nf(A)} : ${nf(ans)} หารด้วย ${nf(u)} ทั้งคู่ได้ ${a} : ${b} ✓`,'ทำกลับให้เป็นอัตราส่วนเดิม']],bt)}
+    case 'simplify':{const [a,b]=rtPair(9),g=rnd([2,3,4,5,6,8,12]),x=a*g,y=b*g;
+      return mkMCtext(`อัตราส่วน ${x} : ${y} เขียนให้เป็นอย่างต่ำได้เท่าใด`,`${a} : ${b}`,shuffle([`${b} : ${a}`,`${a+1} : ${b+1}`,`${a*2} : ${b*3}`,`${x/gcd(x,2)} : ${y/gcd(y,2)}`].filter(s=>s!==`${a} : ${b}`)),
+        [[`หาตัวหารร่วมมากของ ${x} และ ${y} = ${g}`,'ตัวเลขที่หารทั้งสองตัวลงตัวและมากที่สุด'],[`${x} ÷ ${g} = ${a} และ ${y} ÷ ${g} = ${b} → ${a} : ${b}`,'หารทั้งสองฝั่งด้วยตัวเดียวกัน อัตราส่วนไม่เปลี่ยน'],[`ตรวจ: ${a} × ${g} = ${x} และ ${b} × ${g} = ${y} ✓`,'คูณกลับต้องได้ตัวเดิม']])}
+    case 'diff':{let [a,b]=rtPair(9);if(a>b)[a,b]=[b,a];const u=ri(2,40)*10,d=(b-a)*u,askT=level>=3&&Math.random()<.5,ans=askT?(a+b)*u:a*u;
+      return rtMC(`อัตราส่วนเงินของ${P}ต่อ${Q}เป็น ${a} : ${b} ถ้า${Q}มีเงินมากกว่า${P} ${nf(d)} บาท ${askT?'ทั้งสองคนมีเงินรวมกันกี่บาท':P+'มีเงินกี่บาท'}`,ans,askT?[a*u,b*u,d*(a+b),(a+b+1)*u]:[b*u,d,(a+1)*u,d*a],
+        [[`ลัด: ต่างกัน ${b} − ${a} = ${b-a} ส่วน = ${nf(d)} บาท → 1 ส่วน = ${nf(d)} ÷ ${b-a} = ${nf(u)} บาท`,'ผลต่างของเงินคือผลต่างของจำนวนส่วน'],
+         askT?[`รวม ${a} + ${b} = ${a+b} ส่วน = ${a+b} × ${nf(u)} = ${nf(ans)} บาท`,'จำนวนส่วนรวม × ค่า 1 ส่วน']:[`${P} ${a} ส่วน = ${a} × ${nf(u)} = ${nf(ans)} บาท`,'จำนวนส่วน × ค่า 1 ส่วน'],
+         [`ตรวจ: ${P} ${nf(a*u)} ${Q} ${nf(b*u)} ต่างกัน ${nf(d)} บาท ✓`,'แทนค่ากลับในโจทย์']],bt)}
+    case 'mix':{const [a,b]=rtPair(7),u=rnd([2,3,4,5,6,8,10,12]),L=(a+b)*u,ans=b*u,lf=x=>nf(x)+' ลิตร';
+      return rtMC(`ผสมน้ำหวานกับน้ำเปล่าในอัตราส่วน ${a} : ${b} ได้น้ำหวานผสมทั้งหมด ${L} ลิตร ใช้น้ำเปล่ากี่ลิตร`,ans,[a*u,(b+1)*u,L-b,u],
+        [[`ลัด: 1 ส่วน = ${L} ÷ (${a} + ${b}) = ${L} ÷ ${a+b} = ${u} ลิตร`,'ปริมาณรวมหารจำนวนส่วนรวม'],[`น้ำเปล่า ${b} ส่วน = ${b} × ${u} = ${ans} ลิตร`,'จำนวนส่วนของน้ำเปล่า × ค่า 1 ส่วน'],[`ตรวจ: น้ำหวาน ${a*u} + น้ำเปล่า ${ans} = ${L} ลิตร ✓`,'รวมต้องได้ปริมาณทั้งหมด']],lf)}
+    case 'scale':{const N=rnd([10000,20000,25000,50000,100000,200000,250000,500000]),d=rnd([2,3,4,5,6,8,10,12]),cm=d*N,ans=cm/100000,kf2=x=>nf(x)+' กม.';
+      return rtMC(`แผนที่ใช้มาตราส่วน 1 : ${nf(N)} ระยะบนแผนที่ ${d} ซม. ระยะทางจริงกี่กิโลเมตร`,ans,[ans*10,ans/10,ans*100,ans+d],
+        [[`ลัด: 1 ซม. บนแผนที่ = ${nf(N)} ซม. จริง = ${nf(N/100000)} กม. (1 กม. = 100,000 ซม.)`,'แปลงหน่วยของมาตราส่วนก่อน'],[`${d} ซม. = ${d} × ${nf(N/100000)} = ${nf(ans)} กม.`,'คูณด้วยระยะบนแผนที่'],[`ตรวจ: ${nf(ans)} กม. = ${nf(cm)} ซม. ÷ ${nf(N)} = ${d} ซม. ✓`,'แปลงกลับเป็นระยะบนแผนที่']],kf2)}
+    case 'chain':{const [a,b]=rtPair(6),[c,d]=rtPair(6),x=a*c,z=b*d,g=gcd(x,z),ans=`${x/g} : ${z/g}`;if(b===c)return null;
+      return mkMCtext(`ถ้า ${P} : ${Q} = ${a} : ${b} และ ${Q} : ${R} = ${c} : ${d} แล้ว ${P} : ${R} เท่ากับเท่าใด`,ans,shuffle([rtTxt(a,d),rtTxt(a*d,b*c),rtTxt(z,x),rtTxt(a+c,b+d),rtTxt(a+1,d)].filter((s,i,arr)=>s!==ans&&arr.indexOf(s)===i)).slice(0,3),
+        [[`ลัด: ทำให้${Q}เท่ากันทั้งสองชุด คูณชุดแรกด้วย ${c} คูณชุดหลังด้วย ${b}`,'ตัวที่อยู่ทั้งสองอัตราส่วนต้องมีจำนวนส่วนเท่ากัน'],[`${P} : ${Q} : ${R} = ${a*c} : ${b*c} : ${b*d}`,`${a}×${c} : ${b}×${c} และ ${c}×${b} : ${d}×${b}`],[`${P} : ${R} = ${x} : ${z} = ${ans}`,'ตัดตัวกลางทิ้งแล้วทำเป็นอย่างต่ำ'],[`ตรวจ: (${P}/${Q}) × (${Q}/${R}) = ${a}/${b} × ${c}/${d} = ${x}/${z} ✓`,'คูณเศษส่วนต่อกัน ตัว '+Q+' ตัดกันพอดี']])}
+    case 'chain3':{const [a,b]=rtPair(5),[c,d]=rtPair(5);if(b===c)return null;let A=a*c,B=b*c,C=b*d;const g=[A,B,C].reduce(gcd);A/=g;B/=g;C/=g;
+      const S=A+B+C,u=ri(2,30)*10,T=S*u,ans=C*u;
+      return rtMC(`${P} : ${Q} = ${a} : ${b} และ ${Q} : ${R} = ${c} : ${d} ถ้าทั้งสามคนมีเงินรวมกัน ${nf(T)} บาท ${R}มีเงินกี่บาท`,ans,[A*u,B*u,(C+1)*u,d*u,T/3],
+        [[`ต่ออัตราส่วนให้${Q}เท่ากัน: ${P} : ${Q} : ${R} = ${a*c} : ${b*c} : ${b*d}${g>1?` = ${A} : ${B} : ${C}`:''}`,'คูณไขว้ให้ตัวกลางเท่ากัน'],[`ลัด: รวม ${S} ส่วน → 1 ส่วน = ${nf(T)} ÷ ${S} = ${nf(u)} บาท`,'เงินรวมหารจำนวนส่วนรวม'],[`${R} ${C} ส่วน = ${C} × ${nf(u)} = ${nf(ans)} บาท`,'จำนวนส่วน × ค่า 1 ส่วน'],[`ตรวจ: ${nf(A*u)} + ${nf(B*u)} + ${nf(ans)} = ${nf(T)} ✓`,'รวมต้องได้เงินทั้งหมด']],bt)}
+    case 'addsame':case 'age':{
+      const isAge=kind==='age';let [a,b]=rtPair(isAge?5:7);if(a>b)[a,b]=[b,a];
+      const u=isAge?ri(2,6):ri(2,15)*10,k=isAge?rnd([2,3,4,5,6,8,10]):ri(1,10)*10,A=a*u,B=b*u,c=A+k,d=B+k,g=gcd(c,d);if(g===1||c/g>12||d/g>12)return null;
+      const p=c/g,q=d/g,x=u,un=isAge?'ปี':'บาท',fmt=v=>nf(v)+' '+un;
+      const stem=isAge?`ปัจจุบันอายุของ${P}ต่อ${Q}เป็น ${a} : ${b} อีก ${k} ปีข้างหน้าอัตราส่วนอายุจะเป็น ${p} : ${q} ปัจจุบัน${P}อายุกี่ปี`
+        :`อัตราส่วนเงินของ${P}ต่อ${Q}เป็น ${a} : ${b} ถ้าแต่ละคนได้เงินเพิ่มคนละ ${nf(k)} บาท อัตราส่วนจะเป็น ${p} : ${q} เดิม${P}มีเงินกี่บาท`;
+      return rtMC(stem,A,[B,c,A+u,A-u,k],
+        [[`ให้ 1 ส่วนเดิม = x → ${P} = ${a}x, ${Q} = ${b}x`,'เขียนแต่ละคนเป็นจำนวนส่วนของอัตราส่วนเดิม'],[`(${a}x + ${k}) : (${b}x + ${k}) = ${p} : ${q} → ${q}(${a}x + ${k}) = ${p}(${b}x + ${k})`,'คูณไขว้'],
+         [`${q*a}x + ${q*k} = ${p*b}x + ${p*k} → ${q*a-p*b}x = ${p*k-q*k} → x = ${x}`,'ย้ายข้างแก้สมการ'],[`${P} = ${a} × ${x} = ${fmt(A)}`,'จำนวนส่วนเดิม × x'],[`ตรวจ: ${nf(A)} + ${k} = ${nf(c)} และ ${nf(B)} + ${k} = ${nf(d)} → ${nf(c)} : ${nf(d)} = ${p} : ${q} ✓`,'แทนค่ากลับ']],fmt)}
+    case 'transfer':{let [a,b]=rtPair(7),u=ri(2,20)*10,A=a*u,B=b*u,t=ri(1,Math.max(1,Math.floor(A/10)-1))*10;if(t>=A)return null;
+      const c=A-t,d=B+t,g=gcd(c,d),p=c/g,q=d/g;if(p>15||q>15||g<2)return null;
+      const s1=a+b,s2=p+q,L=lcm(s1,s2),oa=a*L/s1,na=p*L/s2,part=(A+B)/L;
+      return rtMC(`อัตราส่วนเงินของ${P}ต่อ${Q}เป็น ${a} : ${b} ถ้า${P}ให้เงิน${Q} ${nf(t)} บาท อัตราส่วนจะเป็น ${p} : ${q} เดิม${P}มีเงินกี่บาท`,A,[B,c,A+t,A-t,t*a],
+        [[`ลัด: ให้เงินกันเอง เงินรวมไม่เปลี่ยน → ทำผลรวมส่วนให้เท่ากัน ${s1} กับ ${s2} ใช้ ${L} ส่วน`,'เงินรวมคงที่ จึงเทียบส่วนกันได้'],[`เดิม ${P} = ${a} × ${L/s1} = ${oa} ส่วน · หลังให้ ${P} = ${p} × ${L/s2} = ${na} ส่วน`,'ปรับให้ผลรวมเป็น '+L+' ส่วนทั้งสองครั้ง'],
+         [`${P}ลดลง ${oa} − ${na} = ${oa-na} ส่วน = ${nf(t)} บาท → 1 ส่วน = ${nf(part)} บาท`,'ส่วนที่ลดคือเงินที่ให้ไป'],[`เดิม${P} = ${oa} × ${nf(part)} = ${nf(A)} บาท`,'จำนวนส่วนเดิม × ค่า 1 ส่วน'],[`ตรวจ: ${nf(A)} − ${nf(t)} = ${nf(c)} และ ${nf(B)} + ${nf(t)} = ${nf(d)} → ${p} : ${q} ✓`,'แทนค่ากลับ']],bt)}
+    case 'mixchange':{const [a,b]=rtPair(5),u=rnd([2,3,4,5,6]),S=a*u,W=b*u,V=S+W,w=rnd([1,2,3,4,5,6,8,10])*u,W2=W+w,g=gcd(S,W2),p=S/g,q=W2/g;if(p>12||q>12||!Number.isInteger(w))return null;
+      const lf=x=>nf(x)+' ลิตร';
+      return rtMC(`น้ำหวานผสม ${V} ลิตร มีอัตราส่วนน้ำหวานต่อน้ำเปล่า ${a} : ${b} ต้องเติมน้ำเปล่าอีกกี่ลิตร อัตราส่วนจึงจะเป็น ${p} : ${q}`,w,[W2,W,w+u,w*2,w-u],
+        [[`น้ำหวานเดิม = ${V} × ${a}/${a+b} = ${S} ลิตร น้ำเปล่าเดิม ${W} ลิตร`,'แบ่งปริมาณรวมตามอัตราส่วน'],[`ลัด: เติมแต่น้ำเปล่า น้ำหวานคงที่ ${S} ลิตร = ${p} ส่วน → 1 ส่วน = ${nf(S/p)} ลิตร`,'ใช้ฝั่งที่ไม่เปลี่ยนหาค่า 1 ส่วน'],
+         [`น้ำเปล่าใหม่ ${q} ส่วน = ${q} × ${nf(S/p)} = ${W2} ลิตร → เติม ${W2} − ${W} = ${w} ลิตร`,'ของใหม่ลบของเดิม'],[`ตรวจ: ${S} : ${W2} = ${p} : ${q} ✓`,'ทำเป็นอย่างต่ำแล้วต้องได้อัตราส่วนใหม่']],lf)}
+  }
+}
+const LOCAL={ratio:(l,n)=>many(()=>genRatio1(l),n),series:(l,n)=>many(()=>genSeries1(l),n),math:(l,n)=>many(()=>Math.random()<.2&&typeof genCount1==='function'&&genCount1(l)||genMath1(l),n),countobj:(l,n)=>genCountSet(l,n),addseq:(l,n)=>staticGen(typeof ADDSEQ_BANK!=='undefined'?ADDSEQ_BANK:[],l,n),agecount:(l,n)=>staticGen(typeof AGE_BANK!=='undefined'?AGE_BANK:[],l,n),animallegs:(l,n)=>staticGen(typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[],l,n),logic:(l,n)=>many(()=>genLogic1(l),n),spatial:genSpatial,dir:(l,n)=>genDir(l,n),data:(l,n)=>genData(l,n)};

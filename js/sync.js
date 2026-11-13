@@ -501,7 +501,9 @@ const devLabel=dev=>(DEVBEAT[dev]||{}).name||'เครื่องอื่น'
 function devName(){const u=navigator.userAgent;return `${/Android/.test(u)?'Android':/iPhone|iPad/.test(u)?'iPhone/iPad':/Windows/.test(u)?'Windows':/Mac/.test(u)?'Mac':'เครื่อง'} · ${/Edg\//.test(u)?'Edge':/Chrome\//.test(u)?'Chrome':/Firefox/.test(u)?'Firefox':/Safari/.test(u)?'Safari':'เบราว์เซอร์'}`}
 const ownedElsewhere=d=>!!(d&&d.stage!=='ready'&&d.qBy&&d.qBy!==syncDevice()&&devAlive(d.qBy));
 const leasedElsewhere=d=>!!(d&&d.stage!=='ready'&&d.leaseBy&&d.leaseBy!==syncDevice()&&(Date.now()-(+d.leaseAt||0)<SYNC_LEASE_MS));
-function docBusyElsewhere(d){return leasedElsewhere(d)||ownedElsewhere(d)}
+/* คิวเป็นรายการเดียวกันทุกเครื่อง (อยู่บนคลาวด์): เครื่องไหนเปิดอยู่ก็หยิบไฟล์ถัดไปมาย่อยได้ · กันซ้ำเฉพาะไฟล์ที่อีกเครื่อง "กำลังย่อยอยู่จริง" (lease 3 นาที ต่ออายุระหว่างทำ)
+   เดิมไฟล์ที่เข้าคิวในเครื่องหนึ่งถูกจองให้เครื่องนั้น (qBy) เครื่องอื่นไม่แตะ → เครื่องเจ้าของค้าง/ไม่มี AI งานก็ค้างทั้งที่อีกเครื่องว่าง */
+function docBusyElsewhere(d){return leasedElsewhere(d)}
 const devHasWork=()=>!!PROC_ID||PROCQ.length>0||DOCS.some(d=>!d.central&&d.stage!=='ready'&&d.qBy===syncDevice());
 async function devBeat(force){
   if(!syncOk())return;

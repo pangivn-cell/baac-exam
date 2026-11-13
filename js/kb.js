@@ -1262,7 +1262,7 @@ function renderKB(){
       return `<div class="kdoc" data-id="${d.id}">
       <div class="kt"><div><p class="kn">${esc(d.name)}</p><p class="src">${d.pages.length?`${d.pages.length} ${d.unit} · ${nf(d.chars)} ตัวอักษร`:(nc?`${lab} ${nc} ${unit}`:'ยังไม่ได้อ่านเนื้อหา')}${d.stored==='drive'?` · ☁ อยู่บน Google Drive${d.size?` (${(d.size/1048576).toFixed(1)} MB)`:''}`:''}${figN?` · รูปประกอบ ${figN} รูป`:''} · เพิ่มเมื่อ ${fmtDate(d.at)}${d.syncAt?' · ☁ ซิงก์แล้ว':''}${d.mem?' · ยังไม่ได้บันทึกถาวร':''}</p></div><span class="tag" style="white-space:nowrap" title="${d.kindAuto?'ระบบตรวจประเภทไฟล์ให้อัตโนมัติ เปลี่ยนได้ที่ ตั้งค่าประเภท/กลุ่ม/การแสดง':''}">${ex?'ข้อสอบ':'เนื้อหา'}${d.kindAuto?' (ตรวจอัตโนมัติ)':''} · ${d.group==='gen'?'ทั่วไป':'เฉพาะตำแหน่ง'} · ${d.show?'แสดงเป็นรายวิชา':'ฐานข้อมูล'}</span></div>
       <p class="kstage ${d.stage==='ready'?'ok':''}">${busy?`<span class="spin sm" aria-hidden="true"></span><span data-prog="${d.id}">${PROC_ID===d.id?'กำลังประมวลผล...':'รอคิวประมวลผล'}</span>`:d.stage==='ready'?`✓ พร้อมใช้ · ${lab} ${nc} ${unit}${ex&&CARDS.some(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0)?` (ไม่มีเฉลย ${CARDS.filter(c=>c.docId===d.id&&c.type==='q'&&c.q.answer<0).length} ข้อ)`:''}`:`${STAGE_TXT[d.stage]||d.stage||'รอประมวลผล'}${d.stage==='ocr'?` (${visionTodo(d).length} หน้า)`:''}${['queued','read','ready'].includes(d.stage)?'':` · ใช้ AI ประมาณ ${estCalls(d)} ครั้ง`}`}</p>
-      ${d.stage==='queued'&&!busy?`<p class="src">${rb?'☁ รอคิวอยู่บนคลาวด์':'อัปโหลดขึ้น Google Drive เรียบร้อยแล้ว ปิดหน้านี้ได้'} · กลับมาเปิดเว็บอีกครั้ง (เครื่องเดิม) ระบบจะย่อยต่อให้เอง${ai?'':' (ต้องตั้งค่า AI ก่อน)'}</p>`:''}
+      ${d.stage==='queued'&&!busy?`<p class="src">${rb?'☁ รอคิวอยู่บนคลาวด์':'อัปโหลดขึ้น Google Drive เรียบร้อยแล้ว ปิดหน้านี้ได้'} · เปิดเว็บจากเครื่องไหนก็ได้ที่ล็อกอินบัญชีนี้ ระบบจะย่อยต่อให้เอง${ai?'':' (ต้องตั้งค่า AI ก่อน)'}</p>`:''}
       ${rb?(leasedElsewhere(d)?`<p class="src">☁ กำลังประมวลผลที่${esc(devLabel(d.leaseBy))}${d.leaseAt?` (เริ่ม ${fmtDate(d.leaseAt)})`:''} · เครื่องนี้ไม่ทำซ้ำ ถ้าเครื่องนั้นปิดไป ระบบรับงานต่อเองภายในไม่กี่นาที</p>`
         :`<p class="src">☁ อยู่ในคิวของ${esc(devLabel(d.qBy))} · เครื่องนี้ไม่ทำซ้ำ ถ้าเครื่องนั้นปิดเว็บเกิน 6 นาที ระบบรับงานต่อเองจากจุดที่ค้าง · กด ประมวลผลต่อ ถ้าต้องการทำที่เครื่องนี้แทน</p>`):''}
       ${d.waitHost&&d.stage!=='ready'&&!busy&&!rb?`<p class="src">⏳ ${HOST_WAIT_TXT} · ${hostAlive()?'เครื่องหลักออนไลน์ จะเริ่มทำภายในไม่กี่นาที':'เครื่องหลักปิดอยู่ จะทำต่อเมื่อเปิดเครื่องและเปิดเว็บไว้'}</p>`:''}
@@ -1537,7 +1537,10 @@ async function autoRetry(){
     const qOut=typeof syncQuotaOut==='function'&&syncQuotaOut()&&!!ME;
     /* ไฟล์ที่ย่อยเสร็จในเครื่องนี้แต่บัตรยังไม่ขึ้นคลาวด์ (ส่งไม่สำเร็จตอนโควตาเต็ม หรือปิดเว็บก่อนส่งเสร็จ) → ส่งใหม่ รอบละ 5 ไฟล์ */
     if(!qOut&&ME&&typeof syncQueue==='function'){let k=0;for(const d of mine){if(k>=5)break;
-      if(d.stage!=='ready'||busy(d)||d.cardsRemote||(+d.cardsParts||0)>0||!CARDS.some(c=>c.docId===d.id))continue;syncQueue(d,{cards:true,pages:false,figs:false});k++}}
+      if(d.stage!=='ready'||busy(d)||d.cardsRemote||(+d.cardsParts||0)>0||!CARDS.some(c=>c.docId===d.id))continue;syncQueue(d,{cards:true,pages:false,figs:false});k++}
+      /* ไฟล์ที่ยังย่อยไม่เสร็จแต่ข้อความหน้าอยู่แค่ในเครื่องนี้ (ไม่มีต้นฉบับบน Drive) → ส่งข้อความขึ้นคลาวด์ ให้เครื่องอื่นหยิบไปย่อยต่อได้ */
+      k=0;for(const d of mine){if(k>=3)break;
+        if(d.stage==='ready'||PROC_ID===d.id||!(d.pages||[]).length||(+d.pagesParts||0)>0||d.pagesFile)continue;syncQueue(d,{pages:true,cards:false,figs:false});k++}}
     /* ย้ายบัตร/ข้อความหน้าของเอกสารเดิมจาก Firestore ขึ้นไฟล์ใน Drive ทีละไฟล์ (นาทีละ 2 ไฟล์) · บัตรยังไม่ได้โหลดมาเครื่องนี้ = โหลดก่อน รอบหน้าค่อยส่ง */
     if(!qOut&&ME&&typeof driveStoreOK==='function'&&!PROC_ID&&await driveStoreOK()){let k=0;
       for(const d of mine){if(k>=2)break;if(d.stage!=='ready'||busy(d)||d.dupOf)continue;

@@ -319,7 +319,20 @@ function learnCards(q){
   if(c.type!=='q')return[c];
   const near=CARDS.filter(x=>x.docId===c.docId&&x.type!=='q'&&x.fact&&c.page!=null&&Math.abs(+x.page-(+c.page))<=1);
   near.sort((a,b)=>Math.abs(+a.page-(+c.page))-Math.abs(+b.page-(+c.page))||(b.imp||2)-(a.imp||2));
-  return near.slice(0,2);
+  if(near.length)return near.slice(0,2);
+  return relatedCards(q,c);
+}
+/* ข้อสอบจากไฟล์แนวข้อสอบล้วน (ไม่มีบัตรความรู้หน้าเดียวกัน): หาบัตรความรู้ในวิชาเดียวกันที่เนื้อหาใกล้กับโจทย์+คำตอบที่ถูกที่สุด
+   วัดความใกล้ด้วยชุดอักษร 3 ตัวติดกัน (ใช้กับภาษาไทยที่ไม่มีช่องว่างได้) · จำผลไว้ต่อข้อ */
+const TRI=new Map(),RELC=new Map();
+const tri=t=>{const s=String(t||'').toLowerCase().replace(/[\s"'“”‘’.,:;!?()\[\]\-_/0-9]+/g,'');const o=new Set();for(let i=0;i+3<=s.length;i++)o.add(s.slice(i,i+3));return o};
+const triOf=c=>{let v=TRI.get(c.id);if(!v){v=tri((c.title||'')+' '+(c.fact||''));TRI.set(c.id,v)}return v};
+function relatedCards(q,c){
+  const key=c.id;if(RELC.has(key))return RELC.get(key);
+  const name=q.subName||'',want=tri(q.stem+' '+(q.choices||[])[q.answer]);if(want.size<8){RELC.set(key,[]);return[]}
+  const pool=CARDS.filter(x=>x.type!=='q'&&x.fact&&(x.docId===c.docId||(name&&typeof inSubj==='function'&&inSubj(x,name))));
+  const sc=pool.map(x=>{const t=triOf(x);let n=0;for(const g of want)if(t.has(g))n++;return[x,n/want.size]}).filter(([,v])=>v>=0.22).sort((a,b)=>b[1]-a[1]);
+  const out=sc.slice(0,2).map(([x])=>x);RELC.set(key,out);return out;
 }
 function learnHTML(q){
   const cs=learnCards(q);if(!cs.length)return '';

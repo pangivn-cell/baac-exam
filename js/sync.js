@@ -270,7 +270,9 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
       /* ไฟล์ใน Drive = ทั้งชุดในไฟล์เดียว: โหลดเมื่อลายนิ้วมือต่างจากที่โหลดไว้ */
       const part=df?doc.cardsFileGot&&!(reset>(+doc.cardsResetSeen||0)):ps.length>0&&ps.length===(doc.cardsParts||0)&&got.length>0&&!(reset>(+doc.cardsResetSeen||0));
       const remote=new Map();
-      if(df){if(df.h!==doc.cardsFileGot){const j=await driveReadJSON(df);for(const c of j.cards||[])if(c&&c.id)remote.set(c.id,vizIn(c))}}
+      /* โหลดใหม่ด้วยเมื่อบัตรในเครื่องน้อยกว่าที่คลาวด์บอก (เคยเจอ: จำว่าโหลดไฟล์นี้แล้ว แต่บัตรในเครื่องหาย 76 → 0 สองเครื่องเลยเห็นไม่เท่ากัน) */
+      const lessHere=CARDS.filter(c=>c.docId===doc.id).length<(+doc.cardCount||0);
+      if(df){if(df.h!==doc.cardsFileGot||lessHere){const j=await driveReadJSON(df);for(const c of j.cards||[])if(c&&c.id)remote.set(c.id,vizIn(c))}}
       else{let shots;
         if(part){const idx=ps.map((h,i)=>h!==got[i]?i:-1).filter(i=>i>=0);
           shots=(await Promise.all(idx.map(i=>f.fs.getDoc(f.fs.doc(f.db,...base,'cards',String(i)))))).filter(s=>s.exists())}

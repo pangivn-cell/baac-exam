@@ -738,7 +738,11 @@ async function processDoc(doc){
     if(!doc.fill&&((doc.digDone||0)>0||(doc.ocrDone||[]).length))setProg(doc,`ทำต่อจากรอบก่อน (${doc.stage==='ocr'?`อ่านภาพแล้ว ${doc.ocrDone.length} หน้า`:`ย่อยแล้ว ${doc.digDone} ช่วง`} ไม่ทำซ้ำ)`);
     if(doc.stage==='ocr'){if(canVision('proc'))await ocrDoc(doc);else doc.warn='AI ที่ตั้งไว้อ่านภาพหน้า PDF ไม่ได้ ใช้ข้อความที่ดึงได้ไปก่อน และยังดึงรูปจาก PDF ไม่ได้';doc.stage='digest';await saveDoc(doc)}
     if(doc.stage==='digest'&&doc.kindAuto&&!doc.digDone&&!doc.fill){const k=detectKind(doc.pages,doc.name);if(k!==doc.kind){doc.kind=k;await saveDoc(doc)}}
-    if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);doc.stage='embed';await saveDoc(doc)}
+    if(doc.stage==='digest'){if(!docWindows(doc).length)throw{code:'no_text'};await digestDoc(doc);
+      /* AI ในเครื่องดึงข้อสอบจากไฟล์ข้อสอบไม่ได้สักข้อ (เคยเจอ gemma ตอบว่างทั้งไฟล์ แล้วไฟล์ขึ้น "เสร็จ 0 ข้อ") → ส่งต่อให้ AI คลาวด์ทำใหม่หนึ่งรอบ */
+      if(doc.kind==='exam'&&!doc.fill&&!CARDS.some(c=>c.docId===doc.id)&&aiRoute('proc').p==='local'&&!doc.cloudTried&&activeAI()){
+        Object.assign(doc,{cloudTried:true,cloudFill:true,digDone:0,stage:'digest',prog:''});await saveDoc(doc);setTimeout(()=>queueDoc(doc.id),500);return}
+      doc.stage='embed';await saveDoc(doc)}
     if(doc.kind==='exam'&&(doc.stage==='embed'||doc.stage==='conflict')&&CARDS.some(c=>c.docId===doc.id&&needKey(c))){
       try{await solveNoKey(doc)}catch(e){if(e&&e.code==='cancelled')throw e;doc.needSolve=true;doc.solveAt=Date.now();doc.warn=`รอ AI คลาวด์ทำเฉลยข้อที่เอกสารไม่มีเฉลย (${errCopy(e&&e.code,'ทำเฉลย')}) ระบบจะลองใหม่เอง`}
     }

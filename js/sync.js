@@ -530,7 +530,8 @@ async function syncDisown(doc){
 }
 /* ไฟล์ที่เครื่องนี้เห็นว่า "พร้อมใช้แต่บัตร 0 ใบ": อีกเครื่องอาจย่อยใหม่เสร็จไปแล้ว (บัตรอยู่บนคลาวด์ แต่เครื่องนี้ยังไม่ได้โหลด)
    ถ้าคลาวด์มีบัตร: รับผลจากคลาวด์ โหลดบัตรมา แล้วคืน true (ไม่ต้องย่อยซ้ำ) */
-const cloudHasCards=m=>(+m.cardsParts||0)>0||!!(m.cardsFile&&m.cardsFile.id)||!!(m.counts&&+m.counts.cards>0);
+/* นับจาก counts เป็นหลัก: ไฟล์บัตรว่าง (cardsFile ที่มี 0 ใบ) เคยถูกนับว่า "มีบัตรบนคลาวด์" → เครื่องที่รับงานไปตั้งไฟล์เป็นเสร็จทั้งที่ 0 ข้อ วนไม่จบ */
+const cloudHasCards=m=>m.counts&&m.counts.cards!=null?+m.counts.cards>0:((+m.cardsParts||0)>0||!!(m.cardsFile&&m.cardsFile.id));
 async function syncAdoptCloudCards(doc,m){
   if(!syncOk()||!doc||doc.central)return false;
   try{

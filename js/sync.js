@@ -293,7 +293,10 @@ async function syncHydrate(doc,{cards=true,pages=false}={}){
       const gone=CARDS.filter(c=>c.docId===doc.id&&(del.has(c.id)||(!part&&reset&&remote.size&&!remote.has(c.id))));
       if(gone.length){CARDS=CARDS.filter(c=>!gone.includes(c));try{await kbDelMany('cards',gone.map(c=>c.id))}catch(e){}}
       /* จำว่าก้อนไหนมีแล้ว (ไม่มีลายนิ้วมือบนคลาวด์ = ครั้งหน้าโหลดทั้งชุดเหมือนเดิม) */
-      if(df){doc.cardsFileGot=df.h;doc.cardsResetSeen=reset;await saveDoc(doc)}
+      if(df){doc.cardsFileGot=df.h;doc.cardsResetSeen=reset;
+        /* ตัวนับบนคลาวด์มากกว่าที่ไฟล์มีจริง: ใช้จำนวนจริง ไม่งั้นโหลดซ้ำทุกรอบซิงก์ */
+        if(remote.size&&CARDS.filter(c=>c.docId===doc.id).length<(+doc.cardCount||0))doc.cardCount=CARDS.filter(c=>c.docId===doc.id).length;
+        await saveDoc(doc)}
       else if(ps.length===(doc.cardsParts||0)){doc.cardsPSGot=ps.slice();doc.cardsResetSeen=reset;await saveDoc(doc)}
       if(add.length||gone.length){syncDocSubjects();renderSide();if(VIEW==='kb')renderKB();}
       /* ทำดัชนีความหมายให้บัตรที่ดึงมาจากเครื่องอื่น (ถ้ามี AI key) เพื่อให้ค้นหา/ถาม AI ได้เหมือนเดิม */

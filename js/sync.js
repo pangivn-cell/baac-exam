@@ -150,7 +150,10 @@ async function syncMerge(local,m){
   const rk=syncRank(m.stage),lk=syncRank(local.stage),rq=+m.reqAt||0,dn=+m.doneAt||0;
   /* อีกเครื่องสั่งงานรอบใหม่ (เก็บตก/ตรวจซ้ำ/ย่อยใหม่) ที่ยังไม่เสร็จ: รับสถานะงานเดียวกันมา
      ให้ระบบจองคิวตัดสินว่าเครื่องไหนทำ (เดิมเครื่องนี้ไม่รู้ ส่วนเครื่องใหม่ย่อยทั้งไฟล์ซ้ำ) */
-  if(rq>(+local.reqAt||0)&&m.stage!=='ready'&&!(dn>rq)){
+  /* เครื่องนี้ว่า "เสร็จแล้ว" แต่ไม่มีบัตรสักใบ และไม่เคยส่งสถานะเสร็จขึ้นคลาวด์ ขณะที่คลาวด์ยังบอกว่ามีเครื่องอื่นกำลังทำงานรอบเดียวกันอยู่
+     = เสร็จปลอม (เคยเจอ: 10 ไฟล์ข้อสอบโชว์ "เสร็จแล้ว" เครื่องหนึ่ง แต่อีกเครื่องยังย่อยอยู่ จริงๆ ยังไม่มีข้อสอบ) → ใช้สถานะคลาวด์ ทั้งสองเครื่องเห็นตรงกัน */
+  const fakeDone=local.stage==='ready'&&m.stage!=='ready'&&!(dn>rq)&&rq&&rq>=(+local.reqAt||0)&&!CARDS.some(c=>c.docId===local.id)&&!cloudHasCards(m)&&(+local.syncAt||0)<(+local.doneAt||0);
+  if((fakeDone||rq>(+local.reqAt||0))&&m.stage!=='ready'&&!(dn>rq)){
     Object.assign(local,{reqAt:rq,reprocess:true,fill:!!m.fill,audit:!!m.audit,stage:m.stage||'digest',digDone:+m.digDone||0,win:+m.win||0,
       ocrDone:Array.isArray(m.ocrDone)?m.ocrDone:(local.ocrDone||[]),err:'',errCode:'',tries:0,nextTry:0});ch=true}
   /* ไฟล์ที่สั่งเก็บตก/ประมวลผลใหม่ในเครื่องนี้: ไม่เอาสถานะ "พร้อมใช้" เดิมจากคลาวด์มาทับ ไม่งั้นงานไม่ได้เริ่ม

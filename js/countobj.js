@@ -51,7 +51,7 @@ const CNT_LV={1:{k:[3,3],v:[2,9],inBasket:2,cnt:[1,3],buy:[2,9]},2:{k:[3,4],v:[3
   3:{k:[4,5],v:[4,20],inBasket:4,cnt:[1,4],buy:[6,20]},4:{k:[4,6],v:[5,25],inBasket:4,cnt:[1,4],buy:[8,24]},5:{k:[5,6],v:[6,30],inBasket:5,cnt:[1,4],buy:[10,30]}};
 const CNT_SEEN_KEY='exam-count-seen';
 let CNT_SEEN=[];try{CNT_SEEN=JSON.parse(localStorage.getItem(CNT_SEEN_KEY)||'[]')}catch(e){}
-const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
+/* gcd ใช้ของ generators.js (โหลดก่อน) ประกาศซ้ำแล้วทั้งไฟล์ไม่ทำงาน */
 
 function makeScene(level){
   const L=CNT_LV[Math.min(5,Math.max(1,level))];

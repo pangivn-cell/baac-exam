@@ -337,7 +337,8 @@ function engdBody(d,q){
 }
 function engdHTML(q){
   if(!isEngQ(q))return '';
-  const k=qKey(q),d=ENGD[k];ENGD_Q[k]=q;
+  /* รหัสรวมข้อที่เป็นคำตอบ: แก้เฉลยแล้ว คำแปล/เหตุผลชุดเก่า (ที่ติ๊กข้อเดิมว่าถูก) จะไม่ถูกนำมาใช้ */
+  const k=qKey(q)+'#'+q.answer,d=ENGD[k];ENGD_Q[k]=q;
   if(d)return `<div class="calcd">${engdBody(d,q)}</div>`;
   if(!activeAI())return '';
   if(ENGD_BUSY[k]==='err')return `<div class="calcd" data-engd="${esc(k)}"><p class="src">แปลโจทย์ไม่สำเร็จ <button type="button" class="ghost" data-engretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;

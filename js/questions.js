@@ -210,7 +210,8 @@ function tidyQ(q){
   if(cut)q.stem=keep.join('\n').replace(/\n{3,}/g,'\n\n').trim();
   return q;
 }
-const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return !spotDiff(c.q)&&new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};
+/* เทียบโดยตัดป้าย ก./ข. ออกก่อน: ตัวเลือกที่ต่างกันแค่ป้าย (ข้อความเหมือนกันทุกตัว) คือข้อที่อ่านไฟล์พลาด */
+const dupChoices=c=>{const q=c.q||{},ch=(q.choices||[]).map(x=>String(x).replace(CH_LBL,'').trim().toLowerCase());return !spotDiff({...q,choices:ch})&&new Set(ch).size<ch.length};
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};

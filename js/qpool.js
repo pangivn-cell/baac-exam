@@ -69,7 +69,8 @@ async function poolTake(s,level,k){
   for(const d of shuffle(docs.slice()))for(const raw of d.items||[]){
     let q;try{q=JSON.parse(raw)}catch(e){continue}
     if(typeof placeholderQ==='function'&&placeholderQ(q))continue;   /* โจทย์ที่ AI ลอกตัวอย่างรูปแบบมา (ตัวเลือก1..4) */
-    if(typeof wrongLang==='function'&&wrongLang(q,s.name))continue;   /* ภาษาอังกฤษในวิชาที่สอบเป็นภาษาไทย (AI ในเครื่องเขียนมา) */
+    if(typeof wrongLang==='function'&&wrongLang(q,s.name))continue;
+    if(typeof noPassage==='function'&&noPassage(q))continue;   /* อ้างถึงบทความแต่ไม่มีบทความ ตอบไม่ได้ */   /* ภาษาอังกฤษในวิชาที่สอบเป็นภาษาไทย (AI ในเครื่องเขียนมา) */
     const key=qKey(q),done=(d.used&&d.used[key])||[];
     if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
     const pq=withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null);if(s.id==='eng'&&typeof engTag==='function')engTag(pq);

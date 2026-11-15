@@ -174,7 +174,7 @@ const figOK=id=>!DEADFIG.has(id)&&(FIGS.has(id)||PFIG.has(id)||(typeof CFIG!=='u
 const figMissing=c=>{const q=c.q||c;return [...String((q.stem||'')+' '+(q.choices||[]).join(' ')).matchAll(FIG_TOK)].some(m=>!figOK(m[1]))};
 /* ข้อความที่มีป้ายรูป → แสดงรูปจริงตรงตำแหน่งป้าย */
 const figText=(t,cls)=>esc(String(t||'')).replace(FIG_TOK,(m,id)=>figHTML(id,cls||'qfig infig'));
-const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!c.broken&&!placeholderQ(c.q)&&!lostChoices(c)&&!QHIDE[c.id]&&!figMissing(c)&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))].filter(c=>!dupChoices(c))};
+const bankItems=()=>{const docs=new Map(DOCS.map(d=>[d.id,d]));const base=CARDS.filter(c=>c.type==='q'&&!c.broken&&!placeholderQ(c.q)&&!lostChoices(c)&&!(noPassage(c.q)&&!(c.figs||[]).length)&&!QHIDE[c.id]&&!figMissing(c)&&!HIDE.has(c.docId)&&docMine(docs.get(c.docId))&&c.q&&c.q.answer>=0&&c.q.answer<(c.q.choices||[]).length&&!(c.byLocal&&c.ansSrc!=='doc'));   /* เฉลยที่ AI ในเครื่องเดา รอ AI คลาวด์ตรวจก่อนจึงใช้ */return [...base,...BUILTIN_CARDS.filter(c=>!HIDE.has(c.docId)&&docMine(docs.get(c.docId)))].filter(c=>!dupChoices(c))};
 /* ตัวเลือกเหลือแค่ตัวอักษร (ก ข ค ง) แต่ไม่มีรูปและโจทย์ไม่ได้บอกค่าของแต่ละตัวเลือก = ค่าตัวเลือกหายตอนย่อยไฟล์ ตอบไม่ได้ */
 const lostChoices=c=>{const q=c&&c.q;if(!q||!Array.isArray(q.choices)||q.choices.length<3)return false;
   if(!q.choices.every(x=>/^\s*[ก-ฮ]\s*\.?\s*$/.test(String(x))))return false;   /* ตัวเลขหลักเดียว (2 4 6 8) เป็นคำตอบจริงได้ ไม่นับ */
@@ -210,6 +210,10 @@ function tidyQ(q){
   if(cut)q.stem=keep.join('\n').replace(/\n{3,}/g,'\n\n').trim();
   return q;
 }
+/* ข้ออ่านจับใจความที่บทความหาย: โจทย์อ้างถึงบทความ/ประกาศ/จดหมาย แต่ในโจทย์ไม่มีตัวบทความ ไม่มีรูป ไม่มีตาราง (ดึงไฟล์มาแค่ข้อแรกของชุดที่มีบทความ)
+   ตอบไม่ได้ ไม่เอามาออกข้อสอบ · ข้อที่มีบทความจริงจะยาวเกิน 220 ตัวอักษรเสมอ */
+const PSG_REF=/according to the (passage|announcement|text|notice|letter|e-?mail|advertisement|article|story|extract|memo|message|report)|(in|of) (this|the) (passage|text|announcement|letter|e-?mail|article|advertisement)|the (passage|writer|author|announcement|letter|advertisement) (says|states|mentions|suggests|implies|is about)|(this|the) (passage|letter|announcement|article) (is|was|mainly)|best title|main idea of|(first|second|third|fourth|fifth|last) paragraph|in (line|paragraph) \d|จากบทความ|ตามบทความ|จากข้อความข้างต้น|บทความนี้|จากเรื่องที่อ่าน/i;
+const noPassage=q=>{if(!q)return false;const s=String(q.stem||'');return PSG_REF.test(s)&&s.length<220&&!/\[รูป /.test(s)&&!q.viz&&!q.fig&&!q.svg};
 /* เทียบโดยตัดป้าย ก./ข. ออกก่อน: ตัวเลือกที่ต่างกันแค่ป้าย (ข้อความเหมือนกันทุกตัว) คือข้อที่อ่านไฟล์พลาด */
 const dupChoices=c=>{const q=c.q||{},ch=(q.choices||[]).map(x=>String(x).replace(CH_LBL,'').trim().toLowerCase());return !spotDiff({...q,choices:ch})&&new Set(ch).size<ch.length};
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}

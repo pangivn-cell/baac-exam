@@ -316,7 +316,7 @@ document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest
 /* ---------- แปลข้อสอบภาษาอังกฤษ (ข้อจากไฟล์/คลังกลางที่ยังไม่มีคำแปล) ----------
    ให้ AI แปลโจทย์ + ความหมายของทุกตัวเลือก + ศัพท์น่าจำ + หลักที่ใช้ตอบ ยึดคำตอบเดิม · ข้อละครั้งเดียว
    เก็บในเครื่อง (สูงสุด 600 ข้อ) และคลังกลาง คนอื่นเปิดข้อเดียวกันไม่ต้องใช้ AI อีก · ข้อที่ระบบสร้างเองมีคำแปลในตัว (engTr) ไม่เรียก */
-const ENGD_KEY='exam-eng-tr2',ENGD_BUSY={},ENGD_Q={};
+const ENGD_KEY='exam-eng-tr3',ENGD_BUSY={},ENGD_Q={};
 let ENGD={};try{ENGD=JSON.parse(localStorage.getItem(ENGD_KEY)||'{}')||{}}catch(e){ENGD={}}
 const isEngQ=q=>!!q&&!q.engTr&&Array.isArray(q.choices)&&q.choices.length>=2&&!q.chSvg&&(q.sub==='eng'||(typeof engText==='function'&&engText(String(q.stem||'')+' '+q.choices.join(' '))));
 /* แปลทีละประโยค: อังกฤษบรรทัดบน ไทยบรรทัดล่าง · คำศัพท์น่าจำ: คำ (ชนิด) = ความหมาย */
@@ -329,7 +329,7 @@ function engdBody(d,q){
   let h=`<p class="ch4">🇹🇭 แปลโจทย์และคำศัพท์</p>`;
   if(d.lines&&d.lines.length)h+=biHTML(d.lines.map(x=>[x.en,x.th]));
   else if(d.tr)h+=`<p style="margin:0"><b>แปลโจทย์:</b> ${esc(d.tr)}</p>`;
-  if(d.q&&!(d.lines&&d.lines.length))h+=`<p style="margin:0"><b>คำถาม:</b> ${esc(d.q)}</p>`;
+  if(d.q&&d.q!==d.tr&&!(d.lines&&d.lines.length))h+=`<p style="margin:0"><b>คำถาม:</b> ${esc(d.q)}</p>`;
   if(d.choices&&d.choices.length)h+=`<p class="lbl" style="margin:0">ความหมายของแต่ละตัวเลือก</p><ul class="cpts">${q.choices.map((c,i)=>{const x=d.choices[i]||{};return `<li${i===q.answer?' class="ok"':''}><b>${TH[i]}. ${esc(c)}</b>${x.th?` = ${esc(x.th)}`:''}${x.why?` <span class="src">(${i===q.answer?'✓ ':''}${esc(x.why)})</span>`:''}</li>`}).join('')}</ul>`;
   if(d.words&&d.words.length)h+=vocabHTML(d.words.map(w=>`${w.w} ${/^(n|v|adj|adv|prep|conj|phr)\.$/.test(w.pos||'')?w.pos:'phr.'} = ${w.th}`));
   if(d.point)h+=`<p class="cnote">💡 ${esc(d.point)}</p>`;
@@ -348,6 +348,7 @@ function engdHTML(q){
 async function engdLoad(k){
   const q=ENGD_Q[k];if(!q||ENGD[k]||ENGD_BUSY[k]===1)return;ENGD_BUSY[k]=1;
   const prompt=`แปลข้อสอบภาษาอังกฤษข้อนี้เป็นภาษาไทย สำหรับคนที่พื้นฐานภาษาอังกฤษอ่อน
+หลักการแปล: แปลตามความหมายให้เป็นภาษาไทยที่คนไทยพูดจริง อ่านลื่น ไม่แปลคำต่อคำ ไม่เรียงตามโครงสร้างอังกฤษ เช่น "A large number of people were killed in the accident yesterday." = "มีผู้เสียชีวิตจำนวนมากจากอุบัติเหตุเมื่อวานนี้" (ไม่ใช่ "จำนวนมากของคนถูกฆ่าในอุบัติเหตุ") · "Do you mind if I open the window?" = "ขอเปิดหน้าต่างได้ไหม คุณจะรังเกียจไหม" · ชื่อเฉพาะคงไว้เป็นภาษาอังกฤษ · ตัวเลือกที่เป็นคำไวยากรณ์ (is/are/was/were, in/on/at) ไม่ต้องแปลเป็นคำไทยตรงๆ ให้บอกหน้าที่แทน เช่น were = verb to be อดีต ใช้กับประธานพหูพจน์
 โจทย์: ${q.stem}
 ตัวเลือก: ${q.choices.map((c,i)=>`${TH[i]}. ${c}`).join('  ')}
 คำตอบที่ถูก: ${TH[q.answer]}. ${q.choices[q.answer]} (คำตอบนี้ถูกต้องแล้ว ห้ามเปลี่ยน)
@@ -355,7 +356,7 @@ async function engdLoad(k){
 {"lines":[{"en":"ประโยคภาษาอังกฤษจากโจทย์ ทีละประโยค (รวมบทความ บทสนทนา และคำถาม ใส่คำตอบที่ถูกลงในช่องว่าง)","th":"คำแปลภาษาไทยของประโยคนั้น"}],"tr":"แปลโจทย์ทั้งหมดเป็นภาษาไทยแบบเข้าใจง่าย (มีบทความหรือบทสนทนาให้แปลทั้งหมด ช่องว่างเขียนเป็น ____ ถ้าโจทย์ไม่มีคำสั่ง ให้บอกด้วยว่าโจทย์ต้องการให้ทำอะไร)","q":"แปลเฉพาะคำถามท้ายบทความ (ไม่มีบทความให้เว้นว่าง)","choices":[{"th":"ความหมายภาษาไทยของตัวเลือกนี้","why":"ทำไมถูกหรือผิด 1 ประโยคสั้น"}],"words":[{"w":"คำศัพท์ภาษาอังกฤษในโจทย์หรือตัวเลือกที่ควรรู้ (รูปพื้นฐาน)","pos":"n. หรือ v. หรือ adj. หรือ adv. หรือ prep. หรือ conj. หรือ phr.","th":"ความหมายภาษาไทย"}],"point":"หลักไวยากรณ์ ความหมาย หรือเทคนิคที่ใช้ตอบข้อนี้ 1–2 ประโยค"}
 กติกา: choices ต้องมี ${q.choices.length} รายการ เรียงตามตัวเลือก ก ข ค ง · lines แยกทุกประโยคไม่ข้าม (บทความยาวก็แยกครบ) · words 6–15 คำ เลือกคำที่ยากหรือสำคัญ รวมวลีที่ใช้บ่อย · ภาษาไทยทั้งหมด ยกเว้นคำศัพท์ที่ยกมา · ห้ามใช้ markdown`;
   try{
-    let hit=null;try{hit=await calcCentralGet('en2'+k)}catch(e){}
+    let hit=null;try{hit=await calcCentralGet('en3'+k)}catch(e){}
     let r=hit||await aiJSON(prompt)||{};
     const S=v=>String(v||'').trim();
     const choices=(Array.isArray(r.choices)?r.choices:[]).slice(0,q.choices.length).map(x=>x&&typeof x==='object'?{th:S(x.th),why:S(x.why)}:{th:S(x),why:''});
@@ -365,7 +366,7 @@ async function engdLoad(k){
     ENGD[k]={lines,tr:S(r.tr),q:S(r.q),choices,words,point:S(r.point).slice(0,300),at:Date.now()};
     const ks=Object.keys(ENGD);if(ks.length>600)ks.sort((a,b)=>ENGD[a].at-ENGD[b].at).slice(0,ks.length-600).forEach(x=>delete ENGD[x]);
     try{localStorage.setItem(ENGD_KEY,JSON.stringify(ENGD))}catch(e){}
-    if(!hit)calcCentralPut('en2'+k,ENGD[k]);
+    if(!hit)calcCentralPut('en3'+k,ENGD[k]);
     ENGD_BUSY[k]=0;
   }catch(e){ENGD_BUSY[k]='err'}
   document.querySelectorAll('[data-engd]').forEach(el=>{if(el.dataset.engd===k)el.outerHTML=engdHTML(q)});

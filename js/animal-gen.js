@@ -12,9 +12,9 @@ const AN_POOL={
   2:['threeKinds','legDiff','sameLegs','twoKinds','reverse'],
   3:['headsLegs','moreThan','swapSell','legGap','headsLegs'],
   4:['ratio','equalLegs','zeroLeg','swapKinds','moreThan'],
-  5:['miscount','legsMinusHeads','bugsSpiders','ratio3','swapKinds']};
-function genAnimal1(level){
-  const u=[],kind=rnd(AN_POOL[level]||AN_POOL[3]);
+  5:['miscount','legsMinusHeads','bugsSpiders','ratio3','swapKinds','ratio','equalLegs','zeroLeg']};
+function genAnimal1(level,kind){
+  const u=[];kind=kind||rnd(AN_POOL[level]||AN_POOL[3]);
   switch(kind){
     case 'single':{const l=rnd([2,4,6,8]),a=anPick(l,u),n=ri(5,25),ans=n*l;
       return anMC(`ในสวนสัตว์มี${a} ${n} ตัว นับขาได้ทั้งหมดกี่ขา`,ans,[ans-l,ans+l,n*(l+2),n+l],[[`${anLegNote(a,l)} → ${n} × ${l} = ${ans} ขา`,'']])}
@@ -71,6 +71,7 @@ function genAnimal1(level){
   }
   return null;
 }
-/* ระดับเดียวกัน: ตัวสร้างหลายแบบ ~70% + คลังเดิม ~30% */
-LOCAL.animallegs=(l,n)=>{const k=Math.round(n*.3),bank=typeof ANIMAL_BANK!=='undefined'?ANIMAL_BANK:[];
-  return shuffle([...many(()=>genAnimal1(l),n-k),...staticGen(bank,l,k)]).slice(0,n)};
+/* ตัวสร้างล้วน · ข้อจากคลังเดิมเติมให้ใน offlineItems ตาม bankShare ของวิชา (20%) */
+/* ชุดเดียวกันวนแบบโจทย์ให้ครบก่อนซ้ำแบบเดิม (สุ่มล้วนเคยได้แบบเดียวกัน 3 ใน 5 ข้อ) */
+LOCAL.animallegs=(l,n)=>{const kinds=[...new Set(AN_POOL[l]||AN_POOL[3])];let bag=[];
+  return many(()=>{if(!bag.length)bag=shuffle(kinds.slice());return genAnimal1(l,bag.pop())},n)};

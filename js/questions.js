@@ -203,7 +203,7 @@ function bankQ(c,s){
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
 function offlineItems(s,level,n){
-  const pool=atLevel(bankFor(s),level),k=s.ai?Math.min(n,pool.length):Math.min(pool.length,Math.round(n*.4));
+  const pool=atLevel(bankFor(s),level),k=s.ai?Math.min(n,pool.length):Math.min(pool.length,Math.round(n*(s.bankShare!=null?s.bankShare:.4)));   /* bankShare = สัดส่วนข้อจากคลังต่อชุด (ที่เหลือจากตัวสร้าง) */
   const q=pickBank(pool,k).map(c=>bankQ(c,s));
   return (typeof fixAll==='function'?fixAll:x=>x)(shuffle([...q,...(s.ai?[]:localItems(s,level,n-q.length))]));
 }
@@ -395,11 +395,13 @@ async function makeItems1(s,level,n,o={}){
   if(!items.length&&!retry.length){let old=[];QLOG_OFF=true;try{old=await makeItems0(s,level,n,o)}finally{QLOG_OFF=false}if(old.length){toast('ข้อสอบวิชานี้ในคลังตอบถูกครบแล้ว ใส่ AI key เพื่อสร้างโจทย์ใหม่');return old}}
   return shuffle([...retry,...items.slice(0,n-retry.length)]);
 }
+/* วิชาที่มีคลังสร้างด้วยโค้ด (ข้อจากไฟล์ผู้ใช้ปนได้) และมีตัวสร้างโจทย์ (นับขาสัตว์ นับอายุ บวกเลข): ไม่ต้องใช้ AI · ทาง AI หยิบจากคลังล้วน ได้แพทเทิร์นเดิมทุกข้อ */
+const calcSubj=s=>!!s&&!s.ai&&!!LOCAL[s.id]&&(()=>{const b=bankFor(s,true);return b.some(c=>c.calc)})();
 async function makeItems0(s,level,n,o={}){
   /* real questions from the bank first (up to half; all of them for picture subjects), the rest newly generated in the same style */
   if(s.psc)return pscItems(s,level,n,o);
   const pool=atLevel(bankFor(s),level);
-  if(!activeAI())return offlineItems(s,level,n);
+  if(!activeAI()||calcSubj(s))return offlineItems(s,level,n);
   const orig=pickBank(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));
   if(orig.length>=n)return shuffle(orig);
   /* fast = เริ่มชุด (practice.js start / สอบจริงช่วงแรก): ค้นในคลังก่อน (ข้อสอบจริงจากเอกสาร + คลังโจทย์กลาง) ได้เท่าไรเริ่มทำได้เลย

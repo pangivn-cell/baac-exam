@@ -53,7 +53,9 @@ async function start(go){
   const ai=!!activeAI(),nb=bankFor(s).length;
   /* ข้อมูลผลิตภัณฑ์โหลดตอนใช้วิชานี้ครั้งแรก */
   if(s.psc&&!PSC){const my=R;R.status='pscload';render();try{await loadPSC()}catch(e){if(R!==my)return;R.status='error';R.code=e&&e.code;R.err=errCopy(e&&e.code,'โหลดข้อมูลผลิตภัณฑ์');render();return}if(R!==my)return}
-  if(!ai||s.scene||(!s.ai&&!s.psc&&!cardMixCount(s,n)&&!nb)){
+  /* calcSubj (questions.js): ใช้ตัวสร้างเสมอแม้เปิด AI */
+  const calcOnly=calcSubj(s);
+  if(!ai||s.scene||calcOnly||(!s.ai&&!s.psc&&!cardMixCount(s,n)&&!nb)){
     if(s.ai&&!nb){R.status='needai';render();return}
     R.items=mixAll(offlineItems(s,level,n));R.status='play';R.t0=Date.now();render();return}
   if(!R.go){R.status='idle';render();return}

@@ -22,7 +22,7 @@ function fixQ(q){
   q.fixed={why:f.why||'',by:f.name||'',sources:f.sources||[],balance:f.verdict==='balance'};
   return q;
 }
-const fixAll=a=>Array.isArray(a)?a.map(fixQ):a;
+const fixAll=a=>Array.isArray(a)?a.map(q=>{const x=fixQ(q);return typeof tidyQ==='function'?tidyQ(x):x}):a;
 
 /* โจทย์ที่โปรแกรมคำนวณเฉลยเอง (ตัวสร้างโจทย์ในเครื่อง / คลังในตัวที่ตรวจด้วยโค้ดแล้ว): ตรวจได้ แต่ไม่แก้อัตโนมัติ */
 const computedQ=q=>!!q.calc||(!q.card&&!q.orig&&q.gen!=='ai'&&!q.pool);

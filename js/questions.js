@@ -191,6 +191,25 @@ const wrongLang=(q,subj)=>{if(!q)return false;const names=[subj,q.subName,q.topi
 /* โจทย์จับผิด "ข้อใดแตกต่างจากข้ออื่น": ตัวเลือกเหมือนกันทุกข้อยกเว้นข้อเดียว เป็นเรื่องปกติ ไม่นับเป็นตัวเลือกซ้ำ */
 const spotDiff=q=>{const ch=((q&&q.choices)||[]).map(x=>String(x).trim());if(ch.length<3||!/แตกต่าง|ต่างจาก|ไม่เหมือน/.test(String(q.stem||'')))return false;
   const u=ch.filter(x=>ch.filter(y=>y===x).length===1);return u.length===1&&ch.indexOf(u[0])===q.answer};
+/* โจทย์จากไฟล์ที่ตัวเลือกถูกพิมพ์ซ้ำไว้ในโจทย์ด้วย (ก. ... ข. ... / 1. ... 2. ...) และตัวเลือกมีตัวอักษรนำหน้า:
+   ตัดรายการตัวเลือกออกจากโจทย์ และตัด "ก." หน้าตัวเลือก ก่อนแสดงทุกครั้ง (ไม่แก้ข้อมูลต้นทาง) · จำรหัสข้อเดิมไว้ (_k) ประวัติการทำ/การแก้เฉลยจึงไม่หลุด */
+const CH_LBL=/^\s*(?:[(]?\s*([กขคงจ]|[1-5]|[a-eA-E])\s*[.)])(?!\d)\s*/;   /* (?!\d) กันตัวเลขทศนิยม เช่น 1.5 ไม่ใช่ป้ายข้อ */
+const chNorm=t=>String(t||'').replace(CH_LBL,'').replace(/\s+/g,'').toLowerCase();
+function tidyQ(q){
+  if(!q||!Array.isArray(q.choices)||q.choices.length<2||!q.stem)return q;
+  const ch=q.choices.map(String),lab=ch.map(x=>(x.match(CH_LBL)||[])[1]),seqs=[['ก','ข','ค','ง','จ'],['1','2','3','4','5'],['a','b','c','d','e'],['A','B','C','D','E']];
+  const labeled=seqs.some(sq=>lab.every((l,i)=>l===sq[i]));
+  const base=labeled?ch.map(x=>x.replace(CH_LBL,'').trim()):ch,want=new Set(base.map(chNorm));
+  const lines=String(q.stem).split('\n');let hit=0;
+  const keep=lines.filter(ln=>{const m=ln.match(CH_LBL);if(!m)return true;const t=chNorm(ln);
+    const ok=t&&[...want].some(w=>w===t||(t.length>=4&&w.startsWith(t)));if(ok)hit++;return !ok});
+  const cut=hit>=2&&keep.join('').trim().length>=4;
+  if(!labeled&&!cut)return q;
+  if(!q._k)q._k=qKey(q);if(!q.origKey)q.origKey=q._k;
+  if(labeled)q.choices=base;
+  if(cut)q.stem=keep.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  return q;
+}
 const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return !spotDiff(c.q)&&new Set(ch.map(x=>String(x).trim().toLowerCase())).size<ch.length};
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */

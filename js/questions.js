@@ -206,6 +206,10 @@ function engPart(q){
   if(/closest in meaning|same meaning|synonym|antonym|opposite|nearest in meaning|best meaning|meaning of|\b[A-Z]{4,}\b/.test(st))return 2;
   if(ch.some(x=>ENG_FN.test(x)||/^(have|has|had|will|would|is|are|was|were|be|been|being|to)\s/i.test(x)))return 1;
   if(ch.every(x=>!/\s/.test(x))){const p4=ch.map(x=>x.toLowerCase().slice(0,4));return new Set(p4).size<=2?1:2}
+  /* รูปต่างๆ ของคำเดียวกัน (large / larger / more larger / largest) = ไวยากรณ์ */
+  if(new Set(ch.map(x=>x.toLowerCase().replace(/^(more|most)\s+/,'').slice(0,4))).size<=2)return 1;
+  /* วลีสั้นที่ไม่มีกริยาช่วยนำ (fill out, look after) = ศัพท์/phrasal verb */
+  if(ch.every(x=>x.split(/\s+/).length<=3))return 2;
   return 1;
 }
 function engTag(q){if(!q)return q;let i=q.engPart!=null&&ENG_PARTS[q.engPart]?q.engPart:ENG_PARTS.findIndex(([e])=>String(q.topic||'').toLowerCase().startsWith(e.toLowerCase().slice(0,6)));if(i<0)i=engPart(q);q.topic=ENG_PARTS[i][0];q.engPart=i;return q}

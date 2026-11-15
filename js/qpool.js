@@ -72,10 +72,11 @@ async function poolTake(s,level,k){
     if(typeof wrongLang==='function'&&wrongLang(q,s.name))continue;   /* ภาษาอังกฤษในวิชาที่สอบเป็นภาษาไทย (AI ในเครื่องเขียนมา) */
     const key=qKey(q),done=(d.used&&d.used[key])||[];
     if(seen.has(key)||POOL.used.has(key)||qMastered(q)||(typeof QHIDE!=='undefined'&&QHIDE['k:'+key])||(q.card&&typeof SKIPT!=='undefined'&&SKIPT['c:'+q.card])||(typeof ME!=='undefined'&&ME&&done.includes(ME.uid)))continue;seen.add(key);
-    out.push({q:withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null),d:near(d)?0:dist(d)});
+    const pq=withCard({...q,sub:s.id,subName:s.name,pool:true,poolId:d.id},null);if(s.id==='eng'&&typeof engTag==='function')engTag(pq);
+    out.push({q:pq,d:near(d)?0:dist(d)});
   }
   /* โจทย์ยาวเกิน / เดาจากความยาวได้ ถูกเลื่อนไปท้าย · เรื่องเดียวกัน (topic) ไม่ซ้ำในชุดเดียวกันถ้าเลี่ยงได้ */
-  const pen=x=>x.d+(String(x.q.stem||'').length>300?2:0)+(typeof lenTell==='function'&&lenTell(x.q)?2:0)+Math.random();
+  const pen=x=>x.d+(s.id!=='eng'&&String(x.q.stem||'').length>300?2:0)+(typeof lenTell==='function'&&lenTell(x.q)?2:0)+Math.random();
   const sorted=shuffle(out).sort((a,b)=>pen(a)-pen(b)),tp=new Set(),first=[],rest=[];for(const x of sorted){const t=x.q.topic||'';if(t&&tp.has(t))rest.push(x);else{tp.add(t);first.push(x)}}
   const pick=[...first,...rest].slice(0,k).map(x=>x.q);for(const q of pick)POOL.used.add(qKey(q));
   return pick;

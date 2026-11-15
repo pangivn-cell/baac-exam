@@ -195,16 +195,33 @@ const dupChoices=c=>{const ch=(c.q&&c.q.choices)||[];return !spotDiff(c.q)&&new 
 function bankFor(s,all){const b=bankItems().filter(c=>all||QLOG_OFF||!qMastered(c.q));if(s.doc){const ids=subjDocIds(s);return b.filter(c=>ids.has(c.docId)||inSubj(c,s.name))}return s.id==='specall'?b.filter(c=>SPEC_TOPICS.some(n=>inSubj(c,n))):b.filter(c=>inSubj(c,s.name))}
 /* คลังที่แบ่งระดับไว้ (นับอายุ นับขาสัตว์ บวกเลข): หยิบเฉพาะข้อระดับเดียวกับที่ตัวสร้างโจทย์ใช้ ข้อที่ไม่มีระดับใช้ได้ทุกระดับ */
 const atLevel=(pool,level)=>{if(!level)return pool;const t=new Set(tierMix(level,99).map(x=>x.t));return pool.filter(c=>!c.level||t.has(c.level))};
+/* ---------- ภาษาอังกฤษ 4 ส่วน (แบบข้อสอบ ธ.ก.ส./ก.พ.): Conversation · Structure/Grammar · Vocabulary · Reading ----------
+   ทุกชุดต้องมีครบทั้ง 4 ส่วน: ข้อจากคลังหยิบวนตามส่วน ตัวสร้างโจทย์วนตามส่วน และติดป้ายส่วนให้ทุกข้อ */
+const ENG_PARTS=[['Conversation','บทสนทนา'],['Structure / Grammar','โครงสร้างและไวยากรณ์'],['Vocabulary','คำศัพท์'],['Reading Comprehension','การอ่านจับใจความ']];
+const ENG_FN=/^(a|an|the|in|on|at|of|for|to|by|with|from|into|about|under|over|during|since|until|is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|shall|can|could|should|must|may|might|who|whom|whose|which|that|what|when|where|why|how|and|but|or|nor|so|yet|because|although|though|if|unless|whether|while|than|then|as|much|many|few|little|some|any|no|none|either|neither|both|each|every|this|these|those|it|its|he|him|his|she|her|they|them|their|we|us|our|me|my|mine|yours|himself|herself|themselves|myself|yourself|itself)$/i;
+function engPart(q){
+  const st=String(q&&q.stem||''),ch=(q&&Array.isArray(q.choices)?q.choices:[]).map(x=>String(x).trim());
+  if(st.length>260||/passage|according to|the following (text|extract|notice|letter|email|advertisement|article)|main idea|best title|the writer|the author|reading the following/i.test(st))return 3;
+  if((/(^|\n)\s*[A-Z][A-Za-z.]{0,14}\s*:/.test(st)&&/\n/.test(st))||/\byou (say|ask|reply|answer|should say)\b|would you say|what would you say/i.test(st))return 0;
+  if(/closest in meaning|same meaning|synonym|antonym|opposite|nearest in meaning|best meaning|meaning of|\b[A-Z]{4,}\b/.test(st))return 2;
+  if(ch.some(x=>ENG_FN.test(x)||/^(have|has|had|will|would|is|are|was|were|be|been|being|to)\s/i.test(x)))return 1;
+  if(ch.every(x=>!/\s/.test(x))){const p4=ch.map(x=>x.toLowerCase().slice(0,4));return new Set(p4).size<=2?1:2}
+  return 1;
+}
+function engTag(q){if(!q)return q;let i=q.engPart!=null&&ENG_PARTS[q.engPart]?q.engPart:ENG_PARTS.findIndex(([e])=>String(q.topic||'').toLowerCase().startsWith(e.toLowerCase().slice(0,6)));if(i<0)i=engPart(q);q.topic=ENG_PARTS[i][0];q.engPart=i;return q}
+/* หยิบจากคลังวนทีละส่วน ให้ชุดเล็กๆ ก็ครบ 4 ส่วน */
+function engPick(pool,k){const g=[[],[],[],[]];for(const c of pool)g[engPart(c.q)].push(c);
+  const got=g.map(x=>pickBank(x,k)),out=[];for(let r=0;out.length<k&&r<k;r++)for(const i of shuffle([0,1,2,3])){if(out.length<k&&got[i][r])out.push(got[i][r])}return out}
 const pickBank=(pool,k)=>{const used=new Set(),out=[];while(out.length<k){const c=pickCard(pool,used);if(!c||used.has(c.id))break;used.add(c.id);out.push(c)}return out};
 function bankQ(c,s){
   const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
     fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,calc:!!c.calc,topic:c.topic,sub:s.id,subName:s.name},null);
-  q.ansAI=c.ansSrc==='AI';if(c.fixedAt)q.fixedAt=c.fixedAt;return q;
+  q.ansAI=c.ansSrc==='AI';if(c.fixedAt)q.fixedAt=c.fixedAt;if(s.id==='eng')engTag(q);return q;
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */
 function offlineItems(s,level,n){
   const pool=atLevel(bankFor(s),level),k=s.ai?Math.min(n,pool.length):Math.min(pool.length,Math.round(n*(s.bankShare!=null?s.bankShare:.4)));   /* bankShare = สัดส่วนข้อจากคลังต่อชุด (ที่เหลือจากตัวสร้าง) */
-  const q=pickBank(pool,k).map(c=>bankQ(c,s));
+  const q=(s.id==='eng'?engPick:pickBank)(pool,k).map(c=>bankQ(c,s));
   return (typeof fixAll==='function'?fixAll:x=>x)(shuffle([...q,...(s.ai?[]:localItems(s,level,n-q.length))]));
 }
 /* a few real questions of the same kind, so newly generated ones copy their style and difficulty */
@@ -402,12 +419,12 @@ async function makeItems0(s,level,n,o={}){
   if(s.psc)return pscItems(s,level,n,o);
   const pool=atLevel(bankFor(s),level);
   if(!activeAI()||calcSubj(s))return offlineItems(s,level,n);
-  const orig=pickBank(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));
+  const orig=(s.id==='eng'?engPick:pickBank)(pool,Math.min(pool.length,Math.ceil(n*(s.figOnly&&!LOCAL[s.id]?1:.5)))).map(c=>bankQ(c,s));
   if(orig.length>=n)return shuffle(orig);
   /* fast = เริ่มชุด (practice.js start / สอบจริงช่วงแรก): ค้นในคลังก่อน (ข้อสอบจริงจากเอกสาร + คลังโจทย์กลาง) ได้เท่าไรเริ่มทำได้เลย
      ที่เหลือ loadMore / fillSet ให้ AI สร้างต่อเบื้องหลัง · คลังไม่มีเลย: ให้ AI สร้างแค่ 2 ข้อแรก (จากบัตรความรู้ในคลังก่อน ถ้ามี) */
   if(o.fast){
-    const lib=pickBank(pool,Math.min(pool.length,n)).map(c=>bankQ(c,s)),seen=new Set(lib.map(qKey));
+    const lib=(s.id==='eng'?engPick:pickBank)(pool,Math.min(pool.length,n)).map(c=>bankQ(c,s)),seen=new Set(lib.map(qKey));
     if(lib.length<n&&typeof poolTake==='function'){try{for(const q of await poolTake(s,level,n-lib.length))if(!seen.has(qKey(q))){seen.add(qKey(q));lib.push(q)}}catch(e){}}
     if(lib.length||o.libOnly)return shuffle(lib.slice(0,n));
     n=Math.min(n,2);
@@ -430,7 +447,7 @@ async function makeNew0(s,level,n,o,pool){
   const weak=o.weak||[],doc=s.doc?DOCS.find(d=>d.id===s.doc):null;let act=activeCards();DOC_OFF=Math.floor(Math.random()*1000);
   /* เอกสารที่เพิ่งดึงมาจากอีกเครื่อง: โหลดบัตรความรู้/ข้อความหน้าให้ครบก่อนสร้างโจทย์ */
   if(doc&&typeof syncHydrate==='function'){try{await syncHydrate(doc,{cards:true})}catch(e){}act=activeCards()}
-  const tag=q=>withCard({...q,sub:s.id,subName:s.name,gen:'ai'},doc),run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
+  const tag=q=>{const t=withCard({...q,sub:s.id,subName:s.name,gen:'ai'},doc);return s.id==='eng'?engTag(t):t},run=(pf,k,off=0)=>genAIChunks(async(k2,b)=>addEx(await pf(k2,b),pool),k,{signal:o.signal,onProg:d=>o.onProg&&o.onProg(off+d)});
   if(s.figOnly&&!LOCAL[s.id]&&!figCards().some(c=>inSubj(c,s.name))){if(pool.length)return[];throw{code:'need_figs'}}
   if(s.doc&&doc&&doc.kind==='exam'&&!act.some(c=>subjDocIds(s).has(c.docId)||inSubj(c,s.name)))return (await run(k=>genPrompt({name:doc.name,desc:'ข้อสอบแนวเดียวกับตัวอย่าง'},level,k),n)).map(tag);
   if(s.doc){

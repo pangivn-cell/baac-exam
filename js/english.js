@@ -13,12 +13,18 @@ const EN_MON_TH=['มกราคม','กุมภาพันธ์','มี�
 const monTh=m=>EN_MON_TH[EN_MON.indexOf(m)]||m;
 let EN_ROT=Math.floor(Math.random()*4);
 /* tr = คำแปลโจทย์ · gl = ความหมายของตัวเลือก {ตัวเลือก: คำแปล} แสดงเฉพาะตัวเลือกที่ออกจริง */
+/* เว้นวรรคระหว่างอักษรไทยกับอังกฤษ (สาขาRoi Et → สาขา Roi Et) อ่านง่ายขึ้น */
+const thSp=t=>String(t==null?'':t).replace(/([฀-๿])([A-Za-z])/g,'$1 $2').replace(/([A-Za-z])([฀-๿])/g,'$1 $2');
 function enMC(part,stem,ans,dist,steps,o){
-  o=o||{};const ds=[...new Set(dist.filter(d=>d&&d!==ans))];if(ds.length<3)return null;
+  o=o||{};if(o.tr)o.tr=thSp(o.tr);if(o.gl){const g={};for(const k in o.gl)g[k]=thSp(o.gl[k]);o.gl=g}if(o.bi)o.bi=o.bi.map(x=>x&&[x[0],thSp(x[1])]);steps=steps.map(x=>[thSp(x[0]),thSp(x[1])]);const ds=[...new Set(dist.filter(d=>d&&d!==ans))];if(ds.length<3)return null;
   const pick=shuffle(ds).slice(0,3),gl=o.gl||{},shown=[ans,...pick].filter(c=>gl[c]);
   const pre=[];if(o.tr)pre.push([`แปลโจทย์: ${o.tr}`,'อ่านให้เข้าใจก่อนว่าโจทย์ถามอะไร']);
   if(shown.length)pre.push([`ความหมายตัวเลือก: ${shown.map(c=>`${c} = ${gl[c]}`).join(' · ')}`,'รู้ความหมายทุกตัวเลือกก่อนตัดสินใจ']);
-  const q=mkMCtext(stem,ans,pick,[...pre,...steps]);q.engPart=part;q.topic=ENG_PARTS[part][0];q.engTr=true;return q;
+  const q=mkMCtext(stem,ans,pick,[...pre,...steps]);q.engPart=part;q.topic=ENG_PARTS[part][0];q.engTr=true;
+  /* biling = แปลทีละประโยค [อังกฤษ, ไทย] · vocab = คำศัพท์น่าจำจากโจทย์และตัวเลือก (พจนานุกรมย่อ english-dict.js) */
+  if(o.bi)q.biling=o.bi.filter(x=>x&&x[0]&&x[1]);
+  if(typeof enVocab==='function')q.vocab=enVocab(stem.replace(/^Read the passage and answer the question\.|Choose the most suitable response for the blank\./g,'')+' '+[ans,...pick].join(' '),12);
+  return q;
 }
 
 /* ===== Part 1: Conversation =====
@@ -57,7 +63,8 @@ function genConv(){
   const gl={[ans]:th};ds.forEach((d,i)=>gl[d]=thD[i]);
   return enMC(0,`${dl}\nChoose the most suitable response for the blank.`,ans,ds,[[`สถานการณ์: ${sit}`,'อ่านประโยคก่อนช่องว่างให้รู้ว่าอีกฝ่ายถาม ขอ หรือบอกข่าวอะไร'],
     [`คำตอบ: "${ans}" แปลว่า ${th}`,'ตอบตรงกับสิ่งที่ถาม และสุภาพเหมาะกับสถานการณ์'],[`ตัวลวง: ${why}`,'ตัวลวงถูกไวยากรณ์แต่ไม่เข้ากับสถานการณ์'],[`เทคนิค: ${tip}`,'จำคู่ประโยคถาม-ตอบที่ออกสอบบ่อย']],
-    {tr:`${A}: "${thA}" แล้ว ${B} ควรตอบว่าอะไร (Choose the most suitable response = เลือกคำตอบที่เหมาะสมที่สุด)`,gl});
+    {tr:`${A}: "${thA}" แล้ว ${B} ควรตอบว่าอะไร (Choose the most suitable response = เลือกคำตอบที่เหมาะสมที่สุด)`,gl,
+     bi:[[dl.split(/\n/)[0],`${A}: ${thA}`],[`${B}: ${ans}`,`${B}: ${th}`],['Choose the most suitable response for the blank.','เลือกคำตอบที่เหมาะสมที่สุดเติมในช่องว่าง']]});
 }
 
 /* ===== Part 2: Structure / Grammar ===== */
@@ -89,7 +96,7 @@ function genTense(level){
   const asp={past:'',pres:'',cont:'กำลัง',perf:'',fut:'จะ',pcont:'กำลัง'}[k],tail=k==='perf'?'มา':'';
   return enMC(1,stem,ans,Object.entries(forms).filter(([x])=>x!==k).map(([,y])=>y),[[`คำบอกเวลา "${M[0]}" (${EN_TIME_TH[M[0]]}) → ใช้ ${M[1]}`,'คำบอกเวลาเป็นตัวบอกว่าต้องใช้ tense ไหน'],[`โครงสร้าง: ${M[2]}`,'จำโครงสร้างของแต่ละ tense'],
     [`ประธาน "${S}" เป็น${subjTh(t)} → ${ans}`,`กริยา ${v[0]} = ${v[5]} (V2 ${v[3]}, V3 ${v[4]})`],[`ประโยคเต็ม: ${stem.replace('____',ans)}`,'แทนคำตอบลงในช่องว่างแล้วอ่านทวน'],[EN_TENSE_TIP,'ตัวลวงคือกริยาเดียวกันใน tense อื่น']],
-    {tr:`${St}${asp}${v[5]}${v[7]}${tail} ${EN_TIME_TH[M[0]]}`,gl});
+    {tr:`${St}${asp}${v[5]}${v[7]}${tail} ${EN_TIME_TH[M[0]]}`,gl,bi:[[stem.replace('____',ans),`${St}${asp}${v[5]}${v[7]}${tail} ${EN_TIME_TH[M[0]]}`]]});
 }
 const PREP_GL={at:'ที่ / เวลา (จุดที่เจาะจง)',on:'บน / ในวัน (วัน วันที่ ถนน)',in:'ใน (ช่วงเวลายาว พื้นที่กว้าง)',for:'เป็นเวลา (บอกระยะเวลา)',by:'ภายใน / โดย',to:'ไปยัง (บอกทิศทาง)',into:'เข้าไปใน (เคลื่อนที่เข้าไป)'};
 function genPrepTime(){
@@ -99,7 +106,7 @@ function genPrepTime(){
   const stem=fr[0].replace('{N}',N).replace('X',x),rule={at:'at + เวลาเจาะจงเป็นจุด (at 9 a.m., at noon, at midnight)',on:'on + วัน หรือวันที่ (on Monday, on 5 May, on my birthday)',in:'in + เดือน ปี ฤดู หรือช่วงของวัน (in May, in 2025, in the morning)'}[p];
   return enMC(1,stem,p,['at','on','in','for','by'],[[`"${x}" เป็น${p==='at'?'เวลาเจาะจงเป็นจุด':p==='on'?'วันหรือวันที่':'เดือน ปี ฤดู หรือช่วงเวลาที่ยาว'} → ใช้ ${p}`,'บุพบทบอกเวลาเลือกตามความยาวของเวลา'],[`กฎ: ${rule}`,'จำกฎ at-on-in'],
     ['ตัวลวง: for + ระยะเวลา (for two hours) · by = ภายใน/ไม่เกิน (by Friday)','ใช้ไม่ได้กับจุดเวลา/วัน/เดือนในประโยคนี้'],['เทคนิค: จำเป็นพีระมิด in (กว้างสุด: ปี เดือน) → on (วัน) → at (จุดเวลา) ยิ่งเจาะจงยิ่งเลื่อนลงล่าง','ข้อยกเว้นที่ออกบ่อย: in the morning แต่ at night']],
-    {tr:`${fr[1].replace('{N}',N)} ${xt} (เติมบุพบทบอกเวลา)`,gl:PREP_GL});
+    {tr:`${fr[1].replace('{N}',N)} ${xt} (เติมบุพบทบอกเวลา)`,gl:PREP_GL,bi:[[stem.replace('____',p),`${fr[1].replace('{N}',N)} ${xt}`]]});
 }
 function genPrepPlace(){
   const N=rnd(EN_NAMES),p=rnd(['in','on','at']),pv=rnd(EN_PROV),addr=`${ri(10,199)} Moo ${ri(1,12)}`;
@@ -107,7 +114,7 @@ function genPrepPlace(){
   const fr=rnd([['{N} lives ____ X.','{N} อาศัยอยู่'],['The branch is ____ X.','สาขาตั้งอยู่'],['Please wait for me ____ X.','กรุณารอฉัน']]),stem=fr[0].replace('{N}',N).replace('X',x);
   const rule={in:'in + พื้นที่กว้าง เมือง จังหวัด ประเทศ หรือภายในบริเวณ',on:'on + ถนน หรือชั้นของอาคาร (on Silom Road, on the 2nd floor)',at:'at + บ้านเลขที่ หรือจุดที่เจาะจง (at 25 Moo 3, at the bus stop)'}[p];
   return enMC(1,stem,p,['in','on','at','to','into'],[[`"${x}" → ใช้ ${p}`,rule],['ตัวลวง: to / into บอกทิศทางการเคลื่อนที่ (go to, walk into) ไม่ใช่ตำแหน่งที่อยู่','ประโยคนี้บอกตำแหน่ง ไม่ได้บอกการเคลื่อนที่'],['เทคนิค: in (พื้นที่กว้าง) → on (ถนน/พื้นผิว/ชั้น) → at (จุดเจาะจง บ้านเลขที่)','ใช้หลักพีระมิดเหมือนบุพบทเวลา']],
-    {tr:`${fr[1].replace('{N}',N)}ที่${xt} (เติมบุพบทบอกสถานที่)`,gl:PREP_GL});
+    {tr:`${fr[1].replace('{N}',N)}ที่${xt} (เติมบุพบทบอกสถานที่)`,gl:PREP_GL,bi:[[stem.replace('____',p),`${fr[1].replace('{N}',N)}ที่${xt}`]]});
 }
 function genPassive(){
   const it=rnd([['The report','write','by the manager','รายงาน','โดยผู้จัดการ'],['The new branch','open','by the governor','สาขาใหม่','โดยผู้ว่าการ'],['These letters','send','to all customers','จดหมายเหล่านี้','ถึงลูกค้าทุกคน'],['Rice','grow','in this area','ข้าว','ในพื้นที่นี้'],['The documents','check','by the officer','เอกสาร','โดยเจ้าหน้าที่'],['The loan','pay','in full','เงินกู้','เต็มจำนวน'],['English','teach','at this school','ภาษาอังกฤษ','ที่โรงเรียนนี้'],['The fertilizer','sell','at a low price','ปุ๋ย','ในราคาถูก']]);
@@ -118,7 +125,7 @@ function genPassive(){
   return enMC(1,`${it[0]} ____ ${it[2]} ${tm[0]}.`,ans,[act,perf,cont,wrong],
     [[`ประธาน "${it[0]}" (${it[3]}) ${v[5]}เองไม่ได้ แต่ถูก${v[5]} → ใช้ Passive Voice`,'ถ้าประธานเป็นผู้ถูกกระทำ ใช้ประโยค passive'],[`โครงสร้าง Passive: ประธาน + verb to be + V3 (${v[0]} → ${v[4]})`,'ส่วน V3 ไม่เปลี่ยน เปลี่ยนแค่ verb to be ตาม tense'],
      [`คำบอกเวลา "${tm[0]}" (${tm[2]}) → verb to be = ${be}${tm[1]!=='fut'?` (ประธาน${pl?'พหูพจน์':'เอกพจน์'})`:''} → ${ans}`,'เลือก verb to be ตาม tense และประธาน'],['ตัวลวง: ใช้รูป active (ประธานทำเอง) หรือ be + V1 ซึ่งผิดโครงสร้าง','passive ต้องเป็น V3 เสมอ'],['เทคนิค: เห็น by + ผู้กระทำ หรือประธานเป็นสิ่งของ ให้นึกถึง passive (be + V3) ก่อน','ถามตัวเองว่า ประธานทำเองได้ไหม']],
-    {tr:`${it[3]}${tm[1]==='fut'?'จะ':''}ถูก${v[5]}${it[4]} ${tm[2]}`,gl});
+    {tr:`${it[3]}${tm[1]==='fut'?'จะ':''}ถูก${v[5]}${it[4]} ${tm[2]}`,gl,bi:[[`${it[0]} ${ans} ${it[2]} ${tm[0]}.`,`${it[3]}${tm[1]==='fut'?'จะ':''}ถูก${v[5]}${it[4]} ${tm[2]}`]]});
 }
 /* [ส่วน If แบบ 1/2/3, ประธานผล, V1, V3, กรรม, แปลเงื่อนไข, แปลประธานผล, แปลกริยา+กรรม, ส่วนท้ายแบบที่ 1] */
 const EN_IF=[[['it rains','it rained','it had rained'],'we','cancel','cancelled','the trip','ฝนตก','เรา','ยกเลิกการเดินทาง',' tomorrow'],
@@ -133,7 +140,7 @@ function genIf(level){
   const info={1:['If + V1 (ปัจจุบัน) → will + V1','เงื่อนไขที่เป็นไปได้จริงในอนาคต'],2:['If + V2 (อดีต) → would + V1','สมมติสิ่งที่ไม่จริงในปัจจุบัน'],3:['If + had + V3 → would have + V3','สมมติย้อนอดีต (เรื่องที่ผ่านไปแล้ว เปลี่ยนไม่ได้)']}[ty];
   const tr={1:`ถ้า${sc[5]}${tail?' พรุ่งนี้':''} ${sc[6]}จะ${sc[7]}`,2:`ถ้า${sc[5]} (สมมติ ซึ่งตอนนี้ไม่เป็นจริง) ${sc[6]}ก็คงจะ${sc[7]}`,3:`ถ้า${sc[5]} (สมมติย้อนอดีต ซึ่งไม่ได้เกิดขึ้นจริง) ${sc[6]}ก็คงได้${sc[7]}ไปแล้ว`}[ty];
   const gl={[fw]:`จะ${sc[7]} (if แบบที่ 1)`,[fd]:`คงจะ${sc[7]} (if แบบที่ 2 สมมติปัจจุบัน)`,[fh]:`คงได้${sc[7]}ไปแล้ว (if แบบที่ 3 สมมติอดีต)`,[fp]:`${sc[7]} (อดีตธรรมดา ไม่ใช้กับ if แบบนี้)`,[fwh]:`จะ${sc[7]}เสร็จแล้ว (future perfect)`};
-  return enMC(1,stem[0].toUpperCase()+stem.slice(1),res,[fw,fd,fh,fp,fwh],[[`ส่วน If ใช้ "${cond}" → If แบบที่ ${ty}`,'ดูกริยาในส่วน If ก่อน แล้วจับคู่กับอีกส่วน'],[`สูตร: ${info[0]}`,info[1]],[`คำตอบ: ${res}`,'แทนในช่องว่างให้ครบประโยค'],['เทคนิค: จำคู่ V1 → will · V2 → would · had V3 → would have V3','ตัวลวงคือการจับคู่ผิดแบบ']],{tr,gl});
+  return enMC(1,stem[0].toUpperCase()+stem.slice(1),res,[fw,fd,fh,fp,fwh],[[`ส่วน If ใช้ "${cond}" → If แบบที่ ${ty}`,'ดูกริยาในส่วน If ก่อน แล้วจับคู่กับอีกส่วน'],[`สูตร: ${info[0]}`,info[1]],[`คำตอบ: ${res}`,'แทนในช่องว่างให้ครบประโยค'],['เทคนิค: จำคู่ V1 → will · V2 → would · had V3 → would have V3','ตัวลวงคือการจับคู่ผิดแบบ']],{tr,gl,bi:[[(stem[0].toUpperCase()+stem.slice(1)).replace('____',res),tr]]});
 }
 function genGerund(){
   const g=rnd([['enjoy','enjoys','ชอบ'],['avoid','avoids','หลีกเลี่ยงการ'],['finish','finishes','ทำเสร็จ:'],['suggest','suggests','แนะนำให้'],['consider','considers','พิจารณาที่จะ'],['keep','keeps','ทำต่อไปเรื่อยๆ:']]),inf=rnd([['want','wants','ต้องการ'],['decide','decides','ตัดสินใจ'],['plan','plans','วางแผนจะ'],['hope','hopes','หวังว่าจะ'],['agree','agrees','ตกลงจะ'],['refuse','refuses','ปฏิเสธที่จะ'],['promise','promises','สัญญาว่าจะ']]);
@@ -142,7 +149,7 @@ function genGerund(){
   const gl={[v[2]]:`การ${v[5]} (V-ing / gerund)`,[`to ${v[0]}`]:`ที่จะ${v[5]} (to + V1 / infinitive)`,[v[0]]:`${v[5]} (V1 เปล่าๆ)`,[v[3]]:`${v[5]}แล้ว (V2 อดีต)`,[`to ${v[2]}`]:'ผิดรูป (to ต้องตามด้วย V1)'};
   return enMC(1,stem,ans,[v[2],`to ${v[0]}`,v[0],v[3],`to ${v[2]}`],[[`กริยาหลัก "${m[0]}" (${m[2].replace(':','')}) ${useG?'ต้องตามด้วย V-ing (gerund)':'ต้องตามด้วย to + V1 (infinitive)'}`,'กริยาแต่ละตัวกำหนดรูปของกริยาที่ตามมา'],[`คำตอบ: ${stem.replace('____',ans)}`,'แทนแล้วอ่านทวน'],
     ['จำกลุ่ม + V-ing: enjoy, avoid, finish, mind, suggest, consider, keep, practise','ส่วนใหญ่เป็นกริยาที่พูดถึงการกระทำที่ทำอยู่/ทำแล้ว'],['จำกลุ่ม + to V1: want, decide, plan, hope, agree, refuse, promise, need, expect','ส่วนใหญ่เป็นกริยาที่มองไปข้างหน้า (ตั้งใจ วางแผน)'],['เทคนิค: ตัดตัวเลือก V2 กับ to + V-ing ทิ้งก่อน เพราะผิดทุกกรณี เหลือเลือกแค่ V-ing กับ to V1','ลดตัวเลือกให้เหลือ 2 ข้อ']],
-    {tr:`${St}${m[2].replace(':','')}${v[5]}${v[7]}`,gl});
+    {tr:`${St}${m[2].replace(':','')}${v[5]}${v[7]}`,gl,bi:[[stem.replace('____',ans),`${St}${m[2].replace(':','')}${v[5]}${v[7]}`]]});
 }
 function genCompare(){
   const a=rnd([['cheap','cheaper','cheapest','ถูก'],['high','higher','highest','สูง'],['large','larger','largest','ใหญ่'],['busy','busier','busiest','ยุ่ง'],['good','better','best','ดี'],['expensive','more expensive','most expensive','แพง'],['important','more important','most important','สำคัญ'],['convenient','more convenient','most convenient','สะดวก'],['safe','safer','safest','ปลอดภัย']]);
@@ -151,14 +158,14 @@ function genCompare(){
   const gl={[a[0]]:`${a[3]} (รูปปกติ)`,[a[1]]:`${a[3]}กว่า (ขั้นกว่า)`,[a[2]]:`${a[3]}ที่สุด (ขั้นสุด)`,[wrong]:'ผิดรูป (ใช้ more ซ้อนกับ -er)'};
   return enMC(1,fr[0],ans,[a[0],a[1],a[2],wrong],[[k==='cmp'?'เห็นคำว่า than → ใช้ขั้นกว่า (comparative)':k==='sup'?'เห็น the + ... in/of → ใช้ขั้นสุด (superlative)':'เห็น as ... as → ใช้คำคุณศัพท์รูปปกติ','คำสัญญาณบอกขั้นของคำเปรียบเทียบ'],
     [`${a[0]} (${a[3]}) → ขั้นกว่า ${a[1]} → ขั้นสุด ${a[2]}`,a[1].startsWith('more')?'คำยาว 2–3 พยางค์ขึ้นไป ใช้ more / most นำหน้า':'คำสั้น เติม -er / -est (good → better → best เป็นรูปพิเศษ)'],[`ตัวลวง: ${wrong} ผิดเพราะใช้ more ซ้อนกับ -er`,'ใช้ได้อย่างใดอย่างหนึ่งเท่านั้น'],['เทคนิค: than = กว่า · the ...est / the most = ที่สุด · as ... as = เท่ากับ','หาคำสัญญาณในประโยคก่อนดูตัวเลือก']],
-    {tr:fr[1].replace('{A}',a[3]),gl});
+    {tr:fr[1].replace('{A}',a[3]),gl,bi:[[fr[0].replace('____',ans),fr[1].replace('{A}',a[3])]]});
 }
 function genRel(){
   const k=rnd(['who','which','whose','where']);
   const [stem,tr]={who:rnd([['The man ____ is talking to the manager is my uncle.','ผู้ชายที่กำลังคุยกับผู้จัดการคือลุงของฉัน'],['The officer ____ helped me was very kind.','เจ้าหน้าที่ที่ช่วยฉันใจดีมาก']]),which:rnd([['The tractor ____ he bought last year is still new.','รถแทรกเตอร์ที่เขาซื้อเมื่อปีที่แล้วยังใหม่อยู่'],['The loan ____ I applied for was approved.','เงินกู้ที่ฉันยื่นขอได้รับการอนุมัติแล้ว']]),whose:rnd([['The farmer ____ land is near the river grows mangoes.','ชาวนาที่ที่ดินของเขาอยู่ใกล้แม่น้ำปลูกมะม่วง'],['The woman ____ son works at the bank is my teacher.','ผู้หญิงที่ลูกชายของเธอทำงานที่ธนาคารคือครูของฉัน']]),where:rnd([['This is the village ____ I was born.','นี่คือหมู่บ้านที่ฉันเกิด'],['That is the branch ____ my sister works.','นั่นคือสาขาที่พี่สาวของฉันทำงานอยู่']])}[k];
   const why={who:'คำนามข้างหน้าเป็นคน และตามด้วยกริยา → who',which:'คำนามข้างหน้าเป็นสิ่งของ → which',whose:'ตามด้วยคำนาม (land, son) แสดงความเป็นเจ้าของ "ของเขา" → whose',where:'คำนามข้างหน้าเป็นสถานที่ และตามด้วยประโยคครบ (ประธาน + กริยา) → where'}[k];
   const gl={who:'ผู้ซึ่ง (ใช้กับคน)',which:'ซึ่ง (ใช้กับสิ่งของ/สัตว์)',whose:'ซึ่ง...ของเขา (แสดงความเป็นเจ้าของ + คำนาม)',where:'ที่ซึ่ง (ใช้กับสถานที่)',whom:'ผู้ซึ่ง (คนที่เป็นกรรม)'};
-  return enMC(1,stem,k,['who','which','whose','where','whom'].filter(x=>x!==k),[[why,'ดูคำนามหน้าช่องว่าง และสิ่งที่ตามหลังช่องว่าง'],[`ประโยคเต็ม: ${stem.replace('____',k)}`,'แทนแล้วอ่านทวน'],['สรุป: who = คน · which = สิ่งของ/สัตว์ · whose + คำนาม = ของ... · where = สถานที่','ใช้ตัดตัวเลือก'],['เทคนิค: ถ้าหลังช่องว่างเป็นคำนามทันที ให้ตอบ whose เกือบทุกครั้ง','จุดที่ออกสอบบ่อย']],{tr,gl});
+  return enMC(1,stem,k,['who','which','whose','where','whom'].filter(x=>x!==k),[[why,'ดูคำนามหน้าช่องว่าง และสิ่งที่ตามหลังช่องว่าง'],[`ประโยคเต็ม: ${stem.replace('____',k)}`,'แทนแล้วอ่านทวน'],['สรุป: who = คน · which = สิ่งของ/สัตว์ · whose + คำนาม = ของ... · where = สถานที่','ใช้ตัดตัวเลือก'],['เทคนิค: ถ้าหลังช่องว่างเป็นคำนามทันที ให้ตอบ whose เกือบทุกครั้ง','จุดที่ออกสอบบ่อย']],{tr,gl,bi:[[stem.replace('____',k),tr]]});
 }
 function genGrammar(level){
   const k=level<=1?rnd(['tense','prepT','prepP','compare']):level===2?rnd(['tense','prepT','prepP','compare','gerund','rel']):rnd(['tense','tense','passive','if','gerund','rel','compare','prepT']);
@@ -232,61 +239,66 @@ function genVocab(level){
   const k=level<=1?rnd(['mean','fill','fill','syn']):level<=3?rnd(['syn','ant','mean','fill']):rnd(['syn','ant','ant','fill']);
   if(k==='fill'){const [s,a,d,th]=rnd(EN_FILL);
     return enMC(2,s,a,d,[[`คำตอบ: ${a} (${EN_GLOSS[a]}) ทำให้ประโยคมีความหมายถูกต้อง`,'แทนคำตอบลงในช่องว่างแล้วอ่านทวน'],[`ตัวลวง: ${d.join(', ')} เป็นคำชนิดเดียวกันแต่ใส่แล้วความหมายผิด`,'ตัวลวงในข้อศัพท์มักเป็นคำหมวดเดียวกัน'],['เทคนิค: จำคู่ศัพท์ธนาคารที่สับสนบ่อย: borrow (ยืม/กู้) ↔ lend (ให้ยืม) · deposit (ฝาก) ↔ withdraw (ถอน) · owe (เป็นหนี้)','อ่านว่าใครเป็นผู้ให้ ใครเป็นผู้รับ']],
-      {tr:th,gl:EN_GLOSS})}
+      {tr:th,gl:EN_GLOSS,bi:[[s.replace('____',a),th]]})}
   const pool=EN_VOC.filter(x=>k!=='ant'||x[4]),w=rnd(pool),same=EN_VOC.filter(x=>x[1]===w[1]&&x!==w),W=w[0].toUpperCase(),pos={adj:'คำคุณศัพท์',v:'คำกริยา',n:'คำนาม'}[w[1]];
   const ctx=[`${W} = ${w[2]} (${pos})`,'ดูความหมายของคำที่ถามในประโยคก่อน'];
   if(k==='syn')return enMC(2,`${w[5]}\nThe word ${W} is closest in meaning to ____.`,w[3],[...(w[4]?[w[4]]:[]),...shuffle(same.map(x=>x[3]))].filter(x=>x!==w[3]),
     [ctx,[`คำเหมือน (synonym) ของ ${w[0]} คือ ${w[3]}`,'ความหมายเดียวกัน ใช้แทนกันในประโยคได้'],...(w[4]?[[`ตัวลวงสำคัญ: ${w[4]} เป็นคำตรงข้าม (opposite) ไม่ใช่คำเหมือน`,'ข้อสอบชอบใส่คำตรงข้ามมาหลอก']]:[]),['เทคนิค: แทนตัวเลือกลงในประโยคแทนคำตัวพิมพ์ใหญ่ ข้อที่อ่านแล้วความหมายไม่เปลี่ยนคือคำตอบ','ใช้บริบทช่วยเดาความหมายได้แม้ไม่รู้ศัพท์']],
-    {tr:`${w[6]} · คำถาม: คำว่า ${W} มีความหมายใกล้เคียงกับคำใด`,gl:EN_GLOSS});
+    {tr:`${w[6]} · คำถาม: คำว่า ${W} มีความหมายใกล้เคียงกับคำใด`,gl:EN_GLOSS,bi:[[w[5],w[6]],[`The word ${W} is closest in meaning to ${w[3]}.`,`คำว่า ${W} มีความหมายใกล้เคียงกับ ${w[3]} (${w[2]})`]]});
   if(k==='ant')return enMC(2,`${w[5]}\nThe word ${W} is OPPOSITE in meaning to ____.`,w[4],[w[3],...shuffle(same.filter(x=>x[4]).map(x=>x[4]))].filter(x=>x!==w[4]),
     [ctx,[`คำตรงข้าม (opposite/antonym) ของ ${w[0]} คือ ${w[4]} (${w[7]})`,'ความหมายกลับกัน'],[`ตัวลวงสำคัญ: ${w[3]} เป็นคำเหมือน (ความหมายเดียวกัน) ไม่ใช่คำตรงข้าม`,'อ่านโจทย์ให้ชัดว่าถาม opposite หรือ closest in meaning'],['เทคนิค: คำที่ขึ้นต้นด้วย un-, in-, dis- มักเป็นคำตรงข้ามของคำหลัก (reliable ↔ unreliable)','แต่ต้องดูความหมายประกอบด้วย']],
-    {tr:`${w[6]} · คำถาม: คำว่า ${W} มีความหมายตรงข้ามกับคำใด`,gl:EN_GLOSS});
+    {tr:`${w[6]} · คำถาม: คำว่า ${W} มีความหมายตรงข้ามกับคำใด`,gl:EN_GLOSS,bi:[[w[5],w[6]],[`The word ${W} is opposite in meaning to ${w[4]}.`,`คำว่า ${W} มีความหมายตรงข้ามกับ ${w[4]} (${w[7]})`]]});
   return enMC(2,`${w[5]}\nThe word ${W} means ____.`,w[2],shuffle(same.map(x=>x[2])),[ctx,[`${w[0]} แปลว่า ${w[2]} คำเหมือนคือ ${w[3]}${w[4]?` คำตรงข้ามคือ ${w[4]} (${w[7]})`:''}`,'จำเป็นชุด คำ-คำเหมือน-คำตรงข้าม'],['เทคนิค: ถ้าไม่รู้ศัพท์ ให้ดูคำรอบข้างในประโยคเพื่อเดาความหมาย','บริบทในประโยคเป็นตัวช่วยสำคัญ']],
-    {tr:`${w[6]} · คำถาม: คำว่า ${W} หมายถึงอะไร`});
+    {tr:`${w[6]} · คำถาม: คำว่า ${W} หมายถึงอะไร`,bi:[[w[5],w[6]]]});
 }
 
 /* ===== Part 4: Reading ===== แต่ละเรื่องสุ่มรายละเอียด แล้วสุ่มคำถามจากเรื่องเดียวกัน
    คำถาม: [คำถาม, คำตอบ, ตัวลวง 3, ประโยคหลักฐาน, แปลหลักฐาน, เทคนิค(หรือ null), ยาก(1=ระดับ 3 ขึ้นไป), แปลคำถาม, แปลตัวเลือก [คำตอบ, ตัวลวง 3]] */
 const EN_READ_TIP='เทคนิค: อ่านคำถามก่อน จับคำสำคัญ แล้ว scan หาคำนั้นในบทความ ไม่ต้องแปลทุกคำ';
-function readQ(text,textTh,qs,level){
+/* S = บทความเป็นคู่ประโยค [อังกฤษ, ไทย] · head = หัวเรื่องที่ขึ้นบรรทัดแยก (NOTICE, ชื่อโฆษณา) */
+function readQ(S,qs,level,head){
+  const body=S.slice(head?1:0),text=(head?S[0][0]+'\n':'')+body.map(x=>x[0]).join(' ').replace(/ (Regards,|Dear all,)/g,'\n$1').replace(/(Dear all,|Regards,) /g,'$1\n');
   const [q,ans,ds,ev,th,tip,,qTh,chTh]=rnd(level<=2?qs.filter(x=>!x[6]):qs),gl={};[ans,...ds].forEach((c,i)=>{if(chTh&&chTh[i])gl[c]=chTh[i]});
-  return enMC(3,`Read the passage and answer the question.\n\n${text}\n\n${q}`,ans,ds,[[`แปลบทความ: ${textTh}`,'แปลใจความทีละประโยค'],[`หาคำตอบจาก: "${ev}"`,`แปล: ${th}`],[`คำตอบ: ${ans}`,'ตรงกับข้อความในบทความ'],['ตัวลวง: ข้อมูลที่ไม่มีในบทความ หรือสลับรายละเอียด (วัน เวลา ชื่อ ตัวเลข) กับส่วนอื่นของบทความ','อย่าตอบจากความรู้สึกหรือความรู้เดิม ต้องมีหลักฐานในบทความ'],[tip||EN_READ_TIP,'จับใจความเร็วโดยไม่ต้องแปลทุกคำ']],
-    {tr:`${qTh} (Read the passage and answer the question = อ่านบทความแล้วตอบคำถาม)`,gl});
+  return enMC(3,`Read the passage and answer the question.\n\n${text}\n\n${q}`,ans,ds,[[`หาคำตอบจาก: "${ev}"`,`แปล: ${th}`],[`คำตอบ: ${ans}`,'ตรงกับข้อความในบทความ'],['ตัวลวง: ข้อมูลที่ไม่มีในบทความ หรือสลับรายละเอียด (วัน เวลา ชื่อ ตัวเลข) กับส่วนอื่นของบทความ','อย่าตอบจากความรู้สึกหรือความรู้เดิม ต้องมีหลักฐานในบทความ'],[tip||EN_READ_TIP,'จับใจความเร็วโดยไม่ต้องแปลทุกคำ']],
+    {tr:`${qTh} (Read the passage and answer the question = อ่านบทความแล้วตอบคำถาม)`,gl,bi:[...S,[q.replace('____',ans),qTh]]});
 }
 function genReading(level){
   const k=rnd(['notice','email','ad','story']);
   if(k==='notice'){const [b1,b2]=shuffle([...EN_PROV]).slice(0,2),d=rnd(EN_DAYS),dn=ri(2,28),mo=rnd(EN_MON),dt=`${dn} ${mo}`,o=rnd(['8:30 a.m.','9:00 a.m.']),c=rnd(['3:30 p.m.','4:00 p.m.']),c2=c==='3:30 p.m.'?'4:00 p.m.':'3:30 p.m.';
-    const t=`NOTICE\nThe ${b1} Branch will be closed on ${d}, ${dt} for system maintenance. During this time, customers can still use ATMs and mobile banking. For other services, please visit the ${b2} Branch, which will be open from ${o} to ${c} We apologize for any inconvenience.`;
-    const tt=`ประกาศ: สาขา${b1}จะปิดทำการวัน${EN_DAYS_TH[d]}ที่ ${dn} ${monTh(mo)} เพื่อบำรุงรักษาระบบ ระหว่างนี้ลูกค้ายังใช้ตู้ ATM และโมบายแบงก์กิ้งได้ หากต้องการบริการอื่น กรุณาไปที่สาขา${b2} ซึ่งเปิดตั้งแต่ ${o} ถึง ${c} ขออภัยในความไม่สะดวก`;
-    return readQ(t,tt,[
+    const S=[['NOTICE','ประกาศ'],[`The ${b1} Branch will be closed on ${d}, ${dt} for system maintenance.`,`สาขา${b1}จะปิดทำการวัน${EN_DAYS_TH[d]}ที่ ${dn} ${monTh(mo)} เพื่อบำรุงรักษาระบบ`],
+      ['During this time, customers can still use ATMs and mobile banking.','ระหว่างนี้ ลูกค้ายังใช้ตู้ ATM และโมบายแบงก์กิ้ง (ธนาคารบนมือถือ) ได้'],
+      [`For other services, please visit the ${b2} Branch, which will be open from ${o} to ${c}`,`หากต้องการบริการอื่น กรุณาไปที่สาขา${b2} ซึ่งเปิดตั้งแต่ ${o} ถึง ${c}`],['We apologize for any inconvenience.','เราขออภัยในความไม่สะดวก']];
+    return readQ(S,[
       ['Why will the branch be closed?','For system maintenance.',['For a public holiday.','Because of a flood.','For staff training.'],`will be closed on ${d} for system maintenance`,'สาขาจะปิดเพื่อบำรุงรักษาระบบ',null,0,'ทำไมสาขาจึงปิด',['เพื่อบำรุงรักษาระบบ','เพราะเป็นวันหยุดราชการ','เพราะน้ำท่วม','เพื่ออบรมพนักงาน']],
       ['Which service can customers still use?','ATMs and mobile banking',['Opening a new account','Applying for a loan','Visiting the closed branch'],'customers can still use ATMs and mobile banking','ลูกค้ายังใช้ตู้ ATM และโมบายแบงก์กิ้งได้',null,0,'ลูกค้ายังใช้บริการใดได้อยู่',['ตู้ ATM และโมบายแบงก์กิ้ง','การเปิดบัญชีใหม่','การยื่นขอสินเชื่อ','การไปที่สาขาที่ปิด']],
       ['Where should customers go for other services?',`The ${b2} Branch`,[`The ${b1} Branch`,'The head office','The post office'],`please visit the ${b2} Branch`,`กรุณาไปใช้บริการที่สาขา${b2}`,null,0,'ลูกค้าควรไปที่ไหนเพื่อใช้บริการอื่น',[`สาขา${b2}`,`สาขา${b1}`,'สำนักงานใหญ่','ที่ทำการไปรษณีย์']],
       [`What time does the ${b2} Branch close?`,c,[o,c2,'5:00 p.m.'],`open from ${o} to ${c}`,`เปิดตั้งแต่ ${o} ถึง ${c}`,null,0,`สาขา${b2}ปิดกี่โมง`,[`${c} (เวลาปิด)`,`${o} (เวลาเปิด ไม่ใช่เวลาปิด)`,c2,'5:00 p.m.']],
       ['What is the main purpose of this notice?','To inform customers that a branch will be closed for one day',['To advertise a new mobile banking service','To invite customers to a party','To announce new opening hours for all branches'],`The ${b1} Branch will be closed on ${d}`,'สาขาจะปิดในวันดังกล่าว (ประโยคแรกของประกาศคือใจความหลัก)','เทคนิค: จุดประสงค์/ใจความหลักของประกาศมักอยู่ในประโยคแรก',1,'จุดประสงค์หลักของประกาศนี้คืออะไร',['เพื่อแจ้งลูกค้าว่าสาขาจะปิดหนึ่งวัน','เพื่อโฆษณาบริการโมบายแบงก์กิ้งใหม่','เพื่อเชิญลูกค้ามางานเลี้ยง','เพื่อประกาศเวลาเปิดทำการใหม่ของทุกสาขา']],
-      ['The word "inconvenience" in the passage is closest in meaning to ____.','trouble',['comfort','payment','service'],'We apologize for any inconvenience','ขออภัยในความไม่สะดวก (inconvenience = ความไม่สะดวก ความลำบาก)','เทคนิค: คำที่มี in-/un- นำหน้า มักมีความหมายตรงข้ามกับคำหลัก (convenience = ความสะดวก)',1,'คำว่า "inconvenience" ในบทความมีความหมายใกล้เคียงกับคำใด',['ความลำบาก ความยุ่งยาก','ความสบาย','การชำระเงิน','การบริการ']]],level)}
+      ['The word "inconvenience" in the passage is closest in meaning to ____.','trouble',['comfort','payment','service'],'We apologize for any inconvenience','ขออภัยในความไม่สะดวก (inconvenience = ความไม่สะดวก ความลำบาก)','เทคนิค: คำที่มี in-/un- นำหน้า มักมีความหมายตรงข้ามกับคำหลัก (convenience = ความสะดวก)',1,'คำว่า "inconvenience" ในบทความมีความหมายใกล้เคียงกับคำใด',['ความลำบาก ความยุ่งยาก','ความสบาย','การชำระเงิน','การบริการ']]],level,1)}
   if(k==='email'){const [d0,d1,d2]=shuffle([...EN_DAYS]).slice(0,3),tm=rnd(['9:00 a.m.','10:30 a.m.','1:30 p.m.']),[nm,snd]=shuffle([...EN_NAMES]).slice(0,2),city=rnd(EN_PROV),r=ri(201,320);
-    const t=`Dear all,\nThe monthly staff meeting will be moved from ${d1} to ${d2} because the manager has to attend a training course in ${city}. The meeting will start at ${tm} in Room ${r}. Please bring your sales reports. If you cannot attend, please inform ${nm} by ${d0}.\nRegards,\n${snd}`;
-    const tt=`เรียนทุกท่าน การประชุมพนักงานประจำเดือนจะย้ายจากวัน${EN_DAYS_TH[d1]}เป็นวัน${EN_DAYS_TH[d2]} เพราะผู้จัดการต้องไปอบรมที่${city} การประชุมจะเริ่มเวลา ${tm} ที่ห้อง ${r} กรุณานำรายงานยอดขายมาด้วย หากเข้าร่วมไม่ได้ กรุณาแจ้ง ${nm} ภายในวัน${EN_DAYS_TH[d0]} ด้วยความนับถือ ${snd}`;
-    return readQ(t,tt,[
+    const S=[['Dear all,','เรียนทุกท่าน'],[`The monthly staff meeting will be moved from ${d1} to ${d2} because the manager has to attend a training course in ${city}.`,`การประชุมพนักงานประจำเดือนจะย้ายจากวัน${EN_DAYS_TH[d1]}เป็นวัน${EN_DAYS_TH[d2]} เพราะผู้จัดการต้องไปอบรมที่${city}`],
+      [`The meeting will start at ${tm} in Room ${r}.`,`การประชุมจะเริ่มเวลา ${tm} ที่ห้อง ${r}`],['Please bring your sales reports.','กรุณานำรายงานยอดขายของคุณมาด้วย'],
+      [`If you cannot attend, please inform ${nm} by ${d0}.`,`หากคุณเข้าร่วมไม่ได้ กรุณาแจ้ง ${nm} ภายในวัน${EN_DAYS_TH[d0]}`],['Regards,','ด้วยความนับถือ'],[snd,`${snd} (ผู้เขียน)`]];
+    return readQ(S,[
       ['When will the meeting be held now?',`On ${d2}`,[`On ${d1}`,`On ${d0}`,'Next month'],`will be moved from ${d1} to ${d2}`,`การประชุมย้ายจากวัน${EN_DAYS_TH[d1]}เป็นวัน${EN_DAYS_TH[d2]} (move from A to B = ย้ายจาก A ไป B)`,null,0,'ตอนนี้การประชุมจะจัดเมื่อไร',[`วัน${EN_DAYS_TH[d2]}`,`วัน${EN_DAYS_TH[d1]} (วันเดิมก่อนย้าย)`,`วัน${EN_DAYS_TH[d0]} (วันสุดท้ายที่ต้องแจ้ง)`,'เดือนหน้า']],
       ['Why was the meeting moved?','The manager has to attend a training course.',['The meeting room is not available.','Many staff members are on holiday.','The sales reports are not ready.'],'because the manager has to attend a training course','เพราะผู้จัดการต้องไปอบรม',null,0,'ทำไมการประชุมจึงถูกเลื่อน',['ผู้จัดการต้องไปอบรม','ห้องประชุมไม่ว่าง','พนักงานหลายคนลาพักร้อน','รายงานยอดขายยังไม่เสร็จ']],
       ['What should the staff bring to the meeting?','Their sales reports',['Their ID cards','Their laptops','Their lunch'],'Please bring your sales reports','กรุณานำรายงานยอดขายมาด้วย',null,0,'พนักงานควรนำอะไรมาประชุม',['รายงานยอดขาย','บัตรประชาชน','คอมพิวเตอร์โน้ตบุ๊ก','อาหารกลางวัน']],
       ['Who should staff contact if they cannot attend?',nm,[snd,'The manager','The training course'],`please inform ${nm} by ${d0}`,`ถ้ามาไม่ได้ กรุณาแจ้ง ${nm} ภายในวัน${EN_DAYS_TH[d0]}`,null,0,'ถ้าเข้าร่วมไม่ได้ พนักงานควรติดต่อใคร',[`${nm} (คนที่ต้องแจ้ง)`,`${snd} (ผู้เขียนอีเมล)`,'ผู้จัดการ','หลักสูตรอบรม']],
       ['Who most likely wrote this email?','A person who works in the same office',['A customer of the bank','The manager of the training course','A teacher at a school'],'Dear all, ... staff meeting ... Regards','อีเมลถึงพนักงานทุกคนเรื่องประชุมพนักงาน ผู้เขียนจึงน่าจะเป็นคนในสำนักงานเดียวกัน','เทคนิค: ข้อ most likely ให้หาเหตุผลจากเนื้อหา ไม่ต้องมีคำตอบตรงตัวในบทความ',1,'ใครน่าจะเป็นผู้เขียนอีเมลนี้มากที่สุด',['คนที่ทำงานในสำนักงานเดียวกัน','ลูกค้าของธนาคาร','ผู้จัดการหลักสูตรอบรม','ครูในโรงเรียน']]],level)}
   if(k==='ad'){const rt=rnd([3,3.5,4,4.5,5]),amt=rnd(['100,000','200,000','300,000']),y=rnd([3,5,7]),lim=rnd(['50,000','30,000']),mo=rnd(EN_MON),moT=monTh(mo);
-    const t=`SPECIAL LOAN FOR FARMERS\nDo you need money to buy seeds or fertilizer? Our new Green Farm Loan offers an interest rate of only ${rt}% per year. You can borrow up to ${amt} baht and pay it back within ${y} years. No collateral is needed for loans under ${lim} baht. Apply at any branch before ${mo} 31.`;
-    const tt=`สินเชื่อพิเศษสำหรับเกษตรกร: คุณต้องการเงินซื้อเมล็ดพันธุ์หรือปุ๋ยไหม สินเชื่อกรีนฟาร์มใหม่ของเราคิดดอกเบี้ยเพียง ${rt}% ต่อปี กู้ได้สูงสุด ${amt} บาท และผ่อนคืนภายใน ${y} ปี กู้ไม่เกิน ${lim} บาทไม่ต้องใช้หลักประกัน สมัครได้ทุกสาขาก่อนวันที่ 31 ${moT}`;
-    return readQ(t,tt,[
+    const S=[['SPECIAL LOAN FOR FARMERS','สินเชื่อพิเศษสำหรับเกษตรกร'],['Do you need money to buy seeds or fertilizer?','คุณต้องการเงินซื้อเมล็ดพันธุ์หรือปุ๋ยไหม'],
+      [`Our new Green Farm Loan offers an interest rate of only ${rt}% per year.`,`สินเชื่อกรีนฟาร์มใหม่ของเราคิดอัตราดอกเบี้ยเพียง ${rt}% ต่อปี`],[`You can borrow up to ${amt} baht and pay it back within ${y} years.`,`คุณกู้ได้สูงสุด ${amt} บาท และผ่อนคืนภายใน ${y} ปี`],
+      [`No collateral is needed for loans under ${lim} baht.`,`กู้ไม่เกิน ${lim} บาท ไม่ต้องใช้หลักประกัน`],[`Apply at any branch before ${mo} 31.`,`สมัครได้ทุกสาขา ก่อนวันที่ 31 ${moT}`]];
+    return readQ(S,[
       ['Who is this loan for?','Farmers',['Students','Bank staff','Shop owners in the city'],'SPECIAL LOAN FOR FARMERS','สินเชื่อพิเศษสำหรับเกษตรกร',null,0,'สินเชื่อนี้สำหรับใคร',['เกษตรกร','นักเรียน','พนักงานธนาคาร','เจ้าของร้านค้าในเมือง']],
       ['What is the interest rate of this loan?',`${rt}% per year`,[`${rt+1}% per year`,`${y}% per year`,`${rt}% per month`],`an interest rate of only ${rt}% per year`,`อัตราดอกเบี้ยเพียง ${rt}% ต่อปี`,null,0,'สินเชื่อนี้มีอัตราดอกเบี้ยเท่าไร',[`${rt}% ต่อปี`,`${rt+1}% ต่อปี`,`${y}% ต่อปี (เอาจำนวนปีมาสับสน)`,`${rt}% ต่อเดือน (ผิดหน่วย)`]],
       ['How long can borrowers take to pay the loan back?',`Up to ${y} years`,[`Up to ${y+2} years`,'One year','Until 31 '+mo],`pay it back within ${y} years`,`ผ่อนคืนได้ภายใน ${y} ปี`,null,0,'ผู้กู้ผ่อนคืนได้นานเท่าไร',[`ไม่เกิน ${y} ปี`,`ไม่เกิน ${y+2} ปี`,'หนึ่งปี',`ถึงวันที่ 31 ${moT} (วันปิดรับสมัคร)`]],
       ['Which statement is TRUE according to the advertisement?',`Loans under ${lim} baht do not need collateral.`,['All loans need collateral.',`You can borrow more than ${amt} baht.`,'You must apply at the head office only.'],`No collateral is needed for loans under ${lim} baht`,`กู้ไม่เกิน ${lim} บาท ไม่ต้องใช้หลักประกัน`,'เทคนิค: ข้อ TRUE/NOT TRUE ให้เทียบตัวเลือกทีละข้อกับบทความ ข้อที่มีคำเด็ดขาด (all, only, never) มักเป็นตัวลวง',1,'ข้อใดถูกต้องตามโฆษณา',[`กู้ไม่เกิน ${lim} บาทไม่ต้องใช้หลักประกัน`,'ทุกสินเชื่อต้องใช้หลักประกัน',`กู้ได้มากกว่า ${amt} บาท`,'ต้องสมัครที่สำนักงานใหญ่เท่านั้น']],
-      ['What can the money from this loan be used for?','Buying seeds or fertilizer',['Buying a new house','Paying school fees','Travelling abroad'],'Do you need money to buy seeds or fertilizer?','คุณต้องการเงินซื้อเมล็ดพันธุ์หรือปุ๋ยไหม',null,1,'เงินกู้นี้นำไปใช้ทำอะไรได้',['ซื้อเมล็ดพันธุ์หรือปุ๋ย','ซื้อบ้านหลังใหม่','จ่ายค่าเล่าเรียน','เที่ยวต่างประเทศ']]],level)}
+      ['What can the money from this loan be used for?','Buying seeds or fertilizer',['Buying a new house','Paying school fees','Travelling abroad'],'Do you need money to buy seeds or fertilizer?','คุณต้องการเงินซื้อเมล็ดพันธุ์หรือปุ๋ยไหม',null,1,'เงินกู้นี้นำไปใช้ทำอะไรได้',['ซื้อเมล็ดพันธุ์หรือปุ๋ย','ซื้อบ้านหลังใหม่','จ่ายค่าเล่าเรียน','เที่ยวต่างประเทศ']]],level,1)}
   const N=rnd(EN_NAMES),pv=rnd(EN_PROV),pc=rnd([10,15,20]);
-  const t=`${N} is a rice farmer in ${pv}. Last year, a drought destroyed half of his crop, so his income fell sharply. This year he decided to grow vegetables as well as rice, and to save ${pc}% of his income every month. Now he feels more secure about the future.`;
-  const tt=`${N}เป็นชาวนาใน${pv} ปีที่แล้วภัยแล้งทำลายพืชผลของเขาไปครึ่งหนึ่ง รายได้จึงลดลงมาก ปีนี้เขาตัดสินใจปลูกผักควบคู่กับข้าว และออมเงิน ${pc}% ของรายได้ทุกเดือน ตอนนี้เขารู้สึกมั่นคงขึ้นเรื่องอนาคต`;
-  return readQ(t,tt,[
+  const S=[[`${N} is a rice farmer in ${pv}.`,`${N}เป็นชาวนาใน${pv}`],['Last year, a drought destroyed half of his crop, so his income fell sharply.','ปีที่แล้ว ภัยแล้งทำลายพืชผลของเขาไปครึ่งหนึ่ง รายได้ของเขาจึงลดลงอย่างมาก'],
+    [`This year he decided to grow vegetables as well as rice, and to save ${pc}% of his income every month.`,`ปีนี้เขาตัดสินใจปลูกผักควบคู่ไปกับข้าว และออมเงิน ${pc}% ของรายได้ทุกเดือน`],['Now he feels more secure about the future.','ตอนนี้เขารู้สึกมั่นคงมากขึ้นเกี่ยวกับอนาคต']];
+  return readQ(S,[
     [`What happened to ${N} last year?`,'A drought destroyed half of his crop.',['A flood destroyed his house.','He sold all of his land.','He borrowed money to buy a tractor.'],'Last year, a drought destroyed half of his crop','ปีที่แล้ว ภัยแล้งทำลายพืชผลของเขาไปครึ่งหนึ่ง',null,0,`ปีที่แล้วเกิดอะไรขึ้นกับ${N}`,['ภัยแล้งทำลายพืชผลไปครึ่งหนึ่ง','น้ำท่วมทำลายบ้าน','เขาขายที่ดินทั้งหมด','เขากู้เงินซื้อรถแทรกเตอร์']],
     [`How much of his income does ${N} save every month?`,`${pc}%`,[`${pc*2}%`,'Half','None'],`save ${pc}% of his income every month`,`ออมเงิน ${pc}% ของรายได้ทุกเดือน`,null,0,`${N}ออมเงินเท่าไรของรายได้ทุกเดือน`,[`${pc}%`,`${pc*2}%`,'ครึ่งหนึ่ง (ครึ่งหนึ่งคือพืชผลที่เสียหาย)','ไม่ออมเลย']],
     [`Why did ${N} most likely start growing vegetables?`,'To have more than one source of income',['Because rice is too expensive to eat','Because the bank told him to stop growing rice','Because he does not like rice farming'],'grow vegetables as well as rice','ปลูกผักควบคู่กับข้าว (as well as = และยัง...ด้วย ไม่ได้เลิกปลูกข้าว) จึงมีรายได้มากกว่าทางเดียว','เทคนิค: ข้อ most likely / why ให้เชื่อมเหตุกับผล รายได้ลดเพราะภัยแล้ง → หารายได้ทางอื่นเพิ่ม',1,`ทำไม${N}จึงน่าจะเริ่มปลูกผัก`,['เพื่อให้มีรายได้มากกว่าหนึ่งทาง','เพราะข้าวแพงเกินกว่าจะกิน','เพราะธนาคารสั่งให้เลิกปลูกข้าว','เพราะเขาไม่ชอบทำนา']],

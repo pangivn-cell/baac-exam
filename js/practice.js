@@ -313,6 +313,55 @@ async function calcCentralPut(k,d){
   try{const j=await upCall(up.up,{a:'calcput',idToken:await idTok(),shard:calcShard(k),key:k,val:JSON.stringify(val)});if(j&&j.ok)CALCC.idxAt=0}catch(e){}
 }
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-calcretry]');if(!b)return;const k=b.dataset.calcretry;CALCD_BUSY[k]=0;const el=b.closest('[data-calcd]');if(el&&CALCD_Q[k])el.outerHTML=calcdHTML(CALCD_Q[k])});
+/* ---------- แปลข้อสอบภาษาอังกฤษ (ข้อจากไฟล์/คลังกลางที่ยังไม่มีคำแปล) ----------
+   ให้ AI แปลโจทย์ + ความหมายของทุกตัวเลือก + ศัพท์น่าจำ + หลักที่ใช้ตอบ ยึดคำตอบเดิม · ข้อละครั้งเดียว
+   เก็บในเครื่อง (สูงสุด 600 ข้อ) และคลังกลาง คนอื่นเปิดข้อเดียวกันไม่ต้องใช้ AI อีก · ข้อที่ระบบสร้างเองมีคำแปลในตัว (engTr) ไม่เรียก */
+const ENGD_KEY='exam-eng-tr1',ENGD_BUSY={},ENGD_Q={};
+let ENGD={};try{ENGD=JSON.parse(localStorage.getItem(ENGD_KEY)||'{}')||{}}catch(e){ENGD={}}
+const isEngQ=q=>!!q&&!q.engTr&&Array.isArray(q.choices)&&q.choices.length>=2&&!q.chSvg&&(q.sub==='eng'||(typeof engText==='function'&&engText(String(q.stem||'')+' '+q.choices.join(' '))));
+function engdBody(d,q){
+  let h=`<p class="ch4">🇹🇭 แปลโจทย์และคำศัพท์</p>`;
+  if(d.tr)h+=`<p style="margin:0"><b>แปลโจทย์:</b> ${esc(d.tr)}</p>`;
+  if(d.q)h+=`<p style="margin:0"><b>คำถาม:</b> ${esc(d.q)}</p>`;
+  if(d.choices&&d.choices.length)h+=`<p class="lbl" style="margin:0">ความหมายของแต่ละตัวเลือก</p><ul class="cpts">${q.choices.map((c,i)=>{const x=d.choices[i]||{};return `<li${i===q.answer?' class="ok"':''}><b>${TH[i]}. ${esc(c)}</b>${x.th?` = ${esc(x.th)}`:''}${x.why?` <span class="src">(${i===q.answer?'✓ ':''}${esc(x.why)})</span>`:''}</li>`}).join('')}</ul>`;
+  if(d.words&&d.words.length)h+=`<p class="lbl" style="margin:0">ศัพท์น่าจำในข้อนี้</p><ul class="cpts">${d.words.map(w=>`<li><b>${esc(w.w)}</b> = ${esc(w.th)}</li>`).join('')}</ul>`;
+  if(d.point)h+=`<p class="cnote">💡 ${esc(d.point)}</p>`;
+  return h;
+}
+function engdHTML(q){
+  if(!isEngQ(q))return '';
+  const k=qKey(q),d=ENGD[k];ENGD_Q[k]=q;
+  if(d)return `<div class="calcd">${engdBody(d,q)}</div>`;
+  if(!activeAI())return '';
+  if(ENGD_BUSY[k]==='err')return `<div class="calcd" data-engd="${esc(k)}"><p class="src">แปลโจทย์ไม่สำเร็จ <button type="button" class="ghost" data-engretry="${esc(k)}">ลองอีกครั้ง</button></p></div>`;
+  setTimeout(()=>engdLoad(k),0);
+  return `<div class="calcd" data-engd="${esc(k)}"><p class="src"><span class="spin sm" aria-hidden="true"></span> กำลังแปลโจทย์และคำศัพท์เป็นภาษาไทย…</p></div>`;
+}
+async function engdLoad(k){
+  const q=ENGD_Q[k];if(!q||ENGD[k]||ENGD_BUSY[k]===1)return;ENGD_BUSY[k]=1;
+  const prompt=`แปลข้อสอบภาษาอังกฤษข้อนี้เป็นภาษาไทย สำหรับคนที่พื้นฐานภาษาอังกฤษอ่อน
+โจทย์: ${q.stem}
+ตัวเลือก: ${q.choices.map((c,i)=>`${TH[i]}. ${c}`).join('  ')}
+คำตอบที่ถูก: ${TH[q.answer]}. ${q.choices[q.answer]} (คำตอบนี้ถูกต้องแล้ว ห้ามเปลี่ยน)
+ตอบเป็น JSON เท่านั้น:
+{"tr":"แปลโจทย์ทั้งหมดเป็นภาษาไทยแบบเข้าใจง่าย (มีบทความหรือบทสนทนาให้แปลทั้งหมด ช่องว่างเขียนเป็น ____ ถ้าโจทย์ไม่มีคำสั่ง ให้บอกด้วยว่าโจทย์ต้องการให้ทำอะไร)","q":"แปลเฉพาะคำถามท้ายบทความ (ไม่มีบทความให้เว้นว่าง)","choices":[{"th":"ความหมายภาษาไทยของตัวเลือกนี้","why":"ทำไมถูกหรือผิด 1 ประโยคสั้น"}],"words":[{"w":"คำศัพท์ภาษาอังกฤษในโจทย์หรือตัวเลือกที่ควรรู้","th":"ความหมายภาษาไทย (ชนิดของคำ)"}],"point":"หลักไวยากรณ์ ความหมาย หรือเทคนิคที่ใช้ตอบข้อนี้ 1–2 ประโยค"}
+กติกา: choices ต้องมี ${q.choices.length} รายการ เรียงตามตัวเลือก ก ข ค ง · words 3–8 คำ เลือกคำที่ยากหรือสำคัญ · ภาษาไทยทั้งหมด ยกเว้นคำศัพท์ที่ยกมา · ห้ามใช้ markdown`;
+  try{
+    let hit=null;try{hit=await calcCentralGet('en1'+k)}catch(e){}
+    let r=hit||await aiJSON(prompt)||{};
+    const S=v=>String(v||'').trim();
+    const choices=(Array.isArray(r.choices)?r.choices:[]).slice(0,q.choices.length).map(x=>x&&typeof x==='object'?{th:S(x.th),why:S(x.why)}:{th:S(x),why:''});
+    const words=(Array.isArray(r.words)?r.words:[]).map(x=>x&&typeof x==='object'?{w:S(x.w),th:S(x.th)}:null).filter(x=>x&&x.w&&x.th).slice(0,10);
+    if(!S(r.tr)&&!choices.length)throw{code:'ai_bad_out'};
+    ENGD[k]={tr:S(r.tr),q:S(r.q),choices,words,point:S(r.point).slice(0,300),at:Date.now()};
+    const ks=Object.keys(ENGD);if(ks.length>600)ks.sort((a,b)=>ENGD[a].at-ENGD[b].at).slice(0,ks.length-600).forEach(x=>delete ENGD[x]);
+    try{localStorage.setItem(ENGD_KEY,JSON.stringify(ENGD))}catch(e){}
+    if(!hit)calcCentralPut('en1'+k,ENGD[k]);
+    ENGD_BUSY[k]=0;
+  }catch(e){ENGD_BUSY[k]='err'}
+  document.querySelectorAll('[data-engd]').forEach(el=>{if(el.dataset.engd===k)el.outerHTML=engdHTML(q)});
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-engretry]');if(!b)return;const k=b.dataset.engretry;ENGD_BUSY[k]=0;const el=b.closest('[data-engd]');if(el&&ENGD_Q[k])el.outerHTML=engdHTML(ENGD_Q[k])});
 /* ---------- สาระที่ควรจำ (บรรณารักษ์) ----------
    ข้อสอบเป็นทางเข้าสู่เนื้อหา: หลังตอบ แสดงบัตรความรู้จากเอกสารต้นทางของข้อนั้น (ห้องสมุด = คลังเอกสาร, หนังสือ = วิชา)
    ข้อที่ AI สร้างจากบัตร → บัตรนั้น · ข้อสอบจริงจากเอกสาร → บัตรความรู้หน้าเดียวกัน/หน้าใกล้กัน (ไม่เกิน 2 ใบ) */
@@ -348,6 +397,7 @@ function explainHTML(q,pick){
   if(q.expViz)h+=renderViz(q.expViz);
   if(q.steps.length)h+=`<ol class="steps">${q.steps.map(([t,s])=>`<li>${esc(t)}${s?` <span class="src">(มาจาก: ${esc(s)})</span>`:''}</li>`).join('')}</ol>`;
   h+=calcdHTML(q);
+  h+=engdHTML(q);
   if(q.ansAI)h+=`<p class="kwarn" style="margin:0">เฉลยข้อนี้ AI ดูจากรูปเอง เพราะเอกสารไม่มีเฉลย อาจผิดได้ ถ้าสงสัยให้ถาม AI ด้านล่าง หรือแก้บัตรความรู้ในคลังความรู้</p>`;
   if(q.fixed&&!q.fixed.balance)h+=`<p class="kwarn" style="margin:0">✔ ข้อนี้ถูกแก้แล้วหลังมีผู้แย้งเฉลยและ AI ตรวจซ้ำ 2 รอบ${q.fixed.why?`: ${esc(q.fixed.why)}`:''}${(q.fixed.sources||[]).length?` · แหล่ง: ${q.fixed.sources.slice(0,3).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}${typeof isReviewerMe==='function'&&isReviewerMe()?` <button class="ghost" type="button" data-unfix="${esc(q.origKey||'')}">ยกเลิกการแก้</button>`:''}</p>`;
   h+=learnHTML(q);

@@ -441,7 +441,7 @@ async function makeItems1(s,level,n,o={}){
   return shuffle([...retry,...items.slice(0,n-retry.length)]);
 }
 /* วิชาที่มีคลังสร้างด้วยโค้ด (ข้อจากไฟล์ผู้ใช้ปนได้) และมีตัวสร้างโจทย์ (นับขาสัตว์ นับอายุ บวกเลข): ไม่ต้องใช้ AI · ทาง AI หยิบจากคลังล้วน ได้แพทเทิร์นเดิมทุกข้อ */
-const calcSubj=s=>!!s&&!s.ai&&!!LOCAL[s.id]&&(()=>{const b=bankFor(s,true);return b.some(c=>c.calc)})();
+const calcSubj=s=>!!s&&!s.ai&&!!LOCAL[s.id]&&(s.calcGen||(()=>{const b=bankFor(s,true);return b.some(c=>c.calc)})());
 async function makeItems0(s,level,n,o={}){
   /* real questions from the bank first (up to half; all of them for picture subjects), the rest newly generated in the same style */
   if(s.psc)return pscItems(s,level,n,o);

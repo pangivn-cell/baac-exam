@@ -616,9 +616,14 @@ function finish(){
   const before=myLevel(),passed=pct>=PASS_PCT;
   const wrong=R.items.filter((q,j)=>R.picks[j]!==q.answer).map(q=>qLabel(q).replace(/\s+/g,' ').slice(0,90));
   P.weak[R.subject]=[...(P.weak[R.subject]||[]),...wrong].slice(-5);if(!wrong.length)P.weak[R.subject]=[];
-  /* โบนัสทำเต็มติดกัน: เต็ม 100% ครั้งที่ 1 = +2, ติดกัน 2 ครั้ง = +4, 3 ครั้ง = +6 ... ไม่เต็มเมื่อไรเริ่มนับใหม่ (ชุดต้องมีอย่างน้อย 5 ข้อ) */
-  const perfect=n>=5&&score===n;P.streak=perfect?(P.streak||0)+1:0;
-  const pts=perfect?2*P.streak:passed?1:0;
+  /* โบนัสทำเต็มติดกัน (นับแยกวิชา): เต็ม 100% ครั้งแรก = +2 ครั้งถัดไป = โบนัสรอบที่แล้ว + 0.7 เท่า (×1.7) เช่น 20 → 34
+     ไม่เต็มเมื่อไรเริ่มนับใหม่ (ชุดต้องมีอย่างน้อย 5 ข้อ)
+     ความร้อน (P.heat) ใช้เพิ่มความยากของตัวสร้างโจทย์ (addseq.js): เต็ม +1 · ผ่านไม่เต็ม คงเดิม · ไม่ผ่าน −2 */
+  const perfect=n>=5&&score===n,sid=R.subject;P.streakBy=P.streakBy||{};P.bonusBy=P.bonusBy||{};P.heat=P.heat||{};
+  const st=perfect?(P.streakBy[sid]||0)+1:0,bonus=perfect?(st===1?2:(P.bonusBy[sid]||2)*1.7):0;
+  P.streakBy[sid]=st;P.bonusBy[sid]=bonus;P.streak=st;
+  P.heat[sid]=Math.max(0,(P.heat[sid]||0)+(perfect?1:passed?0:-2));
+  const pts=perfect?Math.round(bonus):passed?1:0;
   if(pts)awardPass(pts);
   save();clearRun();Object.assign(R,{status:'done',score,pct,passed,before,after:myLevel(),pts,streak:P.streak});recordCards(R.items,R.picks);logQs(R.items,R.picks);
   const sn=(SUBJ.find(s=>s.id===R.subject)||subj()).name,t0=R.t0||Date.now();
@@ -634,7 +639,7 @@ function verdict(p){
 }
 function renderDone(el){
   const n=R.items.length,v=verdict(R.pct);
-  const li=levelInfo(P.pass),pts=R.pts||1,bonus=R.streak?`🔥 เต็มติดกัน ${R.streak} ครั้ง +${pts} คะแนน (เต็มอีกรอบได้ +${2*(R.streak+1)})`:'',lvTxt=R.passed?(R.after>R.before?`${bonus||`ผ่าน! +${pts} คะแนน`} 🎉 ขึ้นเป็นระดับ ${R.after}`:`${bonus||`ผ่าน! +${pts} คะแนน`} (รวม ${P.pass}) · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`):`ยังไม่ผ่าน (ต้องได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป จึงได้ 1 คะแนน) · ระดับ ${li.lv} · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`;
+  const li=levelInfo(P.pass),pts=R.pts||1,bonus=R.streak?`🔥 เต็มติดกัน ${R.streak} ครั้ง +${nf(pts)} คะแนน (เต็มอีกรอบได้ +${nf(Math.round((P.bonusBy&&P.bonusBy[R.subject]||2)*1.7))} แต่โจทย์จะยากขึ้น)`:'',lvTxt=R.passed?(R.after>R.before?`${bonus||`ผ่าน! +${pts} คะแนน`} 🎉 ขึ้นเป็นระดับ ${R.after}`:`${bonus||`ผ่าน! +${pts} คะแนน`} (รวม ${P.pass}) · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`):`ยังไม่ผ่าน (ต้องได้ ${Math.round(PASS_PCT*100)}% ขึ้นไป จึงได้ 1 คะแนน) · ระดับ ${li.lv} · อีก ${li.left} คะแนนขึ้นระดับ ${li.lv+1}`;
   el.innerHTML=fx(`<div class="result">
     <div class="sticker ${v.c}" role="img" aria-label="${esc(v.t)}">${v.s}</div>
     <p class="big">${R.score} / ${n}</p>

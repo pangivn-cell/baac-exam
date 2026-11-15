@@ -89,9 +89,9 @@ service cloud.firestore {
     match /rank2/{period}/u/{uid} {
       allow read: if true;
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.pass is number && request.resource.data.pass >= 0 && request.resource.data.pass <= 5;
+        && request.resource.data.pass is number && request.resource.data.pass >= 0 && request.resource.data.pass <= 10000000;
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.pass >= resource.data.pass && request.resource.data.pass <= resource.data.pass + 5;
+        && request.resource.data.pass >= resource.data.pass && request.resource.data.pass <= resource.data.pass + 10000000;
     }
 
     // ข้อความถึงผู้พัฒนา: ผู้ใช้ที่ล็อกอินส่งได้ · ผู้ส่งอ่านของตัวเอง · ผู้ตรวจ/แอดมินอ่านและปิดงานได้

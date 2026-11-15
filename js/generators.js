@@ -759,12 +759,12 @@ function arFit(L,W,mw,mh){const s=Math.min(mw/L,mh/W);return[Math.max(L*s,70),Ma
 const AR_X=86,AR_Y=28;
 /* สี่เหลี่ยมผืนผ้า + ป้ายด้านบน/ด้านซ้าย · extra(x,y,pw,ph) วาดของเพิ่มก่อนกรอบ */
 function arBox(L,W,o){o=o||{};const [pw,ph]=arFit(L,W,230,130),x=AR_X,y=AR_Y;
-  return arSvg(x+pw+24,y+ph+(o.bottom?34:22),(o.fill?arR(x,y,pw,ph,o.fill):'')+(o.extra?o.extra(x,y,pw,ph):'')+arR(x,y,pw,ph)
-    +arT(x+pw/2,y-13,o.top||`ยาว ${nf(L)} ม.`)+arT(x-8,y+ph/2,o.left||`กว้าง ${nf(W)} ม.`,'end')+(o.bottom?arT(x+pw/2,y+ph+16,o.bottom):''))}
+  return arSvg(x+pw+(o.right||24),y+ph+(o.bottom?34:22),(o.fill?arR(x,y,pw,ph,o.fill):'')+(o.extra?o.extra(x,y,pw,ph):'')+arR(x,y,pw,ph)
+    +arT(x+pw/2,y-13,o.top!=null?o.top:`ยาว ${nf(L)} ม.`)+arT(x-8,y+ph/2,o.left!=null?o.left:`กว้าง ${nf(W)} ม.`,'end')+(o.bottom?arT(x+pw/2,y+ph+16,o.bottom):''))}
 /* ทางเดินรอบที่ดิน: inside=true ทางเดินอยู่ในแปลง (กรอบนอก = ที่ดิน) · false อยู่นอกแปลง (กรอบใน = ที่ดิน) */
 function arWalkFig(L,W,w,inside,showInner){
   const OL=inside?L:L+2*w,OW=inside?W:W+2*w;
-  return arBox(OL,OW,{top:inside?`ยาว ${L} ม.`:(showInner?`ยาวรวม ${OL} ม.`:''),left:inside?`กว้าง ${W} ม.`:(showInner?`กว้างรวม ${OW} ม.`:''),
+  return arBox(OL,OW,{top:inside?`ยาว ${L} ม.`:(showInner?`ยาวรวม ${OL} ม.`:''),left:inside?`กว้าง ${W} ม.`:(showInner?`กว้างรวม ${OW} ม.`:''),right:96,
     extra:(x,y,pw,ph)=>{const p=Math.max(9,Math.min(pw,ph)*w/Math.min(OL,OW));
       return arHole(x,y,pw,ph,x+p,y+p,pw-2*p,ph-2*p)+arR(x+p,y+p,pw-2*p,ph-2*p)
         +(inside?(showInner?arT(x+pw/2,y+ph/2-9,`${L-2*w} × ${W-2*w}`)+arT(x+pw/2,y+ph/2+9,'(รูปใน)'):arT(x+pw/2,y+ph/2,'ที่ดิน')):arT(x+pw/2,y+ph/2-9,`ที่ดิน ${L} × ${W} ม.`)+arT(x+pw/2,y+ph/2+9,showInner?'(รูปใน)':''))
@@ -904,7 +904,7 @@ function genArea1(level){
          [`ตรวจ: ${nf(ans)} ÷ ${p} = ${a} ตร.ม. ✓`,'หารด้วยราคาต้องได้พื้นที่']],arBt),
         svg:arBox(L,W,{extra:(x,y,pw,ph)=>{const q=Math.max(14,Math.min(pw,ph)*k/Math.min(L,W));return arHole(x,y,pw,ph,x+pw/2-q/2,y+ph/2-q/2,q,q)+arR(x+pw/2-q/2,y+ph/2-q/2,q,q)+arT(x+pw/2,y+ph/2+q/2+10,`บ่อ ${k}×${k}`)}})}}
     case 'cross':case 'crossCost':{const L=ri(20,60),W=ri(12,L-4),w=ri(1,4),road=w*L+w*W-w*w,gard=(L-w)*(W-w),askRoad=kind==='crossCost'||Math.random()<.5;
-      const fig=hl=>arBox(L,W,{extra:(x,y,pw,ph)=>{const p=Math.max(8,Math.min(pw,ph)*w/Math.min(L,W));return arR(x,y+ph/2-p/2,pw,p,AR_SH)+arR(x+pw/2-p/2,y,p,ph,AR_SH)+(hl?arR(x+pw/2-p/2,y+ph/2-p/2,p,p,'rgba(255,120,80,.6)'):'')+arT(x+pw+4,y+ph/2,`ถนน ${w} ม.`,'start')}});
+      const fig=hl=>arBox(L,W,{extra:(x,y,pw,ph)=>{const p=Math.max(8,Math.min(pw,ph)*w/Math.min(L,W));return arR(x,y+ph/2-p/2,pw,p,AR_SH)+arR(x+pw/2-p/2,y,p,ph,AR_SH)+(hl?arR(x+pw/2-p/2,y+ph/2-p/2,p,p,'rgba(255,120,80,.6)'):'')+arT(x+pw+4,y+ph/2,`ถนน ${w} ม.`,'start')},right:80});
       const core=[['หลักคิด: ถนนแนวยาว + ถนนแนวกว้าง − ส่วนที่ทับกันตรงกลาง','ตรงกลางที่ถนนตัดกัน (สีส้มในรูปเฉลย) ถูกนับทั้งสองเส้น ต้องลบออกหนึ่งครั้ง'],
         [`ถนนแนวยาว = ${L} × ${w} = ${L*w} ตร.ม.`,'ยาวตลอดแปลง × ความกว้างถนน'],[`ถนนแนวกว้าง = ${W} × ${w} = ${W*w} ตร.ม.`,'กว้างตลอดแปลง × ความกว้างถนน'],
         [`ส่วนทับกัน = ${w} × ${w} = ${w*w} ตร.ม. → ถนน = ${L*w} + ${W*w} − ${w*w} = ${nf(road)} ตร.ม.`,'ลบส่วนที่นับซ้ำ'],

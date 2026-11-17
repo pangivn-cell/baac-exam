@@ -87,7 +87,7 @@ function subjDesc0(s){
     const src=[...parts].map(([k,v])=>v>1?`${k} (${v} ส่วน)`:k).join(', '),one=parts.size===1;
     const from=one?src:`${parts.size} ไฟล์: ${src}`;
     return n?`โจทย์สร้างจากบัตรความรู้ ${n} ใบที่ AI ย่อยจาก ${from} มีอ้างอิง${d.unit}ทุกข้อ`:nq?`ใช้ข้อสอบจริงจาก ${from} และให้ AI สร้างโจทย์เพิ่มจากเนื้อหาไฟล์`:`โจทย์สร้างจากเนื้อหา ${from} (ยังไม่ได้ย่อยเป็นบัตรความรู้)`}
-  if(s.group==='spec'){const n=activeCards().filter(c=>inSubj(c,s.name)).length;
+  if(s.group==='spec'&&!s.calcGen){const n=activeCards().filter(c=>inSubj(c,s.name)).length;
     return `${s.desc} · ${n?`อิงบัตรความรู้ ${n} ใบจากคลังความรู้`:kbContext([s.name]).text?'อิงเนื้อหาเอกสารในคลังความรู้':'AI สร้างจากความรู้ทั่วไป ยังไม่มีเอกสารในคลัง'}`}
   return s.desc;
 }

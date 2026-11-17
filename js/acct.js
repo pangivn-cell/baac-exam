@@ -12,6 +12,8 @@ function acMC(stem,ans,dist,steps,fmt,extra){
   const intAns=Number.isInteger(ans)&&ans>=10;   /* คำตอบเป็นจำนวนเต็ม: ตัวลวงต้องเป็นจำนวนเต็มด้วย ไม่งั้นตัดตัวเลือกได้จากทศนิยม */
   for(const d of dist){if(d==null||!isFinite(d)||d<=0)continue;const v=intAns?Math.round(d):Math.round(d*100)/100,s=fmt(v);if(!seen.has(s)){seen.add(s);ds.push(v)}if(ds.length===3)break}
   for(let g=0;ds.length<3&&g<60;g++){const v=Math.max(st,Math.round(Math.round(ans*(1+(Math.random()<.5?-1:1)*rnd([.05,.1,.15,.2,.25]))/st)*st*100)/100),s=fmt(v);if(v>0&&!seen.has(s)){seen.add(s);ds.push(v)}}
+  /* ยังไม่ครบ (คำตอบเลขกลมเล็ก เช่น 10%): เติมค่าห่างทีละขั้น */
+  for(let k=1;ds.length<3&&k<12;k++)for(const v0 of [ans+k*st,ans-k*st]){const v=Math.round(v0*100)/100,s=fmt(v);if(ds.length<3&&v>0&&!seen.has(s)){seen.add(s);ds.push(v)}}
   const ch=shuffle([ans,...ds]);return Object.assign({kind:'mc',stem,choices:ch.map(fmt),answer:ch.indexOf(ans),steps:steps.filter(Boolean)},extra||{});
 }
 function acText(stem,ans,dist,steps,extra){

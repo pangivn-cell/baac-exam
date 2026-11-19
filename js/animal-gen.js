@@ -9,10 +9,10 @@ function anPick(legs,used){const a=AN_LEGS[legs].filter(x=>!used.includes(x));co
 const anLegNote=(n,l)=>l?`${n}มี ${l} ขา`:`${n}ไม่มีขา`;
 const AN_POOL={
   1:['single','reverse','twoKinds'],
-  2:['threeKinds','legDiff','sameLegs','twoKinds','reverse'],
-  3:['headsLegs','moreThan','swapSell','legGap','headsLegs'],
-  4:['ratio','equalLegs','zeroLeg','swapKinds','moreThan'],
-  5:['miscount','legsMinusHeads','bugsSpiders','ratio3','swapKinds','ratio','equalLegs','zeroLeg']};
+  2:['threeKinds','legDiff','sameLegs','twoKinds','reverse','lessThan'],
+  3:['headsLegs','moreThan','swapSell','legGap','lessThan'],
+  4:['ratio','equalLegs','zeroLeg','swapKinds','moreThan','lessThan'],
+  5:['miscount','legsMinusHeads','bugsSpiders','ratio3','swapKinds','ratio','equalLegs','zeroLeg','lessThan']};
 function genAnimal1(level,kind){
   const u=[];kind=kind||rnd(AN_POOL[level]||AN_POOL[3]);
   switch(kind){
@@ -37,6 +37,18 @@ function genAnimal1(level,kind){
     case 'moreThan':{const la=2,lb=rnd([4,6]),a=anPick(la,u),b=anPick(lb,u),x=ri(3,15),d=ri(2,8),y=x+d,L=la*x+lb*y,askA=Math.random()<.5,ans=askA?x:y;
       return anMC(`มี${b}มากกว่า${a} ${d} ตัว นับขารวมกันได้ ${L} ขา มี${askA?a:b}กี่ตัว`,ans,[askA?y:x,ans+d,ans+1,ans-1],
         [[`ให้${a} = x ตัว, ${b} = x + ${d} ตัว`,''],[`${la}x + ${lb}(x + ${d}) = ${L} → ${la+lb}x = ${L-lb*d} → x = ${x}`,''],[`${a} ${x} ตัว, ${b} ${y} ตัว`,'']])}
+    /* แบบข้อสอบจริง: สัตว์ขามากมีน้อยกว่าสัตว์ 2 ขาอยู่ d ตัว ตัวเลขใหญ่ (หลักร้อย) ตัวเลือกห่างกันทีละ 5 */
+    case 'lessThan':{const place=rnd(['ฟาร์มแห่งหนึ่ง','เกษตรกรคนหนึ่ง','ฟาร์มแห่งหนึ่ง','สวนสัตว์แห่งหนึ่ง']),farm=place!=='สวนสัตว์แห่งหนึ่ง',
+        lb=farm?4:rnd([4,6,8]),a=farm?rnd(['ไก่','เป็ด','ห่าน']):anPick(2,u),b=farm?rnd(['หมู','วัว','ควาย','แพะ']):anPick(lb,u),
+        d=level>=3?ri(4,18)*5:ri(10,40),y=level>=3?ri(20,90):ri(5,30),x=y+d,L=2*x+lb*y,askA=Math.random()<.6,ans=askA?x:y,
+        trap=(L-lb*d)/(2+lb),sp=level>=3?5:1;
+      const verb=place==='สวนสัตว์แห่งหนึ่ง'?'มี':'เลี้ยง';
+      return anMC(`${place}${verb}${b}น้อยกว่า${verb}${a}อยู่ ${d} ตัว เมื่อนับขา${b}และขา${a}รวมกันได้ ${L} ขา ${place.replace(/แห่งหนึ่ง|คนหนึ่ง/,'แห่งนี้').replace('เกษตรกรแห่งนี้','เกษตรกรคนนี้')}${verb}${askA?a:b}กี่ตัว`,ans,
+        [askA?y:x,trap,ans-sp,ans+sp,ans+2*sp,ans-2*sp],[
+        [`ให้${b} = y ตัว → ${a} = y + ${d} ตัว (${a}มากกว่า)`,'อ่านให้ดีว่าตัวไหนมากกว่า ตัวลวงที่พบบ่อยคือกลับข้าง'],
+        [`${lb}y + 2(y + ${d}) = ${L} → ${lb+2}y + ${2*d} = ${L} → ${lb+2}y = ${L-2*d} → y = ${y}`,''],
+        [`${b} ${y} ตัว · ${a} = ${y} + ${d} = ${x} ตัว`,''],
+        [`วิธีลัด: แยก${a}ส่วนเกิน ${d} ตัวออกก่อน (${2*d} ขา) เหลือ ${L-2*d} ขา จับคู่${b}กับ${a} คู่ละ ${lb+2} ขา → ${(L-2*d)/(lb+2)} คู่`,`ตรวจ: ${y} × ${lb} + ${x} × 2 = ${lb*y} + ${2*x} = ${L} ✓`]])}
     case 'swapSell':{const a=anPick(2,u),b=anPick(4,u),x=ri(5,20),y=ri(5,20),L=2*x+4*y,s=ri(2,Math.min(y,8)),k=ri(1,10),ans=L-4*s+2*k;
       return anMC(`ฟาร์มมี${a}และ${b} นับขารวมได้ ${L} ขา ต่อมาขาย${b}ไป ${s} ตัว และซื้อ${a}เพิ่ม ${k} ตัว ตอนนี้มีขารวมกี่ขา`,ans,[L-2*s+4*k,L-4*s,L+2*k,L-s+k],
         [[`ขาย${b} ${s} ตัว ขาหาย ${s} × 4 = ${4*s} ขา`,''],[`ซื้อ${a} ${k} ตัว ขาเพิ่ม ${k} × 2 = ${2*k} ขา`,''],[`${L} − ${4*s} + ${2*k} = ${ans} ขา`,'']])}

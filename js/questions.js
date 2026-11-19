@@ -241,9 +241,20 @@ function engTag(q){if(!q)return q;let i=q.engPart!=null&&ENG_PARTS[q.engPart]?q.
 function engPick(pool,k){const g=[[],[],[],[]];for(const c of pool)g[engPart(c.q)].push(c);
   const got=g.map(x=>pickBank(x,k)),out=[];for(let r=0;out.length<k&&r<k;r++)for(const i of shuffle([0,1,2,3])){if(out.length<k&&got[i][r])out.push(got[i][r])}return out}
 const pickBank=(pool,k)=>{const used=new Set(),out=[];while(out.length<k){const c=pickCard(pool,used);if(!c||used.has(c.id))break;used.add(c.id);out.push(c)}return out};
+/* ตัวเลือกเหลือแค่ ก ข ค ง แต่การ์ดมีรูปหลายรูป (รูปโจทย์ + รูปตัวเลือกทีละรูป): เดิมแสดงแค่รูปแรก ตัวเลือกจึงเป็นตัวอักษรเปล่า ตอบไม่ได้
+   รูปเรียงตามลำดับที่ตัดจากไฟล์: มีรูปเท่าจำนวนตัวเลือก + 1 → รูปแรกเป็นโจทย์ ที่เหลือเป็นตัวเลือก · เท่าจำนวนตัวเลือกพอดี → เป็นตัวเลือกทั้งหมด */
+const LETTER_CH=x=>/^\s*\(?[ก-จ]\)?\s*\.?\s*$/.test(String(x));
+function letterFigChoices(c){const q=c.q,ch=q.choices||[],figs=(c.figs||[]).filter(id=>!junkFig(id)&&!String(q.stem||'').includes(`[รูป ${id}]`));
+  if(ch.length<3||!ch.every(LETTER_CH))return null;
+  const n=ch.length,stemFig=String(q.stem||'').match(/\[รูป (F[a-z0-9]+)\]/i);
+  if(figs.length===n+1&&!stemFig)return{stemFig:figs[0],choices:figs.slice(1).map(id=>`[รูป ${id}]`)};
+  if(figs.length===n)return{stemFig:'',choices:figs.map(id=>`[รูป ${id}]`)};
+  return null}
 function bankQ(c,s){
-  const q=withCard({kind:'mc',stem:c.q.stem,choices:c.q.choices.slice(),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
-    fig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,calc:!!c.calc,topic:c.topic,sub:s.id,subName:s.name},null);
+  const lf=letterFigChoices(c);
+  const q=withCard({kind:'mc',stem:c.q.stem,choices:lf?lf.choices:c.q.choices.slice(),...(lf?{keepOrder:true}:{}),answer:c.q.answer,steps:(c.q.steps||[]).map(t=>[t,'']),card:c.id,
+    fig:lf?lf.stemFig:(c.figs||[]).filter(id=>!junkFig(id))[0]||'',viz:c.q.viz||null,orig:true,calc:!!c.calc,topic:c.topic,sub:s.id,subName:s.name},null);
+  if(lf)q.fig=lf.stemFig;   /* รูปตัวเลือกแสดงในปุ่มแล้ว ไม่ซ้ำเหนือโจทย์ */
   q.ansAI=c.ansSrc==='AI';if(c.fixedAt)q.fixedAt=c.fixedAt;if(s.id==='eng')engTag(q);return q;
 }
 /* without AI: questions straight from the bank (+ the local generator for subjects that have one) */

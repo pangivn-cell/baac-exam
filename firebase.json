@@ -1,5 +1,28 @@
 {
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firestore.rules",
+      "**/.*",
+      ".git/**",
+      "**/.git/**",
+      ".firebase/**",
+      "**/node_modules/**",
+      "README.md",
+      "bump.sh",
+      "repomix-output.xml",
+      "apps-script/**",
+      "llm/**",
+      "tools/**",
+      "tests/**"
+    ],
+    "headers": [
+      {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+      {"source": "/", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}
+    ]
   }
 }

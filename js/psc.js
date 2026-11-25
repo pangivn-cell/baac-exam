@@ -584,6 +584,15 @@ function pscLinkHTML(url){
 /* เชื่อมต่อ Product Catalog: เปิดเว็บให้เข้าระบบ → ผู้ใช้คัดลอกที่อยู่ (Ctrl+L, Ctrl+C) → กลับมาหน้านี้ ระบบหยิบลิงก์จากคลิปบอร์ดเอง
    (เบราว์เซอร์ไม่ให้เว็บเราอ่านที่อยู่ของเว็บอื่นโดยตรง คลิปบอร์ดจึงเป็นทางที่สั้นที่สุด) */
 const PSC_LINK_RE=/https:\/\/psc\.baac\.tech\/\S*[?&]token=[0-9a-f]{16,}\S*/i;
+/* ปุ่มลัด: ส่งที่อยู่หน้าปัจจุบัน (มี token) ไปยังหน้าต่างเว็บสอบที่เปิดหน้าต่างนี้ · ระบุปลายทางเป็นเว็บสอบเท่านั้น (ไม่ใช้ '*')
+   ไม่มีหน้าต่างแม่ (เปิดแท็บเอง): พาไปหน้าเว็บสอบพร้อมลิงก์ใน # (ส่วน # ไม่ถูกส่งไปเซิร์ฟเวอร์) */
+function pscBookmarklet(){
+  const home=location.origin+location.pathname,tg=JSON.stringify([...new Set([location.origin,'https://baac-smart-que.web.app','https://pangivn-cell.github.io'])]);
+  return `javascript:(function(){var u=location.href;if(!/token=/.test(u)){alert('ยังไม่ได้เข้าสู่ระบบ Product Catalog ในหน้านี้');return}var o=window.opener;if(o&&!o.closed){${tg}.forEach(function(t){try{o.postMessage({psclink:u},t)}catch(e){}});setTimeout(function(){window.close()},300)}else{location.href=${JSON.stringify(home)}+'#psclink='+encodeURIComponent(u)}})()`;
+}
+/* กลับมาจากปุ่มลัดแบบไม่มีหน้าต่างแม่: เก็บลิงก์แล้วลบออกจากที่อยู่เว็บทันที */
+(()=>{const h=location.hash;if(!h.startsWith('#psclink='))return;const m=decodeURIComponent(h.slice(9)).match(PSC_LINK_RE);
+  history.replaceState(null,'',location.pathname+location.search);if(m){try{localStorage.setItem(PSC_LINK_KEY,m[0])}catch(e){}setTimeout(()=>typeof toast==='function'&&toast('เข้าสู่ระบบ Product Catalog แล้ว'),800)}})();
 async function pscAskLink(){
   let cur='';try{cur=localStorage.getItem(PSC_LINK_KEY)||''}catch(e){}
   /* กลับมาที่หน้านี้ (หรือกดปุ่มวาง): ลองอ่านคลิปบอร์ด เจอลิงก์ที่มี token ก็บันทึกให้เลย */
@@ -592,10 +601,15 @@ async function pscAskLink(){
   let win=null,watch=null;
   const grab=async()=>{try{const m=(await navigator.clipboard.readText()).match(PSC_LINK_RE);const i=document.getElementById('psclinkq');if(m&&i){i.value=m[0];if(win&&!win.closed)win.close();closeModal(1)}}catch(e){}};
   const onBack=()=>setTimeout(grab,300);window.addEventListener('focus',onBack);
+  /* ปุ่มลัดในแถบบุ๊กมาร์ก: กดในหน้าต่าง Product Catalog หลังเข้าระบบ → ส่งลิงก์กลับมาที่หน้านี้ทาง postMessage แล้วปิดหน้าต่างเอง ไม่ต้องคัดลอก */
+  const onMsg=e=>{if(e.origin!=='https://psc.baac.tech')return;const m=String(e.data&&e.data.psclink||'').match(PSC_LINK_RE);const i=document.getElementById('psclinkq');if(m&&i){i.value=m[0];closeModal(1)}};
+  window.addEventListener('message',onMsg);
   const p=modal(`<p class="mt">เข้าสู่ระบบ Product Catalog</p>
     <p>ทำครั้งเดียวต่อเครื่อง ใช้ทำข้อสอบวิชานี้ และให้ลิงก์ในเฉลยเปิดตรงหน้าผลิตภัณฑ์</p>
     <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิดหน้าเข้าสู่ระบบ Product Catalog</button></li>
-      <li>เข้าระบบให้เสร็จ แล้วกด <b>Ctrl+L</b> ตามด้วย <b>Ctrl+C</b> (คัดลอกที่อยู่เว็บ) · บนมือถือ: แตะช่องที่อยู่แล้วกดคัดลอก</li>
+      <li>เข้าระบบให้เสร็จ แล้ว<b>กดปุ่มลัด "📥 ส่งลิงก์ให้เว็บสอบ" ในแถบบุ๊กมาร์ก</b> ระบบรับลิงก์และปิดหน้าต่างให้เอง
+        <br><span class="src">ยังไม่มีปุ่มลัด: ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก (ทำครั้งเดียว กด Ctrl+Shift+B ถ้าแถบบุ๊กมาร์กไม่แสดง) →</span> <a class="ghost" id="pscbm" href="${esc(pscBookmarklet())}" onclick="event.preventDefault();toast('ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก แล้วค่อยกดในหน้าต่าง Product Catalog')" style="display:inline-block;padding:2px 10px;border:1px dashed currentColor;border-radius:6px;cursor:grab">📥 ส่งลิงก์ให้เว็บสอบ</a></li>
+      <li>หรือแบบเดิม: กด <b>Ctrl+L</b> ตามด้วย <b>Ctrl+C</b> (คัดลอกที่อยู่เว็บ) · บนมือถือ: แตะช่องที่อยู่แล้วกดคัดลอก</li>
       <li>ปิดหน้าต่าง Product Catalog หรือคลิกกลับมาที่หน้านี้ ระบบจะหยิบลิงก์และปิดหน้าต่างนั้นให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
     <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="หรือวางลิงก์ที่มี token= ที่นี่" value="${esc(cur)}" style="width:100%">
     <p style="margin:4px 0 0"><button type="button" class="ghost" id="pscpaste">📋 วางจากคลิปบอร์ด</button></p>
@@ -606,7 +620,7 @@ async function pscAskLink(){
     clearInterval(watch);watch=setInterval(()=>{if(win&&win.closed){clearInterval(watch);window.focus();setTimeout(grab,300)}},500);
   };
   document.getElementById('pscpaste').onclick=grab;
-  const r=await p;window.removeEventListener('focus',onBack);clearInterval(watch);
+  const r=await p;window.removeEventListener('focus',onBack);window.removeEventListener('message',onMsg);clearInterval(watch);
   if(r!==1)return;
   const v=((document.getElementById('psclinkq')||{}).value||'').match(PSC_LINK_RE)?.[0]||'';
   if(!/^https:\/\/psc\.baac\.tech\/.*[?&]token=/.test(v.trim())){toast('ลิงก์ต้องเป็นของ psc.baac.tech และมี token=','bad');return}

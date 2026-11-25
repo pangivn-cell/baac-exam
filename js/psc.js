@@ -45,7 +45,8 @@ function loadPSC(){
       const f=await fb(),m=await f.fs.getDoc(fsDoc('config',PSC_DOC));if(!m.exists())throw{code:'psc_empty'};
       const meta=m.data(),parts=await Promise.all([...Array(meta.parts)].map((_,i)=>f.fs.getDoc(fsDoc('config',PSC_DOC+'_p'+i))));
       setPSC(JSON.parse(parts.map(p=>p.data().d).join('')));PSC_META=meta;return PSC;
-    }catch(e){if(!tk)throw e}}
+    /* คลังกลางไม่มีข้อมูล Product Catalog / อ่านไม่ได้: ให้ปุ่มเข้าสู่ระบบ Product Catalog แทนข้อความ error (ผู้ใช้ไม่เห็นทางไปต่อ) */
+    }catch(e){if(!tk)throw PSC_WEB?e:{code:'psc_login',why:e&&e.code}}}
     if(!tk)throw{code:'psc_login'};
     const {posts,cats}=await pscFetchAll(tk.token,tk.id);
     setPSC(posts.map(p=>pscParse(p,cats)).filter(a=>a.secs.length));PSC_META={live:true,n:PSC.length};return PSC;

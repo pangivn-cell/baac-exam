@@ -607,16 +607,16 @@ async function pscAskLink(){
   const p=modal(`<p class="mt">เข้าสู่ระบบ Product Catalog</p>
     <p>ทำครั้งเดียวต่อเครื่อง ใช้ทำข้อสอบวิชานี้ และให้ลิงก์ในเฉลยเปิดตรงหน้าผลิตภัณฑ์</p>
     <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิดหน้าเข้าสู่ระบบ Product Catalog</button></li>
-      <li>เข้าระบบให้เสร็จ แล้ว<b>กดปุ่มลัด "📥 ส่งลิงก์ให้เว็บสอบ" ในแถบบุ๊กมาร์ก</b> ระบบรับลิงก์และปิดหน้าต่างให้เอง
-        <br><span class="src">ยังไม่มีปุ่มลัด: ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก (ทำครั้งเดียว กด Ctrl+Shift+B ถ้าแถบบุ๊กมาร์กไม่แสดง) →</span> <a class="ghost" id="pscbm" href="${esc(pscBookmarklet())}" onclick="event.preventDefault();toast('ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก แล้วค่อยกดในหน้าต่าง Product Catalog')" style="display:inline-block;padding:2px 10px;border:1px dashed currentColor;border-radius:6px;cursor:grab">📥 ส่งลิงก์ให้เว็บสอบ</a></li>
+      <li>เข้าระบบให้เสร็จ แล้ว<b>กดปุ่มลัด "📥 ส่งลิงก์ให้เว็บสอบ" ในแถบบุ๊กมาร์ก</b> ระบบรับลิงก์ ปิดแท็บนั้น และพากลับมาหน้านี้ให้เอง
+        <br><span class="src">ยังไม่มีปุ่มลัด: ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก (ทำครั้งเดียว กด Ctrl+Shift+B ถ้าแถบบุ๊กมาร์กไม่แสดง) →</span> <a class="ghost" id="pscbm" href="${esc(pscBookmarklet())}" onclick="event.preventDefault();toast('ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก แล้วค่อยกดในแท็บ Product Catalog')" style="display:inline-block;padding:2px 10px;border:1px dashed currentColor;border-radius:6px;cursor:grab">📥 ส่งลิงก์ให้เว็บสอบ</a></li>
       <li>หรือแบบเดิม: กด <b>Ctrl+L</b> ตามด้วย <b>Ctrl+C</b> (คัดลอกที่อยู่เว็บ) · บนมือถือ: แตะช่องที่อยู่แล้วกดคัดลอก</li>
-      <li>ปิดหน้าต่าง Product Catalog หรือคลิกกลับมาที่หน้านี้ ระบบจะหยิบลิงก์และปิดหน้าต่างนั้นให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
+      <li>ปิดแท็บ Product Catalog หรือคลิกกลับมาที่แท็บนี้ ระบบจะหยิบลิงก์และปิดแท็บนั้นให้เอง (ถ้าเบราว์เซอร์ถามสิทธิ์อ่านคลิปบอร์ด ให้กดอนุญาต)</li></ol>
     <input id="psclinkq" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="หรือวางลิงก์ที่มี token= ที่นี่" value="${esc(cur)}" style="width:100%">
     <p style="margin:4px 0 0"><button type="button" class="ghost" id="pscpaste">📋 วางจากคลิปบอร์ด</button></p>
     <p class="src">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งขึ้นระบบ · ถ้าวันหลังลิงก์พาไปหน้าล็อกอินอีก แปลว่า token หมดอายุ ให้เชื่อมต่อใหม่</p>`,[{t:'ยกเลิก'},{t:'บันทึก',cls:'primary'}]);
   document.getElementById('pscopen').onclick=()=>{
-    const w=Math.min(1100,screen.availWidth-40),h=Math.min(820,screen.availHeight-60);
-    win=window.open('https://sklogin.baac.tech/catalog','pscLogin',`popup,width=${w},height=${h},left=${(screen.availWidth-w)/2|0},top=${(screen.availHeight-h)/2|0}`)||window.open('https://sklogin.baac.tech/catalog','_blank');
+    /* เปิดเป็นแท็บปกติ ไม่ใช่หน้าต่างป๊อปอัป: ป๊อปอัปของ Chrome ไม่มีแถบบุ๊กมาร์ก กดปุ่มลัดไม่ได้ */
+    win=window.open('https://sklogin.baac.tech/catalog','pscLogin')||window.open('https://sklogin.baac.tech/catalog','_blank');
     clearInterval(watch);watch=setInterval(()=>{if(win&&win.closed){clearInterval(watch);window.focus();setTimeout(grab,300)}},500);
   };
   document.getElementById('pscpaste').onclick=grab;

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "BAAC Exam - ส่งลิงก์ Product Catalog",
+  "version": "1.0",
+  "description": "เข้าสู่ระบบ Product Catalog แล้วส่งลิงก์ (token) ให้เว็บสอบ ธ.ก.ส. อัตโนมัติ เก็บไว้ในเครื่องนี้เท่านั้น",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["https://psc.baac.tech/*"],
+      "js": ["psc.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://baac-smart-que.web.app/*", "https://pangivn-cell.github.io/baac-exam/*", "http://localhost:8781/*"],
+      "js": ["exam.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

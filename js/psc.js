@@ -606,6 +606,7 @@ async function pscAskLink(){
   window.addEventListener('message',onMsg);
   const p=modal(`<p class="mt">เข้าสู่ระบบ Product Catalog</p>
     <p>ทำครั้งเดียวต่อเครื่อง ใช้ทำข้อสอบวิชานี้ และให้ลิงก์ในเฉลยเปิดตรงหน้าผลิตภัณฑ์</p>
+    ${document.documentElement.dataset.pscext?'<p class="src" style="color:var(--ok,#3c3)">✓ มีส่วนขยาย Chrome แล้ว: เข้าระบบเสร็จ ระบบรับลิงก์ ปิดแท็บ และกลับมาหน้านี้ให้เอง ไม่ต้องกดอะไรเพิ่ม</p>':`<p class="src">อยากให้อัตโนมัติไม่ต้องกดปุ่มลัด: <a href="ext/" target="_blank" rel="noopener">ติดตั้งส่วนขยาย Chrome ↗</a></p>`}
     <ol class="rules"><li><button type="button" class="primary" id="pscopen">เปิดหน้าเข้าสู่ระบบ Product Catalog</button></li>
       <li>เข้าระบบให้เสร็จ แล้ว<b>กดปุ่มลัด "📥 ส่งลิงก์ให้เว็บสอบ" ในแถบบุ๊กมาร์ก</b> ระบบรับลิงก์ ปิดแท็บนั้น และพากลับมาหน้านี้ให้เอง
         <br><span class="src">ยังไม่มีปุ่มลัด: ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก (ทำครั้งเดียว กด Ctrl+Shift+B ถ้าแถบบุ๊กมาร์กไม่แสดง) →</span> <a class="ghost" id="pscbm" href="${esc(pscBookmarklet())}" onclick="event.preventDefault();toast('ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก แล้วค่อยกดในแท็บ Product Catalog')" style="display:inline-block;padding:2px 10px;border:1px dashed currentColor;border-radius:6px;cursor:grab">📥 ส่งลิงก์ให้เว็บสอบ</a></li>
@@ -630,6 +631,21 @@ async function pscAskLink(){
   toast('เข้าสู่ระบบ Product Catalog แล้ว');
 }
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-psclink]'))pscAskLink()});
+/* ส่วนขยาย Chrome (ext/psc-link-ext) ส่งลิงก์มา: "1|" = เพิ่งเข้าระบบ (ใช้เสมอ) · "0|" = ตอนเปิดหน้า (ใช้เฉพาะเครื่องที่ยังไม่มีลิงก์) */
+window.addEventListener('psclink-ext',e=>{
+  const s=String(e.detail||''),live=s[0]==='1',m=s.slice(2).match(PSC_LINK_RE);if(!m)return;
+  let cur='';try{cur=localStorage.getItem(PSC_LINK_KEY)||''}catch(_){}
+  const q=document.getElementById('psclinkq'),a=document.getElementById('psclink');
+  if(q&&live){q.value=m[0];closeModal(1);return}            /* หน้าต่างเข้าสู่ระบบเปิดอยู่: บันทึกผ่านปุ่มบันทึกตามปกติ */
+  if(cur&&!live)return;
+  if(cur===m[0]){if(a)a.value=m[0];return}
+  try{localStorage.setItem(PSC_LINK_KEY,m[0])}catch(_){}
+  if(a)a.value=m[0];
+  document.querySelectorAll('a[data-pscurl]').forEach(x=>{x.href=pscHref(x.dataset.pscurl)});
+  document.querySelectorAll('[data-psclink]').forEach(b=>{const s=b.nextElementSibling;if(s&&s.classList.contains('src'))s.remove();b.remove()});
+  if(typeof toast==='function')toast('เข้าสู่ระบบ Product Catalog แล้ว');
+  if(typeof R!=='undefined'&&R&&R.status==='error'&&/^psc_/.test(R.code||'')){PSC=null;pscP=null;start(true)}
+});
 /* เข้าสู่ระบบ Product Catalog จากอีกแท็บ: แท็บนี้ที่ค้างหน้า "ต้องเข้าสู่ระบบ" เริ่มชุดให้เอง */
 window.addEventListener('storage',e=>{
   if(e.key!==PSC_LINK_KEY||!e.newValue||typeof R==='undefined'||!R||R.status!=='error'||!/^psc_/.test(R.code||''))return;

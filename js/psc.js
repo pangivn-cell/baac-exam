@@ -647,6 +647,7 @@ async function renderPscAdmin(body){
     <p class="src">${meta?`มี ${meta.n} เรื่อง${meta.img?` (อ่านจากรูป ${meta.img} เรื่อง)`:''} · อัปเดตล่าสุด ${esc(when||'-')}${meta.by?` โดย ${esc(meta.by)}`:''}`:'ยังไม่มีข้อมูลในระบบ'}</p>
     <label class="lbl" for="psclink">ลิงก์เข้า Product Catalog ของคุณ (มี token) · เก็บไว้ในเครื่องนี้เท่านั้น</label>
     <input id="psclink" class="cetx" type="url" autocomplete="off" spellcheck="false" placeholder="https://psc.baac.tech/?token=...&id=..." value="${esc(link)}">
+    <p style="margin:4px 0 8px"><button type="button" class="ghost" id="psclogin2">🔑 เข้าสู่ระบบ Product Catalog เพื่อรับลิงก์ (token)</button> <a class="src" href="https://sklogin.baac.tech/catalog" target="_blank" rel="noopener">หรือเปิดหน้าเข้าสู่ระบบในแท็บใหม่ ↗</a></p>
     <label class="chk"><input type="checkbox" id="pscimg" ${canVision('proc')?'checked':'disabled'}> ให้ AI อ่านรูป (เรื่องที่มีแต่รูป)${canVision('proc')?'':' · ต้องตั้งค่า AI ที่ดูรูปได้'}</label>
     <p class="src" id="pschelp">กำลังตรวจตัวช่วยโหลดรูป…</p>
     <div class="btnrow" style="justify-content:flex-start"><button class="primary" id="pscgo">อัปเดตจาก Product Catalog</button></div>
@@ -654,6 +655,8 @@ async function renderPscAdmin(body){
   const $=id=>body.querySelector('#'+id);
   /* AI อ่านรูปจาก psc.baac.tech เองไม่ได้ ต้องเปิดตัวช่วยในเครื่องนี้ก่อน */
   const helpTxt=ok=>ok?'✓ ตัวช่วยโหลดรูปทำงานอยู่ (localhost:8795)':'ตัวช่วยโหลดรูปยังไม่เปิด ระบบจะเปิดให้เองตอนกดอัปเดต (ถ้า Chrome ถาม ให้กดเปิดและติ๊กอนุญาตเสมอ) · ถ้าเปิดไม่ขึ้น: รัน tools\\install-psc-helper.ps1 ครั้งเดียว หรือดับเบิลคลิก tools\\psc-img-helper.bat (ไม่เปิดก็อัปเดตเรื่องที่เป็นตัวหนังสือได้ตามปกติ)';
+  /* ได้ลิงก์จากหน้าต่างเข้าสู่ระบบ (ปุ่มลัด/คลิปบอร์ด/วาง) แล้วเติมลงช่องให้เลย */
+  $('psclogin2').onclick=async()=>{await pscAskLink();let v='';try{v=localStorage.getItem(PSC_LINK_KEY)||''}catch(e){}if(v&&$('psclink'))$('psclink').value=v};
   let helpUp=false;pscHelperOK().then(ok=>{helpUp=ok;const e=$('pschelp');if(e)e.textContent=helpTxt(ok)});
   $('pscgo').onclick=async()=>{
     const l=$('psclink').value.trim();if(!/token=/.test(l)){toast('วางลิงก์ที่มี token ก่อน','bad');return}
